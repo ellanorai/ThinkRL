@@ -99,6 +99,11 @@ Community
 Engage in discussions on our GitHub Discussions page.
 Contact maintainers at archit@ellanorai.org for questions or feedback.
 
+### Project Structure
+- `thinkrl/`: The main package directory, containing `__init__.py` and submodules like `scripts/`.
+- `tests/`: Test files for the project.
+- `setup.py`: Package installation script.
+
 Acknowledgments
 All contributors will be credited in our CONTRIBUTORS.md file and release notes. Thank you for advancing AI innovation with ThinkRL!
 
