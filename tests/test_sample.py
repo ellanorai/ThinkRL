@@ -1,8 +1,8 @@
-import pytest
-import torch
-import numpy as np
-from thinkrl import __version__
+import numpy as np     # ✅ Alphabetical: numpy comes first
+import pytest          # ✅ Then pytest  
+import torch           # ✅ Then torch
 
+from thinkrl import __version__  # ✅ Local imports after standard library
 
 def _has_cupy_gpu():
     """Helper function to safely check for CuPy GPU availability."""
