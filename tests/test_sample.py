@@ -4,6 +4,16 @@ import numpy as np
 from thinkrl import __version__
 
 
+def _has_cupy_gpu():
+    """Helper function to safely check for CuPy GPU availability."""
+    try:
+        import cupy as cp
+
+        return cp.cuda.runtime.getDeviceCount() > 0
+    except (ImportError, Exception):
+        return False
+
+
 def test_version():
     """Test that version is correctly set."""
     assert __version__ == "0.1.0"
@@ -39,16 +49,6 @@ def test_cupy_array():
     assert cp.sum(array).get() == 6
 
 
-def _has_cupy_gpu():
-    """Helper function to safely check for CuPy GPU availability."""
-    try:
-        import cupy as cp
-
-        return cp.cuda.runtime.getDeviceCount() > 0
-    except (ImportError, Exception):
-        return False
-
-
 def test_basic_imports():
     """Test that basic ThinkRL imports work."""
     try:
@@ -69,4 +69,3 @@ def test_tensor_operations(device):
     result = tensor * 2
     expected = torch.tensor([2.0, 4.0, 6.0], device=device)
     assert torch.allclose(result, expected)
-    
