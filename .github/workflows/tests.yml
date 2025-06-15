@@ -11,10 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4  # Updated to latest version
+        uses: actions/checkout@v4
 
       - name: Set up Python
-        uses: actions/setup-python@v5  # Updated to latest version
+        uses: actions/setup-python@v5
         with:
           python-version: '3.11'
 
@@ -22,8 +22,21 @@ jobs:
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
-          pip install -e .[complete]  # Install ThinkRL with all dependencies
+          pip install pytest pytest-cov
+          pip install -e .[complete]
+
+      - name: Verify environment
+        run: |
+          python --version
+          pip list | grep -E "cupy|torch|pyyaml|accelerate|deepspeed|transformers"
+          ls -R tests/ || echo "No tests directory found. Please ensure tests are in the 'tests/' directory."
+          find . -name "test_*.py" -o -name "*_test.py" || echo "No test files found. Ensure test files follow pytest naming conventions."
 
       - name: Run tests
-        run: pytest
+        run: pytest -v --cov=thinkrl --cov-report=xml
+
+      - name: Upload coverage report
+        if: success() || failure()
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
