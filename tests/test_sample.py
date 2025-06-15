@@ -4,7 +4,6 @@ import torch
 
 from thinkrl import __version__
 
-
 def _has_cupy_gpu():
     """Helper function to safely check for CuPy GPU availability."""
     try:
