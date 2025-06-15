@@ -10,12 +10,20 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v2
-    - name: Set up Python
-      uses: actions/setup-python@v2
-      with:
-        python-version: '3.8'
-    - name: Install dependencies
-      run: echo         pip install -r requirements.txtecho         pip install pytest
-    - name: Run tests
-      run: pytest
+      - name: Checkout repository
+        uses: actions/checkout@v4  # Updated to latest version
+
+      - name: Set up Python
+        uses: actions/setup-python@v5  # Updated to latest version
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+          pip install -e .[complete]  # Install ThinkRL with all dependencies
+
+      - name: Run tests
+        run: pytest
