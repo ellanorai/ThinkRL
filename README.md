@@ -15,9 +15,7 @@
 ---
 
 ## 🎉 Latest Updates
-- **June 2025**: ThinkRL will launch with cutting-edge algorithms such as VAPO, DAPO, GRPO, PPO, and REINFORCE, aiming to set new standards in reasoning performance.
-- **June 2025**: Full multimodal support for vision-language models will be integrated with HuggingFace, featuring advanced Chain-of-Thought (CoT) and Tree-of-Thought (ToT) reasoning capabilities.
-- **June 2025**: A zero-dependency core will be introduced, offering lightweight functionality alongside optional advanced features for scalability.
+- **July 2025**: ThinkRL will launch with cutting-edge algorithms such as VAPO, DAPO, GRPO, PPO, and REINFORCE, aiming to set new standards in reasoning performance.
 
 ThinkRL will emerge as an open-source, modular platform for large-scale RLHF, delivering robust algorithm implementations, efficient training infrastructure, and curated datasets. Rooted in modern machine learning principles, it will enable researchers and developers to explore the frontiers of artificial intelligence.
 
