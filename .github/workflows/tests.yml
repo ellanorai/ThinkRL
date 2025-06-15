@@ -9,6 +9,53 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ['3.8', '3.9', '3.10', '3.11']
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest pytest-cov
+          pip install -e .[dev]  # Install dev dependencies without CUDA
+
+      - name: Verify environment
+        run: |
+          python --version
+          pip list | grep -E "torch|numpy|pyyaml|pytest" || true
+          echo "Test directory structure:"
+          find tests/ -name "*.py" | head -10 || echo "No test files found"
+
+      - name: Run tests
+        run: |
+          # Run tests with coverage, skip CUDA-dependent tests in CI
+          python -m pytest tests/ -v --cov=thinkrl --cov-report=xml --cov-report=term-missing
+        env:
+          # Disable CUDA in CI environment
+          CUDA_VISIBLE_DEVICES: ""
+
+      - name: Upload coverage to Codecov
+        if: matrix.python-version == '3.11'  # Only upload coverage once
+        uses: codecov/codecov-action@v4
+        with:
+          files: ./coverage.xml
+          fail_ci_if_error: false  # Don't fail CI if codecov upload fails
+          verbose: true
+        env:
+          CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
+
+  lint:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -18,25 +65,19 @@ jobs:
         with:
           python-version: '3.11'
 
-      - name: Install dependencies
+      - name: Install linting dependencies
         run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest pytest-cov
-          pip install -e .[complete]
+          python -m pip install --upgrade pip
+          pip install black isort flake8 mypy
 
-      - name: Verify environment
-        run: |
-          python --version
-          pip list | grep -E "cupy|torch|pyyaml|accelerate|deepspeed|transformers"
-          ls -R tests/ || echo "No tests directory found. Please ensure tests are in the 'tests/' directory."
-          find . -name "test_*.py" -o -name "*_test.py" || echo "No test files found. Ensure test files follow pytest naming conventions."
+      - name: Run black
+        run: black --check --diff thinkrl/ tests/
 
-      - name: Run tests
-        run: pytest -v --cov=thinkrl --cov-report=xml
+      - name: Run isort
+        run: isort --check-only --diff thinkrl/ tests/
 
-      - name: Upload coverage report
-        if: success() || failure()
-        uses: codecov/codecov-action@v4
-        with:
-          files: ./coverage.xml
+      - name: Run flake8
+        run: flake8 thinkrl/ tests/ --max-line-length=88 --extend-ignore=E203,W503
+
+      - name: Run mypy
+        run: mypy thinkrl/ --ignore-missing-imports || true  # Allow mypy to fail for now

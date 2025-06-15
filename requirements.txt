@@ -1,3 +1,5 @@
-cupy-cuda12x>=12.0.0 
-torch>=2.0.0 
+orch>=2.0.0 
+numpy>=1.24.0
 pyyaml>=6.0
+tqdm>=4.65.0
+accelerate>=0.21.0
