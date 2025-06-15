@@ -70,4 +70,3 @@ def test_tensor_operations(device):
     result = tensor * 2
     expected = torch.tensor([2.0, 4.0, 6.0], device=device)
     assert torch.allclose(result, expected)
-    
