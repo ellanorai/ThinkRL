@@ -1,193 +1,230 @@
-ThinkRL: Universal RLHF Training Library
-<div align="center"> <img src="assets/logo.png" alt="ThinkRL Logo" width="200"/>
-Think Different. Train Smarter. Scale Further.
 
-A comprehensive reinforcement learning library for human feedback training
-
-By Archit Sood @ EllanorAI
-
-Show Image
-Show Image
-Show Image
-Show Image
-
-</div>
-🔥 Important
-🎉 News!!!
-[2025/06] We release ThinkRL with support for VAPO, DAPO, GRPO, PPO, and REINFORCE algorithms, achieving state-of-the-art results on reasoning benchmarks.
-[2025/06] Full multimodal support for vision-language models with HuggingFace integration and Chain-of-Thought (CoT) + Tree-of-Thought (ToT) reasoning capabilities.
-[2025/06] Complete zero-dependency philosophy - minimal core requirements with optional advanced features.
-We release a fully open-sourced system for large-scale LLM RL, including algorithm implementations, training infrastructure, and curated datasets. The system achieves state-of-the-art large-scale LLM RL performance across multiple benchmarks. We propose implementations of the latest algorithms including VAPO (Value-model-based Augmented Proximal Policy Optimization) and DAPO (Decoupled Clip and Dynamic sAmpling Policy Optimization).
-
-Our system is built on solid engineering principles and modern ML infrastructure. Thanks to the amazing open-source community for making this possible!
-
-🚀 Features
-🧠 State-of-the-Art Algorithms
-VAPO: Value-model-based training with Length-adaptive GAE
-DAPO: Decoupled clipping with dynamic sampling
-GRPO: Group Relative Policy Optimization
-PPO: Proximal Policy Optimization with modern improvements
-REINFORCE: Classic policy gradient with variance reduction
-🎯 Reasoning Capabilities
-Chain-of-Thought (CoT): Step-by-step reasoning training
-Tree-of-Thought (ToT): Multi-path reasoning exploration
-Long-CoT: Extended reasoning for complex problems
-Self-verification: Automated reasoning validation
-🌐 Universal Model Support
-GPT: All GPT-style autoregressive models
-LLaMA: LLaMA, LLaMA-2, Code Llama variants
-Qwen: Qwen-2.5 and latest versions
-T5/BART: Encoder-decoder architectures
-Multimodal: Vision-language models (CLIP, BLIP, etc.)
-⚡ High-Performance Training
-Minimal Dependencies: Core functionality with minimal requirements
-PEFT Integration: LoRA, QLoRA, and parameter-efficient methods
-DeepSpeed Support: Distributed training with ZeRO optimization
-HuggingFace Native: Seamless integration with transformers ecosystem
-Mixed Precision: FP16/BF16 training for efficiency
-📊 Rich Dataset Support
-HuggingFace Datasets: Direct integration with datasets library
-Multimodal Datasets: Vision-language dataset support
-Custom Formats: Flexible data loading and preprocessing
-Automatic Curation: Built-in dataset quality filtering
-📦 Installation
-Core Installation
-bash
-# Minimal installation - just the essentials 
-pip install thinkrl
-Feature-Specific Installations
-bash
-# For HuggingFace transformer models 
-pip install thinkrl[transformers] 
- 
-# For multimodal (vision-language) models 
-pip install thinkrl[multimodal] 
- 
-# For parameter-efficient fine-tuning 
-pip install thinkrl[peft] 
- 
-# For distributed training with DeepSpeed 
-pip install thinkrl[deepspeed] 
- 
-# For advanced reasoning (CoT/ToT) 
-pip install thinkrl[reasoning] 
- 
-# For experiment tracking with Weights & Biases 
-pip install thinkrl[wandb] 
- 
-# Everything included 
-pip install thinkrl[all]
-Algorithm-Specific Shortcuts
-bash
-# For VAPO/DAPO state-of-the-art algorithms 
-pip install thinkrl[sota] 
- 
-# For large-scale distributed training 
-pip install thinkrl[distributed] 
- 
-# Complete development setup 
-pip install thinkrl[complete]
-🎯 Quick Start
-Basic RLHF Training
-python
-from thinkrl import RLHFTrainer, ModelConfig 
- 
-# Configure your model 
-config = ModelConfig( 
-    model_name_or_path="microsoft/DialoGPT-small", 
-    model_type="gpt", 
-    algorithm="vapo"  # or "dapo", "grpo", "ppo" 
-) 
- 
-# Create trainer and start training 
-trainer = RLHFTrainer(config) 
-trainer.train()
-Advanced Reasoning Training
-python
-from thinkrl import CoTTrainer, ToTTrainer 
-from thinkrl.reasoning import ReasoningConfig 
- 
-# Chain-of-Thought training 
-cot_config = ReasoningConfig( 
-    model_name_or_path="Qwen/Qwen2.5-32B", 
-    reasoning_type="cot", 
-    max_reasoning_steps=10 
-) 
- 
-cot_trainer = CoTTrainer(cot_config) 
-cot_trainer.train()
-Multimodal Training
-python
-from thinkrl import MultimodalTrainer 
-from thinkrl.data import MultimodalDataset 
- 
-# Load multimodal dataset from HuggingFace 
-dataset = MultimodalDataset.from_huggingface( 
-    "EllanorAI/multimodal-reasoning-dataset" 
-) 
- 
-# Configure multimodal model 
-config = ModelConfig( 
-    model_name_or_path="Salesforce/blip2-opt-2.7b", 
-    model_type="multimodal", 
-    vision_encoder="clip" 
-) 
- 
-trainer = MultimodalTrainer(config, dataset=dataset) 
-trainer.train()
-🛠️ Command Line Interface
-bash
-# Train with configuration file 
-thinkrl-train --config configs/vapo_qwen.yaml 
- 
-# Evaluate trained model 
-thinkrl-eval --model-path ./checkpoints/best --dataset AIME-2024 
- 
-# Chain-of-Thought reasoning 
-thinkrl-cot --model Qwen/Qwen2.5-7B --problem "Solve: 2x + 5 = 13" 
- 
-# Tree-of-Thought reasoning 
-thinkrl-tot --model Qwen/Qwen2.5-7B --problem "Plan a 7-day trip to Japan" 
- 
-# Multimodal training 
-thinkrl-multimodal --config configs/multimodal_training.yaml
-🏗️ Architecture
-ThinkRL/ 
-├── algorithms/           # RL algorithms (VAPO, DAPO, GRPO, PPO) 
-├── models/              # Model architectures & multimodal support 
-├── reasoning/           # CoT, ToT reasoning implementations 
-├── training/            # Training infrastructure & distributed support 
-├── data/                # Data loading & multimodal datasets 
-├── peft/                # Parameter-efficient fine-tuning 
-├── utils/               # Utilities, metrics, and logging 
-└── configs/             # Configuration templates
-🤝 Contributing
-We welcome contributions! Please see our Contributing Guide for details.
-
-Development Setup
-bash
-git clone https://github.com/Archit03/ThinkRL.git 
-cd ThinkRL 
-pip install -e .[complete] 
-pre-commit install
-📜 License
-This project is licensed under the Apache License 2.0 - see the LICENSE file for details.
-
-🙏 Acknowledgments
-Thanks to the ByteDance Seed team for open-sourcing DAPO
-Thanks to the research community for VAPO and other algorithms
-Thanks to HuggingFace for the transformers ecosystem
-Thanks to the open-source ML community
-📞 Contact
-Archit Sood - @Archit03 - archit@ellanorai.org
-
-EllanorAI - https://ellanorai.org
-
-Project Link: https://github.com/Archit03/ThinkRL
+---
+# ThinkRL: Universal RLHF Training Library
 
 <div align="center">
-⭐ Star us on GitHub if this project helped you! ⭐
-
-Made with ❤️ and passion for AI & Science in India 🇮🇳 by EllanorAI
-
+  <img src="assets/logo.png" alt="ThinkRL Logo" width="200"/>
+  <h3>Innovate. Optimize. Scale.</h3>
+  <p>A powerful, open-source library for Reinforcement Learning from Human Feedback (RLHF)</p>
+  <p>By <a href="https://github.com/Archit03">Archit Sood</a> @ <a href="https://ellanorai.org">EllanorAI</a></p>
+  <a href="https://github.com/Archit03/ThinkRL"><img src="https://img.shields.io/github/stars/Archit03/ThinkRL?style=social" alt="GitHub Stars"></a>
+  <a href="https://pypi.org/project/thinkrl/"><img src="https://img.shields.io/pypi/v/thinkrl" alt="PyPI Version"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
 </div>
+
+---
+
+## 🎉 Latest Updates
+- **June 2025**: ThinkRL will launch with cutting-edge algorithms such as VAPO, DAPO, GRPO, PPO, and REINFORCE, aiming to set new standards in reasoning performance.
+- **June 2025**: Full multimodal support for vision-language models will be integrated with HuggingFace, featuring advanced Chain-of-Thought (CoT) and Tree-of-Thought (ToT) reasoning capabilities.
+- **June 2025**: A zero-dependency core will be introduced, offering lightweight functionality alongside optional advanced features for scalability.
+
+ThinkRL will emerge as an open-source, modular platform for large-scale RLHF, delivering robust algorithm implementations, efficient training infrastructure, and curated datasets. Rooted in modern machine learning principles, it will enable researchers and developers to explore the frontiers of artificial intelligence.
+
+---
+
+## 🚀 Features
+
+### 🧠 State-of-the-Art Algorithms
+- **VAPO**: Value-model-based Augmented PPO with Length-adaptive GAE.
+- **DAPO**: Decoupled Clip and Dynamic Sampling Policy Optimization.
+- **GRPO**: Group Relative Policy Optimization.
+- **PPO**: Enhanced Proximal Policy Optimization.
+- **REINFORCE**: Policy gradient with variance reduction.
+
+### 🤔 Reasoning Capabilities
+- **Chain-of-Thought (CoT)**: Step-by-step reasoning for tackling complex tasks.
+- **Tree-of-Thought (ToT)**: Multi-path exploration for generating robust solutions.
+- **Long-CoT**: Extended reasoning tailored to intricate problem-solving.
+- **Self-Verification**: Automated checks to validate reasoning outputs.
+
+### 🌐 Model Compatibility
+- **GPT**: Autoregressive GPT-style models.
+- **LLaMA**: LLaMA, LLaMA-2, and Code Llama variants.
+- **Qwen**: Qwen-2.5 and future iterations.
+- **T5/BART**: Encoder-decoder architectures.
+- **Multimodal**: Vision-language models like CLIP and BLIP.
+
+### ⚡ Performance Optimization
+- **Zero-Dependency Core**: Minimal setup for basic operations.
+- **PEFT**: LoRA and QLoRA for efficient fine-tuning.
+- **DeepSpeed**: Distributed training with ZeRO optimization.
+- **HuggingFace**: Seamless integration with transformers.
+- **Mixed Precision**: FP16/BF16 for faster, resource-efficient training.
+
+### 📊 Dataset Support
+- **HuggingFace Datasets**: Effortless data integration.
+- **Multimodal Datasets**: Tools for vision-language data processing.
+- **Custom Formats**: Flexible preprocessing pipelines.
+- **Quality Filtering**: Automated tools for dataset refinement.
+
+---
+
+## 📦 Installation
+
+### Core Installation
+```bash
+pip install thinkrl
+```
+
+### Optional Features
+```bash
+# HuggingFace transformers
+pip install thinkrl[transformers]
+
+# Multimodal models
+pip install thinkrl[multimodal]
+
+# Parameter-efficient fine-tuning
+pip install thinkrl[peft]
+
+# Distributed training with DeepSpeed
+pip install thinkrl[deepspeed]
+
+# Advanced reasoning (CoT/ToT)
+pip install thinkrl[reasoning]
+
+# Experiment tracking with Weights & Biases
+pip install thinkrl[wandb]
+
+# All features
+pip install thinkrl[all]
+```
+
+### Specialized Setups
+```bash
+# State-of-the-art algorithms (VAPO/DAPO)
+pip install thinkrl[sota]
+
+# Large-scale distributed training
+pip install thinkrl[distributed]
+
+# Full development environment
+pip install thinkrl[complete]
+```
+
+---
+
+## 🎯 Quick Start
+
+### Basic RLHF Training
+```python
+from thinkrl import RLHFTrainer, ModelConfig
+
+config = ModelConfig(
+    model_name_or_path="microsoft/DialoGPT-small",
+    model_type="gpt",
+    algorithm="vapo"
+)
+
+trainer = RLHFTrainer(config)
+trainer.train()
+```
+
+### Chain-of-Thought Reasoning
+```python
+from thinkrl import CoTTrainer, ReasoningConfig
+
+config = ReasoningConfig(
+    model_name_or_path="Qwen/Qwen2.5-8B",
+    reasoning_type="cot",
+    max_reasoning_steps=10
+)
+
+trainer = CoTTrainer(config)
+trainer.train()
+```
+
+### Multimodal Training
+```python
+from thinkrl import MultimodalTrainer, MultimodalDataset
+
+dataset = MultimodalDataset.from_huggingface(
+    "EllanorAI/multimodal-reasoning-dataset"
+)
+
+config = ModelConfig(
+    model_name_or_path="Salesforce/blip2-opt-2.7b",
+    model_type="multimodal",
+    vision_encoder="clip"
+)
+
+trainer = MultimodalTrainer(config, dataset=dataset)
+trainer.train()
+```
+
+---
+
+## 🛠️ Command-Line Interface
+```bash
+# Train with a configuration file
+thinkrl train --config configs/vapo_qwen.yaml
+
+# Evaluate a model
+thinkrl eval --model-path checkpoints/best --dataset AIFE-2025
+
+# Chain-of-Thought reasoning
+thinkrl cot --model Qwen/Qwen2.5-8B --problem "Solve: 2x + 5 = 2025"
+
+# Tree-of-Thought reasoning
+thinkrl tot --model Qwen/Qwen2.5-8B --problem "Plan a 7-day Japan itinerary"
+
+# Multimodal training
+thinkrl multimodal --config configs/multimodal_training.yaml
+```
+
+---
+
+## 🏗️ Project Structure
+```plaintext
+ThinkRL/
+├── algorithms/           # RL algorithms (VAPO, DAPO, GRPO, PPO, etc.)
+├── models/               # Model architectures (GPT, LLaMA, multimodal)
+├── reasoning/            # CoT and ToT implementations
+├── training/             # Training pipelines and distributed support
+├── data/                 # Data loading and dataset utilities
+├── peft/                 # Parameter-efficient fine-tuning
+├── utils/                # Logging, metrics, and helpers
+├── configs/              # Training configuration templates
+└── logs/                 # Training logs and checkpoints
+```
+
+---
+
+## 🤝 Contributing
+Contributions will be warmly welcomed! Detailed guidelines will be available in our [Contributing Guide](CONTRIBUTING.md).
+
+### Development Setup
+```bash
+git clone https://github.com/Archit03/ThinkRL.git
+cd ThinkRL
+pip install -e .[complete]
+pre-commit install
+```
+
+---
+
+## 📜 License
+ThinkRL will be licensed under the [Apache License 2.0](LICENSE).
+
+---
+
+## 🙏 Acknowledgments
+- ByteDance Seed Team will be recognized for their DAPO contributions.
+- The research community will be thanked for advancements like VAPO.
+- [HuggingFace](https://huggingface.co) will be credited for its transformers ecosystem.
+- The open-source ML community will be acknowledged for inspiration and tools.
+
+---
+
+## 📞 Contact
+- **Archit Sood**: [@Archit03](https://github.com/Archit03) - [archit@ellanorai.org](mailto:archit@ellanorai.org)
+- **EllanorAI**: [https://ellanorai.org](https://ellanorai.org)
+- **Project**: [https://github.com/Archit03/ThinkRL](https://github.com/Archit03/ThinkRL)
+
+<div align="center">
+  ⭐ <strong>Star us on <a href="https://github.com/Archit03/ThinkRL">GitHub</a> to support ThinkRL!</strong>
+  <p>Crafted with ❤️ for AI innovation in India 🇮🇳 by <a href="https://ellanorai.org">EllanorAI</a></p>
+</div>
+
+---

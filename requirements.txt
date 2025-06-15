@@ -1,4 +1,3 @@
-torch
-transformers
-numpy
-pyyaml
+cupy-cuda12x>=12.0.0 
+torch>=2.0.0 
+pyyaml>=6.0
