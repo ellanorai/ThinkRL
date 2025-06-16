@@ -1,6 +1,6 @@
 ThinkRL Algorithms
 This directory contains implementations of state-of-the-art reinforcement learning algorithms optimized for human feedback (RLHF) training. ThinkRL focuses on cutting-edge policy optimization methods that push the boundaries of reasoning and alignment in large language models.
-🧠 Available Algorithms
+Available Algorithms
 VAPO (Value-model-based Augmented PPO)
 Status: 🚧 In DevelopmentPaper: Training Language Models to Self-Correct via Reinforcement Learning
 VAPO enhances traditional PPO by incorporating value model guidance and length-adaptive Generalized Advantage Estimation (GAE). It addresses challenges in training language models on complex reasoning tasks with variable-length sequences and multi-step processes.
@@ -11,7 +11,7 @@ where:
 
 $r_t(\theta) = \frac{\pi_\theta(a_t|s_t)}{\pi_{\theta_{\text{old}}}(a_t|s_t)}$: probability ratio
 $\hat{A}_t$: length-adaptive advantage estimate
-$\epsilon$: clip parameter (typically 0.1-0.3)
+$\epsilon$: clip parameter (typically 0.1–0.3)
 $L^{\text{VF}}(\theta)$: value function loss
 $\beta$: entropy coefficient
 $H[\pi_\theta]$: policy entropy
@@ -44,7 +44,6 @@ Code generation
 Long-form content creation
 Self-correction tasks
 
-
 DAPO (Decoupled Advantage Policy Optimization)
 Status: 🚧 In DevelopmentResearch: ByteDance Seed Team contributions
 DAPO treats positive and negative advantages asymmetrically to improve learning dynamics in sparse reward environments.
@@ -72,7 +71,6 @@ Safety-critical RLHF
 Preference learning
 Sparse reward tasks
 
-
 GRPO (Group Relative Policy Optimization)
 Status: 🚧 In DevelopmentPaper: Group Relative Policy Optimization for Sequential Decision Making
 GRPO optimizes policies using relative rankings within similar state groups, improving robustness across diverse reward distributions.
@@ -95,7 +93,6 @@ Multi-task RL
 Domain adaptation
 Preference learning with diverse annotators
 
-
 PPO (Proximal Policy Optimization)
 Status: ✅ Enhanced ImplementationPaper: Proximal Policy Optimization Algorithms
 PPO is the standard for stable RLHF policy optimization.
@@ -115,7 +112,6 @@ Instruction following
 Safety alignment
 General RLHF
 
-
 REINFORCE
 Status: ✅ Enhanced ImplementationPaper: Simple Statistical Gradient-Following Algorithms for Connectionist Reinforcement Learning
 REINFORCE is the foundational policy gradient algorithm.
@@ -133,8 +129,7 @@ Applications
 Educational purposes
 Baseline comparisons
 
-
-🔬 Advanced Theoretical Insights
+Advanced Theoretical Insights
 VAPO: Variance Reduction Proof
 The length-adaptive GAE reduces variance by focusing on critical sequence segments. For a sequence of length $T$, the variance of $\hat{A}_t^{\text{VAPO}}$ is bounded by:
 $$\text{Var}[\hat{A}_t^{\text{VAPO}}] \leq \text{Var}[\hat{A}t^{\text{standard}}] \cdot \frac{1}{1 + \alpha T / L{\max}}$$
@@ -146,8 +141,7 @@ GRPO: Generalization Bounds
 GRPO’s scale invariance ensures performance consistency across reward transformations. The generalization error is:
 $$\text{Error} \leq O\left(\frac{1}{\sqrt{|g|}} \cdot \text{Var}[\hat{A}_g]\right)$$
 where $|g|$ is the group size.
-
-🌐 Practical Use Cases
+Practical Use Cases
 
 VAPO: Outperforms PPO by 15% in mathematical reasoning tasks (e.g., MATH dataset) due to length-adaptive GAE.
 DAPO: Reduces harmful outputs by 30% in safety-critical chat applications compared to PPO.
@@ -155,16 +149,14 @@ GRPO: Achieves 20% better cross-domain performance in multi-task RL (e.g., Meta-
 PPO: Standard baseline, achieves 90% human preference alignment in instruction-following tasks.
 REINFORCE: Useful for rapid prototyping in low-stakes environments.
 
-
-🚀 Emerging Trends in RLHF
+Emerging Trends in RLHF
 Hybrid Algorithms
 Combining VAPO’s value model guidance with DAPO’s asymmetric advantage handling could yield algorithms that balance reasoning and safety.
 Scalable Group Formation
 Advances in unsupervised clustering (e.g., transformer-based embeddings) could enhance GRPO’s scalability for million-task RLHF datasets.
 Online RLHF
 Integrating online human feedback with ThinkRL algorithms could reduce reliance on static preference datasets, improving adaptability.
-
-📚 Mathematical Notation Reference
+Mathematical Notation Reference
 
 $\pi_\theta(a|s)$: Policy
 $V^\pi(s)$, $Q^\pi(s,a)$, $A^\pi(s,a)$: Value, action-value, and advantage functions
@@ -173,4 +165,4 @@ $\lambda_l$, $\epsilon_+$, $\epsilon_-$, $w$, $g$, $\phi(s)$, $\tau$: Algorithm-
 $\mathbb{E}_\tau[\cdot]$, $\mathbb{E}_t[\cdot]$, $\text{KL}[p | q]$, $H[\pi]$: Expectation, KL divergence, and entropy
 
 
-Maintained by: Archit Sood @ EllanorAILast Updated: June 2025
+Maintained by: Archit Sood @ EllanorAI Last Updated: June 2025
