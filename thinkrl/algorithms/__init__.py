@@ -6,17 +6,17 @@ for human feedback (RLHF) training, including VAPO, DAPO, GRPO, PPO, and REINFOR
 
 Available Algorithms:
     - VAPO: Value-model-based Augmented PPO with Length-adaptive GAE
-    - DAPO: Decoupled Clip and Dynamic Sampling Policy Optimization  
+    - DAPO: Decoupled Clip and Dynamic Sampling Policy Optimization
     - GRPO: Group Relative Policy Optimization
     - PPO: Enhanced Proximal Policy Optimization
     - REINFORCE: Policy gradient with variance reduction
 
 Example:
     >>> from thinkrl.algorithms import VAPO, PPO
-    >>> 
+    >>>
     >>> # Initialize VAPO algorithm
     >>> vapo = VAPO(config=vapo_config)
-    >>> 
+    >>>
     >>> # Initialize PPO algorithm
     >>> ppo = PPO(config=ppo_config)
 """
@@ -41,21 +41,18 @@ __all__ = [
     # Base classes
     "BaseAlgorithm",
     "AlgorithmConfig",
-    
     # Algorithm classes
     "VAPO",
-    "DAPO", 
+    "DAPO",
     "GRPO",
     "PPO",
     "REINFORCE",
-    
     # Configuration classes
     "VAPOConfig",
     "DAPOConfig",
-    "GRPOConfig", 
+    "GRPOConfig",
     "PPOConfig",
     "REINFORCEConfig",
-    
     # Utility functions
     "get_algorithm",
     "list_algorithms",
@@ -84,16 +81,16 @@ CONFIG_REGISTRY: Dict[str, Type[AlgorithmConfig]] = {
 def get_algorithm(name: str) -> Type[BaseAlgorithm]:
     """
     Get algorithm class by name.
-    
+
     Args:
         name: Algorithm name (case-insensitive)
-        
+
     Returns:
         Algorithm class
-        
+
     Raises:
         ValueError: If algorithm name is not recognized
-        
+
     Example:
         >>> PPOClass = get_algorithm("ppo")
         >>> ppo = PPOClass(config)
@@ -110,16 +107,16 @@ def get_algorithm(name: str) -> Type[BaseAlgorithm]:
 def get_algorithm_config(name: str) -> Type[AlgorithmConfig]:
     """
     Get algorithm configuration class by name.
-    
+
     Args:
         name: Algorithm name (case-insensitive)
-        
+
     Returns:
         Algorithm configuration class
-        
+
     Raises:
         ValueError: If algorithm name is not recognized
-        
+
     Example:
         >>> PPOConfigClass = get_algorithm_config("ppo")
         >>> config = PPOConfigClass(learning_rate=3e-4)
@@ -136,10 +133,10 @@ def get_algorithm_config(name: str) -> Type[AlgorithmConfig]:
 def list_algorithms() -> Dict[str, str]:
     """
     List all available algorithms with descriptions.
-    
+
     Returns:
         Dictionary mapping algorithm names to descriptions
-        
+
     Example:
         >>> algorithms = list_algorithms()
         >>> print(algorithms["vapo"])
@@ -147,7 +144,7 @@ def list_algorithms() -> Dict[str, str]:
     descriptions = {
         "vapo": "Value-model-based Augmented PPO with Length-adaptive GAE",
         "dapo": "Decoupled Clip and Dynamic Sampling Policy Optimization",
-        "grpo": "Group Relative Policy Optimization", 
+        "grpo": "Group Relative Policy Optimization",
         "ppo": "Enhanced Proximal Policy Optimization",
         "reinforce": "Policy gradient with variance reduction",
     }
@@ -155,24 +152,22 @@ def list_algorithms() -> Dict[str, str]:
 
 
 def create_algorithm(
-    name: str, 
-    config: Union[AlgorithmConfig, Dict, None] = None,
-    **kwargs
+    name: str, config: Union[AlgorithmConfig, Dict, None] = None, **kwargs
 ) -> BaseAlgorithm:
     """
     Create algorithm instance by name with configuration.
-    
+
     Args:
         name: Algorithm name (case-insensitive)
         config: Algorithm configuration (dict, config object, or None)
         **kwargs: Additional configuration parameters
-        
+
     Returns:
         Initialized algorithm instance
-        
+
     Raises:
         ValueError: If algorithm name is not recognized
-        
+
     Example:
         >>> # Create with config object
         >>> config = PPOConfig(learning_rate=3e-4)
@@ -186,7 +181,7 @@ def create_algorithm(
     """
     algorithm_class = get_algorithm(name)
     config_class = get_algorithm_config(name)
-    
+
     # Handle different config input types
     if config is None:
         config = config_class(**kwargs)
@@ -206,7 +201,7 @@ def create_algorithm(
         raise TypeError(
             f"Config must be AlgorithmConfig, dict, or None. Got {type(config)}"
         )
-    
+
     return algorithm_class(config)
 
 
