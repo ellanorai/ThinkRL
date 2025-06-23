@@ -21,3 +21,4 @@ thinkrl.egg-info/PKG-INFO
 thinkrl.egg-info/requires.txt
 thinkrl.egg-info/SOURCES.txt
 thinkrl.egg-info/top_level.txt
+.coverage
