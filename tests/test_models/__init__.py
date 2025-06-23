@@ -23,10 +23,11 @@ Example:
     >>> outputs = model(**batch)
 """
 
+from dataclasses import dataclass
+from typing import Any, Dict, Optional, Tuple, Union
+
 import torch
 import torch.nn as nn
-from typing import Any, Dict, Optional, Tuple, Union
-from dataclasses import dataclass
 
 # Test configuration
 TEST_CONFIG = {

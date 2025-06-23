@@ -6,20 +6,21 @@ used throughout ThinkRL. It ensures that model protocols are correctly
 defined and that base implementations work as expected.
 """
 
-import pytest
-import torch
-import torch.nn as nn
 from typing import Any, Dict, Optional
 from unittest.mock import Mock, patch
 
+import pytest
+import torch
+import torch.nn as nn
+
 # Import test utilities
 from tests.test_models import (
+    TEST_DEVICES,
     MockModel,
     MockValueModel,
     ModelTestConfig,
-    TEST_DEVICES,
-    create_dummy_batch,
     assert_model_output,
+    create_dummy_batch,
     create_mock_tokenizer,
 )
 

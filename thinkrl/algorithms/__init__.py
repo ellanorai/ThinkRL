@@ -24,14 +24,14 @@ Example:
 from typing import Dict, Type, Union
 
 # Import base classes
-from .base import BaseAlgorithm, AlgorithmConfig
-
-# Import algorithm implementations
-from .vapo import VAPO, VAPOConfig
+from .base import AlgorithmConfig, BaseAlgorithm
 from .dapo import DAPO, DAPOConfig
 from .grpo import GRPO, GRPOConfig
 from .ppo import PPO, PPOConfig
 from .reinforce import REINFORCE, REINFORCEConfig
+
+# Import algorithm implementations
+from .vapo import VAPO, VAPOConfig
 
 # Version information
 __version__ = "0.1.0"
