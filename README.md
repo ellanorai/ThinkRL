@@ -1,4 +1,3 @@
-
 ---
 # ThinkRL: Universal RLHF Training Library
 
@@ -7,7 +6,7 @@
   <h3>Innovate. Optimize. Scale.</h3>
   <p>A powerful, open-source library for Reinforcement Learning from Human Feedback (RLHF)</p>
   <p>By <a href="https://github.com/Archit03">Archit Sood</a> @ <a href="https://ellanorai.org">EllanorAI</a></p>
-  <a href="https://github.com/Archit03/ThinkRL"><img src="https://img.shields.io/github/stars/Archit03/ThinkRL?style=social" alt="GitHub Stars"></a>
+  <a href="https://github.com/ellanorai/ThinkRL"><img src="https://img.shields.io/github/stars/ellanorai/ThinkRL?style=social" alt="GitHub Stars"></a>
   <a href="https://pypi.org/project/thinkrl/"><img src="https://img.shields.io/pypi/v/thinkrl" alt="PyPI Version"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
 </div>
@@ -194,7 +193,7 @@ Contributions will be warmly welcomed! Detailed guidelines will be available in 
 
 ### Development Setup
 ```bash
-git clone https://github.com/Archit03/ThinkRL.git
+git clone https://github.com/ellanorai/ThinkRL.git
 cd ThinkRL
 pip install -e .[complete]
 pre-commit install
@@ -218,10 +217,10 @@ ThinkRL will be licensed under the [Apache License 2.0](LICENSE).
 ## 📞 Contact
 - **Archit Sood**: [@Archit03](https://github.com/Archit03) - [archit@ellanorai.org](mailto:archit@ellanorai.org)
 - **EllanorAI**: [https://ellanorai.org](https://ellanorai.org)
-- **Project**: [https://github.com/Archit03/ThinkRL](https://github.com/Archit03/ThinkRL)
+- **Project**: [https://github.com/ellanorai/ThinkRL](https://github.com/ellanorai/ThinkRL)
 
 <div align="center">
-  ⭐ <strong>Star us on <a href="https://github.com/Archit03/ThinkRL">GitHub</a> to support ThinkRL!</strong>
+  ⭐ <strong>Star us on <a href="https://github.com/ellanorai/ThinkRL">GitHub</a> to support ThinkRL!</strong>
   <p>Crafted with ❤️ for AI innovation in India 🇮🇳 by <a href="https://ellanorai.org">EllanorAI</a></p>
 </div>
 
