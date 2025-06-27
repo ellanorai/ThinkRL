@@ -17,11 +17,12 @@ from tokenizer import Tokenizer
 EPSILON = 1e-4  # Small value to avoid division by zero
 ENTROPY_WEIGHT = 0.01  # Weight for entropy regularization
 REWARD_CLIP_MIN = -5.0  # Minimum value for reward clipping
-REWARD_CLIP_MAX = 5.0   # Maximum value for reward clipping
+REWARD_CLIP_MAX = 5.0  # Maximum value for reward clipping
 
 # Logging setup
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
 
 @torch.no_grad()
 def _generate_tokens(
@@ -54,12 +55,16 @@ def _generate_tokens(
     """
     is_finished = torch.zeros(tokens.shape[0], dtype=torch.bool, device=device)
     prev_pos = 0
-    for cur_pos in tqdm(range(min_prompt_len, total_len), desc="Generating trajectories"):
+    for cur_pos in tqdm(
+        range(min_prompt_len, total_len), desc="Generating trajectories"
+    ):
         with torch.autocast(device_type=device.type, dtype=dtype):
             logits = model.inference(tokens[:, prev_pos:cur_pos], prev_pos)
         probs = torch.softmax(logits[:, -1], dim=-1)
         next_token = torch.multinomial(probs, num_samples=1).reshape(-1)
-        next_token = torch.where(input_text_mask[:, cur_pos], tokens[:, cur_pos], next_token)
+        next_token = torch.where(
+            input_text_mask[:, cur_pos], tokens[:, cur_pos], next_token
+        )
         next_token = torch.where(is_finished, pad_token_id, next_token)
         tokens[:, cur_pos] = next_token
         if end_token_id is not None:
@@ -70,6 +75,7 @@ def _generate_tokens(
         if is_finished.all():
             break
     return tokens, is_finished
+
 
 @torch.no_grad()
 def rollout(
@@ -117,23 +123,43 @@ def rollout(
     total_len = max_gen_len + max_prompt_len
 
     try:
-        model.init_kv_cache(max_batch_size=bsz, max_seq_len=total_len, device=device, dtype=dtype)
-        tokens = torch.full((bsz, total_len), pad_token_id, dtype=torch.long, device=device)
-        prefix_tensor = torch.tensor(batch.prefix_token_ids, dtype=torch.long, device=device)
-        tokens[:bsz, :max_prompt_len] = prefix_tensor.repeat_interleave(num_answer_per_question, dim=0)
+        model.init_kv_cache(
+            max_batch_size=bsz, max_seq_len=total_len, device=device, dtype=dtype
+        )
+        tokens = torch.full(
+            (bsz, total_len), pad_token_id, dtype=torch.long, device=device
+        )
+        prefix_tensor = torch.tensor(
+            batch.prefix_token_ids, dtype=torch.long, device=device
+        )
+        tokens[:bsz, :max_prompt_len] = prefix_tensor.repeat_interleave(
+            num_answer_per_question, dim=0
+        )
     except torch.cuda.OutOfMemoryError:
         raise RuntimeError("Insufficient GPU memory for batch size")
 
     input_text_mask = tokens != pad_token_id
     if min_prompt_len >= total_len:
-        raise ValueError(f"min_prompt_len ({min_prompt_len}) must be less than total_len ({total_len})")
+        raise ValueError(
+            f"min_prompt_len ({min_prompt_len}) must be less than total_len ({total_len})"
+        )
 
     tokens, is_finished = _generate_tokens(
-        model, tokens, input_text_mask, min_prompt_len, total_len, end_token_id, pad_token_id, device, dtype
+        model,
+        tokens,
+        input_text_mask,
+        min_prompt_len,
+        total_len,
+        end_token_id,
+        pad_token_id,
+        device,
+        dtype,
     )
 
     if debug:
-        logger.debug(f"Tokens shape: {tokens.shape}, Finished: {is_finished.sum().item()}/{bsz}")
+        logger.debug(
+            f"Tokens shape: {tokens.shape}, Finished: {is_finished.sum().item()}/{bsz}"
+        )
 
     model.del_kv_cache()
     torch.cuda.empty_cache()
@@ -143,12 +169,14 @@ def rollout(
     for i in range(bsz // num_answer_per_question):
         for j in range(num_answer_per_question):
             idx = i * num_answer_per_question + j
-            generated_token_ids = tokens[idx, len(batch.prefix_token_ids[i]):].tolist()
+            generated_token_ids = tokens[idx, len(batch.prefix_token_ids[i]) :].tolist()
             pad_mask = torch.tensor(generated_token_ids, device=device) == pad_token_id
             if pad_mask.any():
                 first_pad_idx = pad_mask.nonzero(as_tuple=True)[0][0].item()
                 generated_token_ids = generated_token_ids[:first_pad_idx]
-            generated_text = tokenizer.detokenize(generated_token_ids) if generated_token_ids else ""
+            generated_text = (
+                tokenizer.detokenize(generated_token_ids) if generated_token_ids else ""
+            )
             rewards = reward_function(
                 response=generated_text,
                 numbers=batch.numbers[i],
@@ -168,6 +196,7 @@ def rollout(
                 )
             )
     return episodes
+
 
 def normalize_rewards_per_group(episodes: List[Episode]) -> List[Episode]:
     """
@@ -196,11 +225,12 @@ def normalize_rewards_per_group(episodes: List[Episode]) -> List[Episode]:
             normalized_reward = np.clip(
                 (episode.reward - mean_reward) / (std_reward + EPSILON),
                 REWARD_CLIP_MIN,
-                REWARD_CLIP_MAX
+                REWARD_CLIP_MAX,
             )
             episode = dataclasses.replace(episode, reward=normalized_reward)
             output.append(episode)
     return output
+
 
 def compute_entropy(logits: torch.Tensor) -> torch.Tensor:
     """
@@ -216,6 +246,7 @@ def compute_entropy(logits: torch.Tensor) -> torch.Tensor:
     log_probs = torch.log(probs + EPSILON)  # Avoid log(0)
     entropy = -torch.sum(probs * log_probs, dim=-1)
     return entropy
+
 
 def update_policy(
     model: Transformer,
@@ -259,7 +290,9 @@ def update_policy(
     num_target_tokens = sum(len(episode.generated_token_ids) for episode in episodes)
     entropy = 0.0
 
-    for i in tqdm(range(0, len(episodes), micro_batch_size), desc="Computing policy gradient"):
+    for i in tqdm(
+        range(0, len(episodes), micro_batch_size), desc="Computing policy gradient"
+    ):
         j = min(i + micro_batch_size, len(episodes))
         batch_episodes = episodes[i:j]
         batch_lengths = [
@@ -268,7 +301,10 @@ def update_policy(
         ]
         batch_max_length = max(batch_lengths)
         batch_token_ids = torch.full(
-            (len(batch_episodes), batch_max_length), pad_token_id, device=device, dtype=torch.long
+            (len(batch_episodes), batch_max_length),
+            pad_token_id,
+            device=device,
+            dtype=torch.long,
         )
         batch_masks = torch.zeros(
             (len(batch_episodes), batch_max_length), device=device, dtype=torch.bool
@@ -278,12 +314,16 @@ def update_policy(
             batch_token_ids[k, :length] = torch.tensor(
                 episode.prefix_token_ids + episode.generated_token_ids, device=device
             )
-            batch_masks[k, len(episode.prefix_token_ids):length] = 1
+            batch_masks[k, len(episode.prefix_token_ids) : length] = 1
 
         batch_advantages = torch.tensor(
-            [episode.reward for episode in batch_episodes], device=device, dtype=torch.float32
+            [episode.reward for episode in batch_episodes],
+            device=device,
+            dtype=torch.float32,
         )
-        batch_advantages = (batch_advantages - batch_advantages.mean()) / (batch_advantages.std() + EPSILON)
+        batch_advantages = (batch_advantages - batch_advantages.mean()) / (
+            batch_advantages.std() + EPSILON
+        )
 
         try:
             with torch.autocast(device_type=device.type, dtype=dtype):
@@ -311,9 +351,13 @@ def update_policy(
         loss.backward()
 
         if debug:
-            logger.debug(f"Batch {i//micro_batch_size+1}/{num_micro_batches}: Loss={loss.item():.4f}")
+            logger.debug(
+                f"Batch {i//micro_batch_size+1}/{num_micro_batches}: Loss={loss.item():.4f}"
+            )
 
-    grad_norm = torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=max_grad_norm)
+    grad_norm = torch.nn.utils.clip_grad_norm_(
+        model.parameters(), max_norm=max_grad_norm
+    )
     optimizer.step()
     optimizer.zero_grad(set_to_none=True)
     return {
