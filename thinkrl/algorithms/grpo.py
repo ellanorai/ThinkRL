@@ -7,11 +7,10 @@ from typing import Callable, List, Tuple
 
 import numpy as np
 import torch
-from tqdm import tqdm
-
 from data_types import Episode, MiniBatch
 from qwen2_model import Transformer
 from tokenizer import Tokenizer
+from tqdm import tqdm
 
 # Constants
 EPSILON = 1e-4  # Small value to avoid division by zero

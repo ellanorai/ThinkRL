@@ -27,27 +27,27 @@ import torch.nn.functional as F
 from tests.test_models import (
     TEST_DEVICES,
     MockModel,
-    create_dummy_batch,
     assert_model_output,
+    create_dummy_batch,
 )
 
 # Import DAPO components - handle gracefully if not implemented
 try:
+    from thinkrl.algorithms import (
+        create_algorithm,
+        get_algorithm,
+        get_algorithm_status,
+        list_stable_algorithms,
+    )
     from thinkrl.algorithms.base import AlgorithmConfig, AlgorithmOutput, BaseAlgorithm
     from thinkrl.algorithms.dapo import (
         DAPO,
-        DAPOConfig,
         DAPOAdvantageEstimator,
+        DAPOConfig,
         DAPOLoss,
         DAPOSampler,
-        create_dapo_config,
         create_dapo_algorithm,
-    )
-    from thinkrl.algorithms import (
-        get_algorithm,
-        create_algorithm,
-        list_stable_algorithms,
-        get_algorithm_status,
+        create_dapo_config,
     )
 
     DAPO_AVAILABLE = True
