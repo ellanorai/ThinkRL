@@ -17,16 +17,16 @@ from tests.test_models import (
 
 # Import PPO components
 try:
+    from thinkrl.algorithms.base import AlgorithmOutput
     from thinkrl.algorithms.ppo import (
         PPO,
-        PPOConfig,
         PPOAdvantageEstimator,
-        PPOValueFunction,
+        PPOConfig,
         PPOLoss,
-        create_ppo_config,
+        PPOValueFunction,
         create_ppo_algorithm,
+        create_ppo_config,
     )
-    from thinkrl.algorithms.base import AlgorithmOutput
 
     PPO_AVAILABLE = True
 except ImportError as e:

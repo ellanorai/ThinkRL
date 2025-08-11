@@ -16,14 +16,14 @@ from tests.test_models import (
 
 # Import GRPO components
 try:
+    from thinkrl.algorithms.base import AlgorithmOutput
     from thinkrl.algorithms.grpo import (
         GRPO,
-        GRPOConfig,
-        GRPORewardNormalizer,
-        GRPOLoss,
         GRPOBatcher,
+        GRPOConfig,
+        GRPOLoss,
+        GRPORewardNormalizer,
     )
-    from thinkrl.algorithms.base import AlgorithmOutput
 
     GRPO_AVAILABLE = True
 except ImportError as e:

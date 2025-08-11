@@ -17,16 +17,16 @@ from tests.test_models import (
 
 # Import REINFORCE components
 try:
+    from thinkrl.algorithms.base import AlgorithmOutput
     from thinkrl.algorithms.reinforce import (
         REINFORCE,
-        REINFORCEConfig,
-        REINFORCEReturns,
         REINFORCEBaseline,
+        REINFORCEConfig,
         REINFORCELoss,
-        create_reinforce_config,
+        REINFORCEReturns,
         create_reinforce_algorithm,
+        create_reinforce_config,
     )
-    from thinkrl.algorithms.base import AlgorithmOutput
 
     REINFORCE_AVAILABLE = True
 except ImportError as e:
