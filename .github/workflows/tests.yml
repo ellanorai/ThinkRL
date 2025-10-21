@@ -11,18 +11,18 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ['3.8', '3.9', '3.10', '3.11']
+        python-version: ['3.10', '3.11']
         
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-       
+        
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
           cache: 'pip'
-       
+        
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -31,7 +31,7 @@ jobs:
           if [ -f setup.py ] || [ -f pyproject.toml ]; then
             pip install -e .[dev] || pip install -e .
           fi
-       
+        
       - name: Verify environment
         run: |
           python --version
@@ -40,7 +40,7 @@ jobs:
           find tests/ -name "*.py" | head -10 || echo "No test files found"
           echo "ThinkRL package structure:"
           find thinkrl/ -name "*.py" | head -10 || echo "No source files found"
-       
+        
       - name: Run tests
         run: |
           python -m pytest tests/ -v \
@@ -52,7 +52,7 @@ jobs:
         env:
           CUDA_VISIBLE_DEVICES: ""
           PYTHONPATH: ${{ github.workspace }}
-       
+        
       - name: Upload coverage to Codecov
         if: matrix.python-version == '3.11' && github.event_name == 'push'
         uses: codecov/codecov-action@v4
@@ -68,112 +68,112 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-       
+        
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-       
+        
       - name: Install linting dependencies
         run: |
           python -m pip install --upgrade pip
           pip install black isort flake8 mypy bandit safety
-       
+        
       - name: Check code formatting with Black
         run: |
-          echo "🔍 Checking code formatting..."
+          echo "Checking code formatting..."
           black --check --diff thinkrl/ tests/ || (
-            echo "❌ Code formatting issues found!"
-            echo "💡 To fix locally, run: black thinkrl/ tests/"
+            echo "Code formatting issues found!"
+            echo "To fix locally, run: black thinkrl/ tests/"
             exit 1
           )
-       
+        
       - name: Check import sorting with isort
         run: |
-          echo "🔍 Checking import sorting..."
+          echo "Checking import sorting..."
           isort --check-only --diff thinkrl/ tests/ || (
-            echo "❌ Import sorting issues found!"
-            echo "💡 To fix locally, run: isort thinkrl/ tests/"
+            echo "Import sorting issues found!"
+            echo "To fix locally, run: isort thinkrl/ tests/"
             exit 1
           )
-       
+        
       - name: Lint with flake8
         run: |
-          echo "🔍 Running flake8 linting..."
+          echo "Running flake8 linting..."
           flake8 thinkrl/ tests/ \
             --max-line-length=88 \
             --extend-ignore=E203,W503,E501 \
             --exclude=__pycache__,*.pyc,.git,build,dist,.tox,.pytest_cache \
             --show-source \
             --statistics
-       
+        
       - name: Type check with mypy
         run: |
-          echo "🔍 Running type checking..."
+          echo "Running type checking..."
           mypy thinkrl/ \
             --ignore-missing-imports \
             --no-strict-optional \
             --warn-return-any \
-            --warn-unused-configs || echo "⚠️ Type checking completed with warnings"
-       
+            --warn-unused-configs || echo "Type checking completed with warnings"
+        
       - name: Security check with bandit
         run: |
-          echo "🔍 Running security checks..."
+          echo "Running security checks..."
           bandit -r thinkrl/ -f json -o bandit-report.json || true
-          bandit -r thinkrl/ || echo "⚠️ Security check completed with warnings"
-       
+          bandit -r thinkrl/ || echo "Security check completed with warnings"
+        
       - name: Check dependencies for security vulnerabilities
         run: |
-          echo "🔍 Checking dependencies for vulnerabilities..."
-          safety check || echo "⚠️ Dependency security check completed with warnings"
+          echo "Checking dependencies for vulnerabilities..."
+          safety check || echo "Dependency security check completed with warnings"
 
   format-check:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-       
+        
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
           cache: 'pip'
-       
+        
       - name: Install formatting tools
         run: |
           python -m pip install --upgrade pip
           pip install black isort pre-commit
-       
+        
       - name: Auto-format check with Black
         run: |
-          echo "🎨 Checking if files need formatting..."
+          echo "Checking if files need formatting..."
           black --check --diff thinkrl/ tests/ || (
-            echo "❌ Code formatting issues found!"
-            echo "💡 To fix locally, run: black thinkrl/ tests/"
-            echo "📝 Files that need formatting:"
+            echo "Code formatting issues found!"
+            echo "To fix locally, run: black thinkrl/ tests/"
+            echo "Files that need formatting:"
             black --check thinkrl/ tests/ 2>&1 | grep "would reformat" || true
             exit 1
           )
-       
+        
       - name: Check import sorting
         run: |
-          echo "📦 Checking import sorting..."
+          echo "Checking import sorting..."
           isort --check-only --diff thinkrl/ tests/ || (
-            echo "❌ Import sorting issues found!"
-            echo "💡 To fix locally, run: isort thinkrl/ tests/"
-            echo "📝 Files with import issues:"
+            echo "Import sorting issues found!"
+            echo "To fix locally, run: isort thinkrl/ tests/"
+            echo "Files with import issues:"
             isort --check-only thinkrl/ tests/ 2>&1 | grep "ERROR" || true
             exit 1
           )
-       
+        
       - name: Validate pre-commit hooks (if present)
         run: |
           if [ -f .pre-commit-config.yaml ]; then
-            echo "🎣 Running pre-commit validation..."
-            pre-commit run --all-files || echo "⚠️ Pre-commit checks completed with warnings"
+            echo "Running pre-commit validation..."
+            pre-commit run --all-files || echo "Pre-commit checks completed with warnings"
           else
-            echo "ℹ️  No pre-commit config found, skipping..."
+            echo "No pre-commit config found, skipping..."
           fi
 
   build:
@@ -183,27 +183,27 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-       
+        
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-       
+        
       - name: Install build dependencies
         run: |
           python -m pip install --upgrade pip
           pip install build twine wheel
-       
+        
       - name: Build package
         run: |
-          echo "📦 Building package..."
+          echo "Building package..."
           python -m build
-       
+        
       - name: Check package
         run: |
-          echo "🔍 Checking package integrity..."
+          echo "Checking package integrity..."
           twine check dist/*
-       
+        
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -216,26 +216,27 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.9', '3.11']
+        python-version: ['3.10', '3.11']
     
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-       
+        
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python-version }}
-       
+        
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           pip install pytest
-       
+          pip install -e .
+        
       - name: Run compatibility tests
         run: |
-          python -c "import thinkrl; print(f'ThinkRL imported successfully on {platform.system()}')" || echo "Import test failed"
-          python -m pytest tests/ -k "not slow" --tb=short || echo "Some tests failed on this platform"
+          python -c "import platform; import thinkrl; print(f'ThinkRL imported successfully on {platform.system()}')"
+          python -m pytest tests/ -k "not slow" --tb=short
         env:
           PYTHONPATH: ${{ github.workspace }}
