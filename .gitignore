@@ -23,5 +23,4 @@ thinkrl.egg-info/SOURCES.txt
 thinkrl.egg-info/top_level.txt
 .coverage
 
-thinkrl
 scripts\*.exe
