@@ -1,12 +1,13 @@
-name: Tests
+name: Test and Merge
 
 on:
   push:
-    branches: [main, develop]
+    branches: [ test ] # Trigger workflow ONLY on pushes to the 'test' branch
   pull_request:
-    branches: [main]
+    branches: [ main ] # Keep PR triggers for main if needed for checks before manual merge
 
 jobs:
+  # --- Jobs that run on the 'test' branch ---
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -48,7 +49,8 @@ jobs:
           CUDA_VISIBLE_DEVICES: ""
           PYTHONPATH: ${{ github.workspace }}
       - name: Upload coverage to Codecov
-        if: matrix.python-version == '3.11' && github.event_name == 'push'
+        # Only upload coverage on the primary test version if successful on test branch push
+        if: matrix.python-version == '3.11' && github.event_name == 'push' && github.ref == 'refs/heads/test'
         uses: codecov/codecov-action@v4
         with:
           files: ./coverage.xml
@@ -59,6 +61,7 @@ jobs:
 
   lint:
     runs-on: ubuntu-latest
+    # Run lint checks also on the 'test' branch push
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -116,6 +119,7 @@ jobs:
 
   format-check:
     runs-on: ubuntu-latest
+    # Run format checks also on the 'test' branch push
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -157,13 +161,78 @@ jobs:
             echo "No pre-commit config found, skipping..."
           fi
 
-  build:
-    runs-on: ubuntu-latest
-    needs: [test, lint]
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+  compatibility:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ['3.10', '3.11']
+    # Run compatibility checks also on the 'test' branch push
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pytest
+          pip install -e .
+      - name: Run compatibility tests
+        run: |
+          python -c "import platform; import thinkrl; print(f'ThinkRL imported successfully on {platform.system()}')"
+          python -m pytest tests/ -k "not slow" --tb=short
+        env:
+          PYTHONPATH: ${{ github.workspace }}
+
+  # --- Merge Job: Runs only if all checks on 'test' branch pass ---
+  merge_to_main:
+    runs-on: ubuntu-latest
+    # Depends on all check jobs passing
+    needs: [test, lint, format-check, compatibility]
+    # Ensure this only runs on a successful push to the 'test' branch
+    if: github.ref == 'refs/heads/test' && success()
+    steps:
+      - name: Checkout repository with full history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # Needed to merge branches correctly
+          # Use a token with write permissions to push to main
+          token: ${{ secrets.GITHUB_TOKEN }} # Or a PAT if GITHUB_TOKEN permissions are restricted
+
+      - name: Configure Git
+        run: |
+          git config user.name "${{ github.actor }}"
+          git config user.email "${{ github.actor }}@users.noreply.github.com"
+
+      - name: Merge test branch into main
+        run: |
+          git fetch origin main:main test:test # Fetch latest main and test
+          git switch main                   # Switch to main branch
+          git merge --ff-only test          # Attempt fast-forward merge (safer)
+          # If --ff-only fails, you might need 'git merge test -m "Auto-merge test branch"'
+          # Be cautious if merge commits are undesirable.
+
+      - name: Push changes to main
+        run: |
+          git push origin main
+
+  # --- Build Job: Runs only on pushes to 'main' (including the merge above) ---
+  build:
+    runs-on: ubuntu-latest
+    # Needs the merge job to have completed successfully *in a previous run that pushed to main*
+    # Alternatively, trigger this in a separate workflow file on `push: branches: [main]`
+    # We keep it here but condition it on running only when the event is a push to main
+    needs: [merge_to_main] # This dependency ensures it runs *after* a successful merge in the 'test' branch workflow context, though the actual trigger is the push to main.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && success() # Ensure it only runs *after* a successful push to main
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: main # Explicitly check out main branch after merge
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -186,29 +255,3 @@ jobs:
           name: dist-files
           path: dist/
           retention-days: 7
-
-  compatibility:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        python-version: ['3.10', '3.11']
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Set up Python ${{ matrix.python-version }}
-        uses: actions/setup-python@v5
-        with:
-          python-version: ${{ matrix.python-version }}
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-          pip install pytest
-          pip install -e .
-      - name: Run compatibility tests
-        run: |
-          python -c "import platform; import thinkrl; print(f'ThinkRL imported successfully on {platform.system()}')"
-          python -m pytest tests/ -k "not slow" --tb=short
-        env:
-          PYTHONPATH: ${{ github.workspace }}
