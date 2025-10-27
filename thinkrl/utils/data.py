@@ -23,6 +23,7 @@ import numpy as np
 # Optional dependencies
 try:
     from torch.utils.data import DataLoader, Dataset, DistributedSampler
+
     _TORCH_DATA_AVAILABLE = True
 except ImportError:
     _TORCH_DATA_AVAILABLE = False
@@ -30,6 +31,7 @@ except ImportError:
 
 try:
     import cupy as cp
+
     _CUPY_AVAILABLE = True
 except ImportError:
     _CUPY_AVAILABLE = False
@@ -42,7 +44,7 @@ logger = logging.getLogger(__name__)
 class BatchEncoding:
     """
     Container for batch of encoded sequences.
-    
+
     Attributes:
         input_ids: Token IDs
         attention_mask: Attention mask (1 for real tokens, 0 for padding)
@@ -50,30 +52,44 @@ class BatchEncoding:
         token_type_ids: Token type IDs (optional)
         position_ids: Position IDs (optional)
     """
+
     input_ids: torch.Tensor
     attention_mask: torch.Tensor
     labels: Optional[torch.Tensor] = None
     token_type_ids: Optional[torch.Tensor] = None
     position_ids: Optional[torch.Tensor] = None
-    
+
     def to(self, device: Union[str, torch.device]) -> "BatchEncoding":
         """Move batch to device."""
         return BatchEncoding(
             input_ids=self.input_ids.to(device),
             attention_mask=self.attention_mask.to(device),
             labels=self.labels.to(device) if self.labels is not None else None,
-            token_type_ids=self.token_type_ids.to(device) if self.token_type_ids is not None else None,
-            position_ids=self.position_ids.to(device) if self.position_ids is not None else None,
+            token_type_ids=self.token_type_ids.to(device)
+            if self.token_type_ids is not None
+            else None,
+            position_ids=self.position_ids.to(device)
+            if self.position_ids is not None
+            else None,
         )
-    
+
     def __getitem__(self, key: str) -> torch.Tensor:
         """Access attributes like a dictionary."""
         return getattr(self, key)
-    
+
     def keys(self) -> List[str]:
         """Get all non-None keys."""
-        return [k for k in ["input_ids", "attention_mask", "labels", "token_type_ids", "position_ids"] 
-                if getattr(self, k) is not None]
+        return [
+            k
+            for k in [
+                "input_ids",
+                "attention_mask",
+                "labels",
+                "token_type_ids",
+                "position_ids",
+            ]
+            if getattr(self, k) is not None
+        ]
 
 
 def pad_sequences(
@@ -81,21 +97,21 @@ def pad_sequences(
     padding_value: int = 0,
     padding_side: str = "right",
     max_length: Optional[int] = None,
-    return_tensors: bool = True
+    return_tensors: bool = True,
 ) -> Union[torch.Tensor, List[torch.Tensor]]:
     """
     Pad sequences to the same length.
-    
+
     Args:
         sequences: List of sequences to pad
         padding_value: Value to use for padding
         padding_side: "right" or "left" padding
         max_length: Maximum length (if None, uses longest sequence)
         return_tensors: Whether to return as tensor or list
-        
+
     Returns:
         Padded sequences
-        
+
     Example:
         ```python
         sequences = [
@@ -109,52 +125,53 @@ def pad_sequences(
     """
     if not sequences:
         return torch.tensor([]) if return_tensors else []
-    
+
     # Determine max length
     if max_length is None:
         max_length = max(len(seq) for seq in sequences)
-    
+
     # Pad sequences
     padded_sequences = []
     for seq in sequences:
         seq_len = len(seq)
-        
+
         if seq_len > max_length:
             # Truncate
             padded_seq = seq[:max_length]
         elif seq_len < max_length:
             # Pad
             padding_length = max_length - seq_len
-            padding = torch.full((padding_length,), padding_value, dtype=seq.dtype, device=seq.device)
-            
+            padding = torch.full(
+                (padding_length,), padding_value, dtype=seq.dtype, device=seq.device
+            )
+
             if padding_side == "right":
                 padded_seq = torch.cat([seq, padding])
             else:  # left
                 padded_seq = torch.cat([padding, seq])
         else:
             padded_seq = seq
-        
+
         padded_sequences.append(padded_seq)
-    
+
     if return_tensors:
         return torch.stack(padded_sequences)
     return padded_sequences
 
 
 def create_attention_mask(
-    input_ids: torch.Tensor,
-    padding_value: int = 0
+    input_ids: torch.Tensor, padding_value: int = 0
 ) -> torch.Tensor:
     """
     Create attention mask from input IDs.
-    
+
     Args:
         input_ids: Token IDs of shape (batch_size, seq_len)
         padding_value: Padding token ID
-        
+
     Returns:
         Attention mask of shape (batch_size, seq_len)
-        
+
     Example:
         ```python
         input_ids = torch.tensor([[1, 2, 3, 0, 0], [1, 2, 0, 0, 0]])
@@ -166,19 +183,18 @@ def create_attention_mask(
 
 
 def create_position_ids(
-    attention_mask: torch.Tensor,
-    past_length: int = 0
+    attention_mask: torch.Tensor, past_length: int = 0
 ) -> torch.Tensor:
     """
     Create position IDs from attention mask.
-    
+
     Args:
         attention_mask: Attention mask of shape (batch_size, seq_len)
         past_length: Length of past context (for autoregressive generation)
-        
+
     Returns:
         Position IDs of shape (batch_size, seq_len)
-        
+
     Example:
         ```python
         attention_mask = torch.tensor([[1, 1, 1, 0, 0], [1, 1, 0, 0, 0]])
@@ -194,19 +210,19 @@ def create_position_ids(
 def create_causal_mask(
     seq_length: int,
     device: Optional[torch.device] = None,
-    dtype: torch.dtype = torch.bool
+    dtype: torch.dtype = torch.bool,
 ) -> torch.Tensor:
     """
     Create causal (lower triangular) attention mask.
-    
+
     Args:
         seq_length: Sequence length
         device: Device to create mask on
         dtype: Data type of mask
-        
+
     Returns:
         Causal mask of shape (seq_length, seq_length)
-        
+
     Example:
         ```python
         mask = create_causal_mask(4)
@@ -217,8 +233,7 @@ def create_causal_mask(
         ```
     """
     mask = torch.triu(
-        torch.ones(seq_length, seq_length, device=device, dtype=dtype),
-        diagonal=1
+        torch.ones(seq_length, seq_length, device=device, dtype=dtype), diagonal=1
     )
     return mask == 0
 
@@ -227,20 +242,20 @@ def collate_batch(
     batch: List[Dict[str, Any]],
     padding_value: int = 0,
     max_length: Optional[int] = None,
-    return_tensors: bool = True
+    return_tensors: bool = True,
 ) -> Dict[str, torch.Tensor]:
     """
     Collate a batch of samples into tensors.
-    
+
     Args:
         batch: List of sample dictionaries
         padding_value: Value for padding
         max_length: Maximum sequence length
         return_tensors: Whether to return tensors
-        
+
     Returns:
         Collated batch dictionary
-        
+
     Example:
         ```python
         batch = [
@@ -252,36 +267,36 @@ def collate_batch(
     """
     if not batch:
         return {}
-    
+
     # Get all keys from first sample
     keys = batch[0].keys()
     collated = {}
-    
+
     for key in keys:
         # Get all values for this key
         values = [sample[key] for sample in batch]
-        
+
         # Skip None values
         values = [v for v in values if v is not None]
         if not values:
             continue
-        
+
         # Convert to tensors if needed
         if not isinstance(values[0], torch.Tensor):
             values = [torch.tensor(v) for v in values]
-        
+
         # Pad sequences
         if values[0].dim() >= 1:  # Sequence data
             padded = pad_sequences(
                 values,
                 padding_value=padding_value,
                 max_length=max_length,
-                return_tensors=return_tensors
+                return_tensors=return_tensors,
             )
             collated[key] = padded
         else:  # Scalar data
             collated[key] = torch.stack(values) if return_tensors else values
-    
+
     return collated
 
 
@@ -296,11 +311,11 @@ def create_dataloader(
     distributed: bool = False,
     rank: Optional[int] = None,
     world_size: Optional[int] = None,
-    **kwargs
+    **kwargs,
 ) -> DataLoader:
     """
     Create a DataLoader with sensible defaults for RLHF training.
-    
+
     Args:
         dataset: Dataset to load
         batch_size: Batch size
@@ -313,10 +328,10 @@ def create_dataloader(
         rank: Process rank (required if distributed=True)
         world_size: Number of processes (required if distributed=True)
         **kwargs: Additional arguments for DataLoader
-        
+
     Returns:
         Configured DataLoader
-        
+
     Example:
         ```python
         dataloader = create_dataloader(
@@ -325,7 +340,7 @@ def create_dataloader(
             shuffle=True,
             num_workers=4
         )
-        
+
         for batch in dataloader:
             # Train model
             pass
@@ -333,26 +348,28 @@ def create_dataloader(
     """
     if not _TORCH_DATA_AVAILABLE:
         raise ImportError("torch.utils.data is required for create_dataloader")
-    
+
     # Use distributed sampler if needed
     sampler = None
     if distributed:
         if rank is None or world_size is None:
-            raise ValueError("rank and world_size are required for distributed training")
-        
+            raise ValueError(
+                "rank and world_size are required for distributed training"
+            )
+
         sampler = DistributedSampler(
             dataset,
             num_replicas=world_size,
             rank=rank,
             shuffle=shuffle,
-            drop_last=drop_last
+            drop_last=drop_last,
         )
         shuffle = False  # Sampler handles shuffling
-    
+
     # Default collate function
     if collate_fn is None:
         collate_fn = collate_batch
-    
+
     # Create dataloader
     dataloader = DataLoader(
         dataset=dataset,
@@ -363,9 +380,9 @@ def create_dataloader(
         collate_fn=collate_fn,
         pin_memory=pin_memory and torch.cuda.is_available(),
         drop_last=drop_last,
-        **kwargs
+        **kwargs,
     )
-    
+
     return dataloader
 
 
@@ -373,20 +390,20 @@ def preprocess_text(
     text: str,
     lowercase: bool = False,
     strip: bool = True,
-    remove_extra_spaces: bool = True
+    remove_extra_spaces: bool = True,
 ) -> str:
     """
     Preprocess text data.
-    
+
     Args:
         text: Input text
         lowercase: Whether to convert to lowercase
         strip: Whether to strip leading/trailing whitespace
         remove_extra_spaces: Whether to remove extra spaces
-        
+
     Returns:
         Preprocessed text
-        
+
     Example:
         ```python
         text = "  Hello   World!  "
@@ -396,32 +413,30 @@ def preprocess_text(
     """
     if strip:
         text = text.strip()
-    
+
     if remove_extra_spaces:
         text = " ".join(text.split())
-    
+
     if lowercase:
         text = text.lower()
-    
+
     return text
 
 
 def truncate_sequence(
-    sequence: Union[List, torch.Tensor],
-    max_length: int,
-    truncation_side: str = "right"
+    sequence: Union[List, torch.Tensor], max_length: int, truncation_side: str = "right"
 ) -> Union[List, torch.Tensor]:
     """
     Truncate sequence to maximum length.
-    
+
     Args:
         sequence: Sequence to truncate
         max_length: Maximum length
         truncation_side: "right" or "left" truncation
-        
+
     Returns:
         Truncated sequence
-        
+
     Example:
         ```python
         seq = [1, 2, 3, 4, 5]
@@ -431,7 +446,7 @@ def truncate_sequence(
     """
     if len(sequence) <= max_length:
         return sequence
-    
+
     if truncation_side == "right":
         return sequence[:max_length]
     else:  # left
@@ -439,19 +454,18 @@ def truncate_sequence(
 
 
 def create_labels_for_clm(
-    input_ids: torch.Tensor,
-    ignore_index: int = -100
+    input_ids: torch.Tensor, ignore_index: int = -100
 ) -> torch.Tensor:
     """
     Create labels for causal language modeling (next token prediction).
-    
+
     Args:
         input_ids: Input token IDs of shape (batch_size, seq_len)
         ignore_index: Index to ignore in loss computation
-        
+
     Returns:
         Labels of shape (batch_size, seq_len)
-        
+
     Example:
         ```python
         input_ids = torch.tensor([[1, 2, 3, 4, 0, 0]])
@@ -463,10 +477,10 @@ def create_labels_for_clm(
     labels = input_ids.clone()
     labels[:, :-1] = input_ids[:, 1:]
     labels[:, -1] = ignore_index
-    
+
     # Mask padding tokens
     labels[input_ids == 0] = ignore_index
-    
+
     return labels
 
 
@@ -474,20 +488,20 @@ def mask_padding_in_loss(
     logits: torch.Tensor,
     labels: torch.Tensor,
     padding_value: int = 0,
-    ignore_index: int = -100
+    ignore_index: int = -100,
 ) -> torch.Tensor:
     """
     Mask padding tokens in labels for loss computation.
-    
+
     Args:
         logits: Model logits
         labels: Target labels
         padding_value: Padding token ID
         ignore_index: Index to use for padding in labels
-        
+
     Returns:
         Masked labels
-        
+
     Example:
         ```python
         labels = torch.tensor([[1, 2, 3, 0, 0]])
@@ -501,19 +515,18 @@ def mask_padding_in_loss(
 
 
 def split_batch(
-    batch: Dict[str, torch.Tensor],
-    num_splits: int
+    batch: Dict[str, torch.Tensor], num_splits: int
 ) -> List[Dict[str, torch.Tensor]]:
     """
     Split a batch into smaller chunks (useful for gradient accumulation).
-    
+
     Args:
         batch: Batch dictionary
         num_splits: Number of splits
-        
+
     Returns:
         List of split batches
-        
+
     Example:
         ```python
         batch = {"input_ids": torch.randn(16, 128)}
@@ -523,38 +536,34 @@ def split_batch(
     """
     batch_size = next(iter(batch.values())).size(0)
     split_size = batch_size // num_splits
-    
+
     if batch_size % num_splits != 0:
         logger.warning(f"Batch size {batch_size} not evenly divisible by {num_splits}")
-    
+
     splits = []
     for i in range(num_splits):
         start_idx = i * split_size
         end_idx = start_idx + split_size if i < num_splits - 1 else batch_size
-        
-        split = {
-            key: value[start_idx:end_idx]
-            for key, value in batch.items()
-        }
+
+        split = {key: value[start_idx:end_idx] for key, value in batch.items()}
         splits.append(split)
-    
+
     return splits
 
 
 def compute_sequence_lengths(
-    input_ids: torch.Tensor,
-    padding_value: int = 0
+    input_ids: torch.Tensor, padding_value: int = 0
 ) -> torch.Tensor:
     """
     Compute actual sequence lengths (excluding padding).
-    
+
     Args:
         input_ids: Token IDs of shape (batch_size, seq_len)
         padding_value: Padding token ID
-        
+
     Returns:
         Sequence lengths of shape (batch_size,)
-        
+
     Example:
         ```python
         input_ids = torch.tensor([[1, 2, 3, 0, 0], [1, 2, 0, 0, 0]])
@@ -566,19 +575,18 @@ def compute_sequence_lengths(
 
 
 def shuffle_batch(
-    batch: Dict[str, torch.Tensor],
-    seed: Optional[int] = None
+    batch: Dict[str, torch.Tensor], seed: Optional[int] = None
 ) -> Dict[str, torch.Tensor]:
     """
     Shuffle examples in a batch (while maintaining correspondence).
-    
+
     Args:
         batch: Batch dictionary
         seed: Random seed for reproducibility
-        
+
     Returns:
         Shuffled batch
-        
+
     Example:
         ```python
         batch = {"input_ids": torch.randn(16, 128), "labels": torch.randn(16)}
@@ -589,30 +597,27 @@ def shuffle_batch(
         generator = torch.Generator().manual_seed(seed)
     else:
         generator = None
-    
+
     batch_size = next(iter(batch.values())).size(0)
     indices = torch.randperm(batch_size, generator=generator)
-    
-    return {
-        key: value[indices]
-        for key, value in batch.items()
-    }
+
+    return {key: value[indices] for key, value in batch.items()}
 
 
 def to_device(
     batch: Union[Dict[str, torch.Tensor], torch.Tensor, List],
-    device: Union[str, torch.device]
+    device: Union[str, torch.device],
 ) -> Union[Dict[str, torch.Tensor], torch.Tensor, List]:
     """
     Move batch to device (handles nested structures).
-    
+
     Args:
         batch: Batch to move (dict, tensor, or list)
         device: Target device
-        
+
     Returns:
         Batch on device
-        
+
     Example:
         ```python
         batch = {"input_ids": torch.randn(4, 128), "labels": torch.randn(4)}
@@ -635,20 +640,20 @@ def prepare_batch_for_training(
     batch: Dict[str, Any],
     device: Union[str, torch.device],
     create_labels: bool = True,
-    ignore_index: int = -100
+    ignore_index: int = -100,
 ) -> Dict[str, torch.Tensor]:
     """
     Prepare batch for training (move to device, create labels, etc.).
-    
+
     Args:
         batch: Input batch
         device: Target device
         create_labels: Whether to create labels from input_ids
         ignore_index: Index to ignore in loss
-        
+
     Returns:
         Prepared batch
-        
+
     Example:
         ```python
         batch = {"input_ids": [[1, 2, 3, 4]]}
@@ -659,18 +664,18 @@ def prepare_batch_for_training(
     # Convert to tensors if needed
     if "input_ids" in batch and not isinstance(batch["input_ids"], torch.Tensor):
         batch["input_ids"] = torch.tensor(batch["input_ids"])
-    
+
     # Create attention mask if not present
     if "attention_mask" not in batch and "input_ids" in batch:
         batch["attention_mask"] = create_attention_mask(batch["input_ids"])
-    
+
     # Create labels if requested
     if create_labels and "labels" not in batch and "input_ids" in batch:
         batch["labels"] = create_labels_for_clm(batch["input_ids"], ignore_index)
-    
+
     # Move to device
     batch = to_device(batch, device)
-    
+
     return batch
 
 

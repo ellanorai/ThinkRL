@@ -25,10 +25,11 @@ import warnings
 # ANSI color codes for terminal output
 class Colors:
     """ANSI color codes for colored terminal output."""
+
     RESET = "\033[0m"
     BOLD = "\033[1m"
     DIM = "\033[2m"
-    
+
     # Foreground colors
     BLACK = "\033[30m"
     RED = "\033[31m"
@@ -38,7 +39,7 @@ class Colors:
     MAGENTA = "\033[35m"
     CYAN = "\033[36m"
     WHITE = "\033[37m"
-    
+
     # Bright foreground colors
     BRIGHT_BLACK = "\033[90m"
     BRIGHT_RED = "\033[91m"
@@ -48,7 +49,7 @@ class Colors:
     BRIGHT_MAGENTA = "\033[95m"
     BRIGHT_CYAN = "\033[96m"
     BRIGHT_WHITE = "\033[97m"
-    
+
     # Background colors
     BG_BLACK = "\033[40m"
     BG_RED = "\033[41m"
@@ -63,10 +64,10 @@ class Colors:
 class ColoredFormatter(logging.Formatter):
     """
     Custom formatter that adds colors to log messages based on log level.
-    
+
     Colors are only applied when outputting to a terminal that supports them.
     """
-    
+
     # Color mapping for different log levels
     LEVEL_COLORS = {
         logging.DEBUG: Colors.BRIGHT_BLACK,
@@ -75,16 +76,16 @@ class ColoredFormatter(logging.Formatter):
         logging.ERROR: Colors.BRIGHT_RED,
         logging.CRITICAL: Colors.BG_RED + Colors.WHITE + Colors.BOLD,
     }
-    
+
     def __init__(
         self,
         fmt: Optional[str] = None,
         datefmt: Optional[str] = None,
-        use_colors: bool = True
+        use_colors: bool = True,
     ):
         """
         Initialize the colored formatter.
-        
+
         Args:
             fmt: Log message format string
             datefmt: Date format string
@@ -92,12 +93,12 @@ class ColoredFormatter(logging.Formatter):
         """
         super().__init__(fmt, datefmt)
         self.use_colors = use_colors and self._supports_color()
-    
+
     @staticmethod
     def _supports_color() -> bool:
         """
         Check if the terminal supports color output.
-        
+
         Returns:
             True if colors are supported, False otherwise
         """
@@ -106,31 +107,32 @@ class ColoredFormatter(logging.Formatter):
             return False
         if not sys.stdout.isatty():
             return False
-        
+
         # Check environment variables
         if os.environ.get("NO_COLOR"):
             return False
         if os.environ.get("FORCE_COLOR"):
             return True
-        
+
         # Windows terminal color support
         if sys.platform == "win32":
             try:
                 import colorama
+
                 colorama.init()
                 return True
             except ImportError:
                 return False
-        
+
         return True
-    
+
     def format(self, record: logging.LogRecord) -> str:
         """
         Format the log record with colors.
-        
+
         Args:
             record: Log record to format
-            
+
         Returns:
             Formatted log message with colors
         """
@@ -138,52 +140,52 @@ class ColoredFormatter(logging.Formatter):
             # Save original values
             orig_levelname = record.levelname
             orig_msg = record.msg
-            
+
             # Apply colors
             color = self.LEVEL_COLORS.get(record.levelno, "")
             record.levelname = f"{color}{record.levelname}{Colors.RESET}"
-            
+
             # Add color to the message if it's an error or warning
             if record.levelno >= logging.WARNING:
                 record.msg = f"{color}{record.msg}{Colors.RESET}"
-        
+
         # Format the message
         result = super().format(record)
-        
+
         if self.use_colors:
             # Restore original values
             record.levelname = orig_levelname
             record.msg = orig_msg
-        
+
         return result
 
 
 class ThinkRLLogger(logging.Logger):
     """
     Custom logger class with additional methods for ML training.
-    
+
     Extends the standard Logger with methods for:
     - Metrics logging
     - Progress tracking
     - Model checkpoints
     - Distributed training coordination
     """
-    
+
     def __init__(self, name: str, level: int = logging.NOTSET):
         """
         Initialize the ThinkRL logger.
-        
+
         Args:
             name: Logger name
             level: Logging level
         """
         super().__init__(name, level)
         self._metrics_buffer: Dict[str, Any] = {}
-    
+
     def metric(self, name: str, value: Union[int, float], step: Optional[int] = None):
         """
         Log a metric value.
-        
+
         Args:
             name: Metric name
             value: Metric value
@@ -193,14 +195,14 @@ class ThinkRLLogger(logging.Logger):
         if step is not None:
             msg += f" (step={step})"
         self.info(msg)
-        
+
         # Store in buffer for batch logging
         self._metrics_buffer[name] = {"value": value, "step": step}
-    
+
     def checkpoint(self, path: str, metrics: Optional[Dict[str, Any]] = None):
         """
         Log a model checkpoint.
-        
+
         Args:
             path: Checkpoint file path
             metrics: Associated metrics (optional)
@@ -210,11 +212,11 @@ class ThinkRLLogger(logging.Logger):
             metrics_str = ", ".join(f"{k}={v:.4f}" for k, v in metrics.items())
             msg += f" ({metrics_str})"
         self.info(msg)
-    
+
     def progress(self, current: int, total: int, prefix: str = "Progress"):
         """
         Log progress information.
-        
+
         Args:
             current: Current step
             total: Total steps
@@ -222,16 +224,16 @@ class ThinkRLLogger(logging.Logger):
         """
         percentage = 100 * current / total
         self.info(f"{prefix}: {current}/{total} ({percentage:.1f}%)")
-    
+
     def get_metrics_buffer(self) -> Dict[str, Any]:
         """
         Get the buffered metrics.
-        
+
         Returns:
             Dictionary of buffered metrics
         """
         return self._metrics_buffer.copy()
-    
+
     def clear_metrics_buffer(self):
         """Clear the metrics buffer."""
         self._metrics_buffer.clear()
@@ -252,14 +254,14 @@ def setup_logger(
 ) -> logging.Logger:
     """
     Set up a logger with console and optional file output.
-    
+
     This is the main function for configuring logging in ThinkRL.
     It supports:
     - Colored console output
     - File logging with rotation
     - Distributed training (rank-based logging)
     - Custom formatting
-    
+
     Args:
         name: Logger name (default: "thinkrl")
         level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
@@ -272,16 +274,16 @@ def setup_logger(
         max_bytes: Maximum log file size before rotation
         backup_count: Number of backup files to keep
         rank: Process rank for distributed training (logs only from rank 0 if set)
-        
+
     Returns:
         Configured logger instance
-        
+
     Example:
         ```python
         # Basic setup
         logger = setup_logger("thinkrl")
         logger.info("Training started")
-        
+
         # With file logging
         logger = setup_logger(
             name="thinkrl",
@@ -289,7 +291,7 @@ def setup_logger(
             log_dir="./logs",
             use_colors=True
         )
-        
+
         # Distributed training
         logger = setup_logger(
             name="thinkrl",
@@ -300,43 +302,41 @@ def setup_logger(
     # Convert string level to logging constant
     if isinstance(level, str):
         level = getattr(logging, level.upper(), logging.INFO)
-    
+
     # Register custom logger class
     logging.setLoggerClass(ThinkRLLogger)
-    
+
     # Get or create logger
     logger = logging.getLogger(name)
     logger.setLevel(level)
-    
+
     # Clear existing handlers
     logger.handlers.clear()
-    
+
     # Only log from rank 0 in distributed training
     if rank is not None and rank != 0:
         logger.addHandler(logging.NullHandler())
         return logger
-    
+
     # Default format strings
     if format_string is None:
         format_string = (
             "%(asctime)s - %(name)s - %(levelname)s - "
             "%(filename)s:%(lineno)d - %(message)s"
         )
-    
+
     if date_format is None:
         date_format = "%Y-%m-%d %H:%M:%S"
-    
+
     # Console handler with colors
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
     console_formatter = ColoredFormatter(
-        fmt=format_string,
-        datefmt=date_format,
-        use_colors=use_colors
+        fmt=format_string, datefmt=date_format, use_colors=use_colors
     )
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
-    
+
     # File handler (optional)
     if log_file or log_dir:
         # Determine log file path
@@ -347,97 +347,91 @@ def setup_logger(
             log_dir.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             log_path = log_dir / f"{name}_{timestamp}.log"
-        
+
         # Create parent directory if it doesn't exist
         log_path.parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Use rotating file handler to prevent huge log files
         try:
             from logging.handlers import RotatingFileHandler
-            
+
             file_handler = RotatingFileHandler(
                 filename=str(log_path),
                 mode=file_mode,
                 maxBytes=max_bytes,
                 backupCount=backup_count,
-                encoding="utf-8"
+                encoding="utf-8",
             )
         except ImportError:
             # Fallback to regular file handler
             file_handler = logging.FileHandler(
-                filename=str(log_path),
-                mode=file_mode,
-                encoding="utf-8"
+                filename=str(log_path), mode=file_mode, encoding="utf-8"
             )
-        
+
         file_handler.setLevel(level)
-        
+
         # File handler without colors
-        file_formatter = logging.Formatter(
-            fmt=format_string,
-            datefmt=date_format
-        )
+        file_formatter = logging.Formatter(fmt=format_string, datefmt=date_format)
         file_handler.setFormatter(file_formatter)
         logger.addHandler(file_handler)
-        
+
         logger.info(f"Logging to file: {log_path}")
-    
+
     # Prevent propagation to root logger
     logger.propagate = False
-    
+
     return logger
 
 
 def get_logger(
-    name: str = "thinkrl",
-    level: Optional[Union[int, str]] = None
+    name: str = "thinkrl", level: Optional[Union[int, str]] = None
 ) -> logging.Logger:
     """
     Get an existing logger or create a new one with basic configuration.
-    
+
     This is a convenience function for getting loggers throughout the codebase.
     If the logger doesn't exist or hasn't been set up, it creates a basic logger.
-    
+
     Args:
         name: Logger name (default: "thinkrl")
         level: Logging level (optional, uses INFO if not set)
-        
+
     Returns:
         Logger instance
-        
+
     Example:
         ```python
         # Get logger in a module
         logger = get_logger(__name__)
         logger.info("Processing data...")
-        
+
         # Get logger with specific level
         logger = get_logger("thinkrl.training", level=logging.DEBUG)
         ```
     """
     logger = logging.getLogger(name)
-    
+
     # If logger has no handlers, set it up with basic configuration
     if not logger.handlers:
         if level is None:
             level = logging.INFO
         elif isinstance(level, str):
             level = getattr(logging, level.upper(), logging.INFO)
-        
+
         logger.setLevel(level)
-        
+
         # Add console handler
         handler = logging.StreamHandler(sys.stdout)
         handler.setLevel(level)
-        
+
         formatter = ColoredFormatter(
             fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            datefmt="%Y-%m-%d %H:%M:%S"
+            datefmt="%Y-%m-%d %H:%M:%S",
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.propagate = False
-    
+
     return logger
 
 
@@ -445,32 +439,32 @@ def configure_logging_for_distributed(
     rank: int,
     world_size: int,
     log_dir: Optional[Union[str, Path]] = None,
-    level: Union[int, str] = logging.INFO
+    level: Union[int, str] = logging.INFO,
 ) -> logging.Logger:
     """
     Configure logging for distributed training.
-    
+
     In distributed training, only rank 0 logs to console, while all ranks
     can optionally log to separate files.
-    
+
     Args:
         rank: Process rank
         world_size: Total number of processes
         log_dir: Directory for log files (optional)
         level: Logging level
-        
+
     Returns:
         Configured logger instance
-        
+
     Example:
         ```python
         import torch.distributed as dist
-        
+
         # Initialize distributed training
         dist.init_process_group(backend="nccl")
         rank = dist.get_rank()
         world_size = dist.get_world_size()
-        
+
         # Configure logging
         logger = configure_logging_for_distributed(
             rank=rank,
@@ -480,15 +474,12 @@ def configure_logging_for_distributed(
         ```
     """
     logger_name = f"thinkrl.rank{rank}"
-    
+
     # Setup logger
     if rank == 0:
         # Main process: log to console and file
         logger = setup_logger(
-            name=logger_name,
-            level=level,
-            log_dir=log_dir,
-            use_colors=True
+            name=logger_name, level=level, log_dir=log_dir, use_colors=True
         )
         logger.info(f"Distributed training: rank {rank}/{world_size}")
     else:
@@ -496,28 +487,25 @@ def configure_logging_for_distributed(
         if log_dir:
             log_file = Path(log_dir) / f"rank_{rank}.log"
             logger = setup_logger(
-                name=logger_name,
-                level=level,
-                log_file=log_file,
-                use_colors=False
+                name=logger_name, level=level, log_file=log_file, use_colors=False
             )
         else:
             # Create minimal logger
             logger = get_logger(logger_name, level=logging.WARNING)
-    
+
     return logger
 
 
 def disable_external_loggers(level: int = logging.WARNING):
     """
     Disable or reduce verbosity of external library loggers.
-    
+
     This is useful to reduce noise from third-party libraries like
     transformers, accelerate, etc.
-    
+
     Args:
         level: Logging level to set for external loggers
-        
+
     Example:
         ```python
         # Silence noisy libraries
@@ -535,7 +523,7 @@ def disable_external_loggers(level: int = logging.WARNING):
         "peft",
         "bitsandbytes",
     ]
-    
+
     for logger_name in external_loggers:
         logging.getLogger(logger_name).setLevel(level)
 
@@ -547,7 +535,7 @@ _module_logger: Optional[logging.Logger] = None
 def get_module_logger() -> logging.Logger:
     """
     Get the module-level logger for thinkrl.utils.logging.
-    
+
     Returns:
         Module logger instance
     """

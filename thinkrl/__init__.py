@@ -44,7 +44,6 @@ __all__ = [
     "__version__",
     "__author__",
     "__email__",
-    
     # Core algorithms
     "BaseAlgorithm",
     "AlgorithmConfig",
@@ -59,7 +58,6 @@ __all__ = [
     "PPOConfig",
     "REINFORCE",
     "REINFORCEConfig",
-    
     # Models
     "BaseModel",
     "ModelConfig",
@@ -71,7 +69,6 @@ __all__ = [
     "QwenConfig",
     "MultimodalModel",
     "MultimodalConfig",
-    
     # Training
     "RLHFTrainer",
     "TrainerConfig",
@@ -79,30 +76,25 @@ __all__ = [
     "CoTTrainer",
     "ToTTrainer",
     "MultimodalTrainer",
-    
     # Reasoning
     "ReasoningConfig",
     "ChainOfThought",
     "CoTConfig",
     "TreeOfThought",
     "ToTConfig",
-    
     # Data
     "RLHFDataset",
     "PreferenceDataset",
     "RLHFDataLoader",
-    
     # Evaluation
     "RLHFEvaluator",
     "BenchmarkSuite",
-    
     # Utilities
     "get_logger",
     "setup_logger",
     "compute_metrics",
     "save_checkpoint",
     "load_checkpoint",
-    
     # Registry functions
     "get_algorithm",
     "list_algorithms",
@@ -120,35 +112,40 @@ from typing import TYPE_CHECKING
 # Check for torch availability (required)
 try:
     import torch
+
     _TORCH_AVAILABLE = True
 except ImportError:
     _TORCH_AVAILABLE = False
     warnings.warn(
         "PyTorch is not installed. Please install it with: pip install torch>=2.0.0",
-        ImportWarning
+        ImportWarning,
     )
 
 # Check for optional dependencies
 try:
     import transformers
+
     _TRANSFORMERS_AVAILABLE = True
 except ImportError:
     _TRANSFORMERS_AVAILABLE = False
 
 try:
     import peft
+
     _PEFT_AVAILABLE = True
 except ImportError:
     _PEFT_AVAILABLE = False
 
 try:
     import deepspeed
+
     _DEEPSPEED_AVAILABLE = True
 except ImportError:
     _DEEPSPEED_AVAILABLE = False
 
 try:
     import cupy
+
     _CUPY_AVAILABLE = True
 except ImportError:
     _CUPY_AVAILABLE = False
@@ -170,7 +167,6 @@ _LAZY_IMPORTS = {
     "PPOConfig": "thinkrl.algorithms.ppo",
     "REINFORCE": "thinkrl.algorithms.reinforce",
     "REINFORCEConfig": "thinkrl.algorithms.reinforce",
-    
     # Models
     "BaseModel": "thinkrl.models.base",
     "ModelConfig": "thinkrl.models.base",
@@ -182,7 +178,6 @@ _LAZY_IMPORTS = {
     "QwenConfig": "thinkrl.models.qwen",
     "MultimodalModel": "thinkrl.models.multimodal",
     "MultimodalConfig": "thinkrl.models.multimodal",
-    
     # Training
     "RLHFTrainer": "thinkrl.training.trainer",
     "TrainerConfig": "thinkrl.training.trainer",
@@ -190,30 +185,25 @@ _LAZY_IMPORTS = {
     "CoTTrainer": "thinkrl.training.cot_trainer",
     "ToTTrainer": "thinkrl.training.tot_trainer",
     "MultimodalTrainer": "thinkrl.training.multimodal_trainer",
-    
     # Reasoning
     "ReasoningConfig": "thinkrl.reasoning.config",
     "ChainOfThought": "thinkrl.reasoning.cot.cot",
     "CoTConfig": "thinkrl.reasoning.cot.cot",
     "TreeOfThought": "thinkrl.reasoning.tot.tot",
     "ToTConfig": "thinkrl.reasoning.tot.tot",
-    
     # Data
     "RLHFDataset": "thinkrl.data.datasets",
     "PreferenceDataset": "thinkrl.data.datasets",
     "RLHFDataLoader": "thinkrl.data.loaders",
-    
     # Evaluation
     "RLHFEvaluator": "thinkrl.evaluation.evaluators",
     "BenchmarkSuite": "thinkrl.evaluation.benchmarks",
-    
     # Utilities
     "get_logger": "thinkrl.utils.logging",
     "setup_logger": "thinkrl.utils.logging",
     "compute_metrics": "thinkrl.utils.metrics",
     "save_checkpoint": "thinkrl.utils.checkpoint",
     "load_checkpoint": "thinkrl.utils.checkpoint",
-    
     # Registry
     "get_algorithm": "thinkrl.algorithms",
     "list_algorithms": "thinkrl.algorithms",
@@ -227,27 +217,28 @@ _LAZY_IMPORTS = {
 def __getattr__(name):
     """
     Lazy import mechanism for package components.
-    
+
     This allows for faster package import times and deferred loading
     of heavy dependencies until they're actually needed.
-    
+
     Args:
         name: Name of the attribute to import
-        
+
     Returns:
         The requested module or attribute
-        
+
     Raises:
         AttributeError: If the attribute is not found
     """
     if name in _LAZY_IMPORTS:
         module_path = _LAZY_IMPORTS[name]
-        
+
         # Import the module
         try:
             from importlib import import_module
+
             module = import_module(module_path)
-            
+
             # Get the specific attribute if it's a submodule import
             if "." in module_path:
                 # For imports like "thinkrl.algorithms.base.BaseAlgorithm"
@@ -255,15 +246,15 @@ def __getattr__(name):
             else:
                 # For module-level imports
                 attr = module
-                
+
             # Cache the imported attribute in the module namespace
             globals()[name] = attr
             return attr
-            
+
         except ImportError as e:
             # Provide helpful error messages for missing optional dependencies
             error_msg = f"Cannot import '{name}' from thinkrl. "
-            
+
             if "transformers" in str(e) and not _TRANSFORMERS_AVAILABLE:
                 error_msg += "This requires the 'transformers' package. Install with: pip install thinkrl[transformers]"
             elif "peft" in str(e) and not _PEFT_AVAILABLE:
@@ -274,16 +265,16 @@ def __getattr__(name):
                 error_msg += "This requires the 'cupy' package for GPU acceleration. Install with: pip install thinkrl[cuda]"
             else:
                 error_msg += f"Original error: {str(e)}"
-                
+
             raise ImportError(error_msg) from e
-            
+
     raise AttributeError(f"module 'thinkrl' has no attribute '{name}'")
 
 
 def __dir__():
     """
     Define which attributes are available when dir() is called on the package.
-    
+
     Returns:
         List of available attribute names
     """
@@ -319,7 +310,7 @@ def is_cupy_available() -> bool:
 def get_version() -> str:
     """
     Get the ThinkRL version string.
-    
+
     Returns:
         Version string (e.g., "0.1.0")
     """
@@ -329,7 +320,7 @@ def get_version() -> str:
 def get_device_info() -> dict:
     """
     Get information about available compute devices.
-    
+
     Returns:
         Dictionary containing device information
     """
@@ -340,22 +331,23 @@ def get_device_info() -> dict:
         "cuda_devices": 0,
         "cupy_available": _CUPY_AVAILABLE,
     }
-    
+
     if _TORCH_AVAILABLE:
         info["cuda_available"] = torch.cuda.is_available()
         if info["cuda_available"]:
             info["cuda_version"] = torch.version.cuda
             info["cuda_devices"] = torch.cuda.device_count()
-    
+
     return info
 
 
 # Print initialization message (can be disabled by setting THINKRL_QUIET=1)
 import os
+
 if not os.environ.get("THINKRL_QUIET"):
     if not _TORCH_AVAILABLE:
         warnings.warn(
             "ThinkRL requires PyTorch but it's not installed. "
             "Please install it with: pip install torch>=2.0.0",
-            ImportWarning
+            ImportWarning,
         )
