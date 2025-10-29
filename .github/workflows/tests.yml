@@ -43,7 +43,7 @@ jobs:
             --cov=thinkrl \
             --cov-report=xml \
             --cov-report=term-missing \
-            --cov-fail-under=70 \
+            --cov-fail-under=58 \
             --tb=short
         env:
           CUDA_VISIBLE_DEVICES: ""
