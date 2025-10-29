@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Optional, Union, Dict, Any
 from datetime import datetime
 import warnings
+import logging.handlers  # Import handlers
 
 
 # ANSI color codes for terminal output
@@ -266,14 +267,14 @@ def setup_logger(
         name: Logger name (default: "thinkrl")
         level: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
         log_file: Path to log file (optional)
-        log_dir: Directory for log files (optional, creates timestamped file)
+        log_dir: Directory for log files (optional, creates timestamped file using logger name)
         format_string: Custom log format string
         date_format: Custom date format string
         use_colors: Whether to use colored output for console
         file_mode: File opening mode ('a' for append, 'w' for write)
         max_bytes: Maximum log file size before rotation
         backup_count: Number of backup files to keep
-        rank: Process rank for distributed training (logs only from rank 0 if set)
+        rank: Process rank for distributed training (if rank != 0, only NullHandler is added)
 
     Returns:
         Configured logger instance
@@ -284,17 +285,17 @@ def setup_logger(
         logger = setup_logger("thinkrl")
         logger.info("Training started")
 
-        # With file logging
+        # With file logging in a directory
         logger = setup_logger(
-            name="thinkrl",
+            name="thinkrl_train",
             level=logging.DEBUG,
             log_dir="./logs",
             use_colors=True
         )
 
-        # Distributed training
+        # Distributed training (only rank 0 logs)
         logger = setup_logger(
-            name="thinkrl",
+            name="thinkrl_dist",
             rank=int(os.environ.get("RANK", 0))
         )
         ```
@@ -310,13 +311,21 @@ def setup_logger(
     logger = logging.getLogger(name)
     logger.setLevel(level)
 
-    # Clear existing handlers
-    logger.handlers.clear()
+    # --- Important: Clear existing handlers to prevent duplicates ---
+    # This is crucial if setup_logger might be called multiple times on the same logger name
+    for handler in logger.handlers[:]:
+        handler.close()
+        logger.removeHandler(handler)
+    # ----------------------------------------------------------------
 
-    # Only log from rank 0 in distributed training
+    # Only log from rank 0 in distributed training, others get NullHandler
+    # This simplifies logic: non-zero ranks *only* get NullHandler from this function.
     if rank is not None and rank != 0:
         logger.addHandler(logging.NullHandler())
+        logger.propagate = False  # Prevent propagation for non-zero ranks too
         return logger
+
+    # --- Setup for rank 0 (or non-distributed) ---
 
     # Default format strings
     if format_string is None:
@@ -328,7 +337,7 @@ def setup_logger(
     if date_format is None:
         date_format = "%Y-%m-%d %H:%M:%S"
 
-    # Console handler with colors
+    # Console handler with colors (always add for rank 0 or non-distributed)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
     console_formatter = ColoredFormatter(
@@ -337,25 +346,26 @@ def setup_logger(
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
 
-    # File handler (optional)
+    # File handler (optional, only for rank 0 or non-distributed)
+    actual_log_path = None
     if log_file or log_dir:
         # Determine log file path
         if log_file:
             log_path = Path(log_file)
-        else:
-            log_dir = Path(log_dir)
-            log_dir.mkdir(parents=True, exist_ok=True)
+        else:  # log_dir is specified
+            log_dir_path = Path(log_dir)
+            log_dir_path.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            log_path = log_dir / f"{name}_{timestamp}.log"
+            # Use logger name in the filename
+            log_path = log_dir_path / f"{name}_{timestamp}.log"
 
+        actual_log_path = log_path
         # Create parent directory if it doesn't exist
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
         # Use rotating file handler to prevent huge log files
         try:
-            from logging.handlers import RotatingFileHandler
-
-            file_handler = RotatingFileHandler(
+            file_handler = logging.handlers.RotatingFileHandler(
                 filename=str(log_path),
                 mode=file_mode,
                 maxBytes=max_bytes,
@@ -364,6 +374,9 @@ def setup_logger(
             )
         except ImportError:
             # Fallback to regular file handler
+            warnings.warn(
+                "RotatingFileHandler not available. Using standard FileHandler."
+            )
             file_handler = logging.FileHandler(
                 filename=str(log_path), mode=file_mode, encoding="utf-8"
             )
@@ -375,6 +388,7 @@ def setup_logger(
         file_handler.setFormatter(file_formatter)
         logger.addHandler(file_handler)
 
+        # Log the file path *only* if a file handler was successfully added
         logger.info(f"Logging to file: {log_path}")
 
     # Prevent propagation to root logger
@@ -387,42 +401,42 @@ def get_logger(
     name: str = "thinkrl", level: Optional[Union[int, str]] = None
 ) -> logging.Logger:
     """
-    Get an existing logger or create a new one with basic configuration.
+    Get an existing logger or create a new one with basic configuration if needed.
 
-    This is a convenience function for getting loggers throughout the codebase.
-    If the logger doesn't exist or hasn't been set up, it creates a basic logger.
+    This function ensures that if a logger is requested and hasn't been configured
+    by `setup_logger`, it gets a default console handler. It avoids adding handlers
+    if the logger already has some.
 
     Args:
         name: Logger name (default: "thinkrl")
-        level: Logging level (optional, uses INFO if not set)
+        level: Logging level (optional, used only if creating default handlers)
 
     Returns:
         Logger instance
-
-    Example:
-        ```python
-        # Get logger in a module
-        logger = get_logger(__name__)
-        logger.info("Processing data...")
-
-        # Get logger with specific level
-        logger = get_logger("thinkrl.training", level=logging.DEBUG)
-        ```
     """
     logger = logging.getLogger(name)
 
-    # If logger has no handlers, set it up with basic configuration
-    if not logger.handlers:
-        if level is None:
-            level = logging.INFO
-        elif isinstance(level, str):
-            level = getattr(logging, level.upper(), logging.INFO)
+    # If logger has no handlers AND is not disabled (level > CRITICAL), set it up.
+    # Check for level NOTSET as well, as getLogger returns a logger with NOTSET by default.
+    if (
+        not logger.handlers
+        and logger.level <= logging.CRITICAL
+        and logger.level != logging.NOTSET
+    ):
+        # Use provided level or default to INFO if creating handlers
+        effective_level = level
+        if effective_level is None:
+            effective_level = logging.INFO
+        elif isinstance(effective_level, str):
+            effective_level = getattr(logging, effective_level.upper(), logging.INFO)
 
-        logger.setLevel(level)
+        # Only set level if it's currently NOTSET (don't override existing level)
+        if logger.level == logging.NOTSET:
+            logger.setLevel(effective_level)
 
         # Add console handler
         handler = logging.StreamHandler(sys.stdout)
-        handler.setLevel(level)
+        handler.setLevel(effective_level)  # Use the determined level
 
         formatter = ColoredFormatter(
             fmt="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
@@ -430,7 +444,7 @@ def get_logger(
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
-        logger.propagate = False
+        logger.propagate = False  # Prevent double logging to root
 
     return logger
 
@@ -438,60 +452,56 @@ def get_logger(
 def configure_logging_for_distributed(
     rank: int,
     world_size: int,
-    log_dir: Optional[Union[str, Path]] = None,
-    level: Union[int, str] = logging.INFO,
-) -> logging.Logger:
-    """
-    Configure logging for distributed training.
+    log_dir: Optional[Path] = None,
+    level: int = logging.INFO,
+    base_name: str = "thinkrl",
+):
+    logger_name = f"{base_name}.rank{rank}"
+    logger = logging.getLogger(logger_name)
+    logger.setLevel(level)
+    logger.propagate = False
 
-    In distributed training, only rank 0 logs to console, while all ranks
-    can optionally log to separate files.
+    # Always start clean: remove/close any existing handlers
+    for h in logger.handlers[:]:
+        try:
+            h.close()
+        except Exception:
+            pass
+        logger.removeHandler(h)
 
-    Args:
-        rank: Process rank
-        world_size: Total number of processes
-        log_dir: Directory for log files (optional)
-        level: Logging level
+    fmt = (
+        "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
+    )
+    formatter = logging.Formatter(fmt)
 
-    Returns:
-        Configured logger instance
-
-    Example:
-        ```python
-        import torch.distributed as dist
-
-        # Initialize distributed training
-        dist.init_process_group(backend="nccl")
-        rank = dist.get_rank()
-        world_size = dist.get_world_size()
-
-        # Configure logging
-        logger = configure_logging_for_distributed(
-            rank=rank,
-            world_size=world_size,
-            log_dir="./logs"
-        )
-        ```
-    """
-    logger_name = f"thinkrl.rank{rank}"
-
-    # Setup logger
     if rank == 0:
-        # Main process: log to console and file
-        logger = setup_logger(
-            name=logger_name, level=level, log_dir=log_dir, use_colors=True
-        )
-        logger.info(f"Distributed training: rank {rank}/{world_size}")
-    else:
-        # Other processes: only log to file if log_dir is provided
-        if log_dir:
-            log_file = Path(log_dir) / f"rank_{rank}.log"
-            logger = setup_logger(
-                name=logger_name, level=level, log_file=log_file, use_colors=False
+        # console
+        sh = logging.StreamHandler()
+        sh.setLevel(level)
+        sh.setFormatter(formatter)
+        logger.addHandler(sh)
+        # file (if requested)
+        if log_dir is not None:
+            log_path = (
+                Path(log_dir) / f"{logger_name}_{datetime.now():%Y%m%d_%H%M%S}.log"
             )
+            fh = logging.FileHandler(log_path, encoding="utf-8")
+            fh.setLevel(level)
+            fh.setFormatter(formatter)
+            logger.addHandler(fh)
+    else:
+        if log_dir is not None:
+            # file-only for nonzero ranks
+            log_path = (
+                Path(log_dir) / f"{logger_name}_{datetime.now():%Y%m%d_%H%M%S}.log"
+            )
+            fh = logging.FileHandler(log_path, encoding="utf-8")
+            fh.setLevel(level)
+            fh.setFormatter(formatter)
+            logger.addHandler(fh)
         else:
-            # Create minimal logger
-            logger = get_logger(logger_name, level=logging.WARNING)
+            # no outputs for nonzero ranks when no log_dir
+            logger.addHandler(logging.NullHandler())
 
     return logger
 
