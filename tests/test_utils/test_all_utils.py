@@ -17,6 +17,7 @@ import tempfile
 import shutil
 from pathlib import Path
 import logging
+import logging.handlers # Import handlers for isinstance check
 
 import torch
 import torch.nn as nn
@@ -90,10 +91,18 @@ except ImportError:
 
 @pytest.fixture
 def temp_dir():
-    """Create temporary directory for tests."""
-    temp_dir = tempfile.mkdtemp()
-    yield Path(temp_dir)
-    shutil.rmtree(temp_dir)
+    """Create temporary directory for tests and ensure loggers are closed."""
+    temp_dir_path = tempfile.mkdtemp()
+    yield Path(temp_dir_path)
+    # --- Close all logging handlers before removing the directory ---
+    logging.shutdown()
+    # Add error handling for Windows file locking issues during teardown
+    try:
+        shutil.rmtree(temp_dir_path)
+    except PermissionError:
+        print(f"Warning: Could not remove temp directory {temp_dir_path} due to PermissionError.")
+    except OSError as e:
+         print(f"Warning: Error removing temp directory {temp_dir_path}: {e}")
 
 
 @pytest.fixture
@@ -131,23 +140,29 @@ class TestLogging:
 
     def test_setup_logger_basic(self, temp_dir):
         """Test basic logger setup."""
-        logger = setup_logger(name="test_logger", level=logging.INFO, log_dir=temp_dir)
+        logger_name = "test_logger_basic"
+        logger = setup_logger(name=logger_name, level=logging.INFO, log_dir=temp_dir)
 
         assert logger is not None
-        assert logger.name == "test_logger"
+        assert logger.name == logger_name
         assert logger.level == logging.INFO
 
         # Test logging
         logger.info("Test message")
         logger.warning("Test warning")
 
-        # Check log file was created
-        log_files = list(temp_dir.glob("*.log"))
-        assert len(log_files) > 0
+        # Check log file was created (using the name provided)
+        log_files = list(temp_dir.glob(f"{logger_name}_*.log"))
+        assert len(log_files) == 1, f"Expected 1 log file matching {logger_name}_*.log"
+
+        # --- Explicitly close handlers for this logger ---
+        for handler in logger.handlers[:]:
+            handler.close()
+            logger.removeHandler(handler)
 
     def test_get_logger(self):
         """Test get_logger function."""
-        logger = get_logger("thinkrl.test")
+        logger = get_logger("thinkrl.test_get")
         assert logger is not None
         assert isinstance(logger, logging.Logger)
 
@@ -170,12 +185,77 @@ class TestLogging:
 
     def test_distributed_logging(self, temp_dir):
         """Test distributed logging configuration."""
-        logger = configure_logging_for_distributed(
-            rank=0, world_size=2, log_dir=temp_dir
-        )
+        # --- Logger base name for this test ---
+        base_name_for_test = "thinkrl.test_dist"
+        logger_name_rank0 = f"{base_name_for_test}.rank0"
+        logger_name_rank1 = f"{base_name_for_test}.rank1"
 
-        assert logger is not None
-        logger.info("Rank 0 message")
+        # --- Rank 0 ---
+        # Rank 0 should log to console and file
+        logger_rank0 = configure_logging_for_distributed(
+            rank=0, world_size=2, log_dir=temp_dir, level=logging.INFO, base_name=base_name_for_test
+        )
+        assert logger_rank0 is not None
+        assert logger_rank0.name == logger_name_rank0 # Check name
+        assert any(
+            isinstance(h, logging.StreamHandler) for h in logger_rank0.handlers
+        ), "Rank 0 should have a StreamHandler"
+        assert any(
+            isinstance(h, logging.FileHandler)
+            or isinstance(h, logging.handlers.RotatingFileHandler)
+            for h in logger_rank0.handlers
+        ), "Rank 0 should have a FileHandler"
+        logger_rank0.info("Rank 0 message")
+        # Check rank 0 log file exists
+        rank0_log_files = list(temp_dir.glob(f"{logger_name_rank0}_*.log"))
+        assert len(rank0_log_files) == 1, "Log file for rank 0 should exist"
+
+
+        # --- Rank 1 with log_dir ---
+        # Rank 1 should log ONLY to file if log_dir provided (based on updated configure logic)
+        logger_rank1_file = configure_logging_for_distributed(
+            rank=1, world_size=2, log_dir=temp_dir, level=logging.INFO, base_name=base_name_for_test
+        )
+        assert logger_rank1_file is not None
+        assert logger_rank1_file.name == logger_name_rank1 # Check name
+        # Assert ONLY FileHandler (or RotatingFileHandler) exists
+        assert len(logger_rank1_file.handlers) == 1, "Rank 1 with log_dir should have exactly one handler"
+        assert isinstance(logger_rank1_file.handlers[0],
+                  (logging.FileHandler, logging.handlers.RotatingFileHandler))
+
+        logger_rank1_file.info("Rank 1 message to file")
+        # Check that the file was actually created using the correct name pattern
+        rank1_log_files = list(temp_dir.glob(f"{logger_name_rank1}_*.log"))
+        assert len(rank1_log_files) == 1, f"Log file matching {logger_name_rank1}_*.log for rank 1 should exist"
+
+
+        # --- FIX: Clear handlers for rank 1 logger BEFORE reconfiguring ---
+        # Get the logger instance directly
+        logger_rank1_instance = logging.getLogger(logger_name_rank1)
+        for handler in logger_rank1_instance.handlers[:]:
+            handler.close()
+            logger_rank1_instance.removeHandler(handler)
+        # -----------------------------------------------------------------
+
+        # --- Rank 1 without log_dir ---
+        # Rank 1 without log_dir should now correctly get only a NullHandler
+        logger_rank1_null = configure_logging_for_distributed(
+            rank=1, world_size=2, log_dir=None, base_name=base_name_for_test # log_dir is None
+        )
+        assert logger_rank1_null is not None
+        assert logger_rank1_null.name == logger_name_rank1 # Should be the same logger instance
+
+        # Assert NullHandler is present and ONLY handler
+        assert len(logger_rank1_null.handlers) == 1, "Rank 1 without log_dir should have exactly one handler"
+        assert isinstance(logger_rank1_null.handlers[0], logging.NullHandler), "Rank 1 without log_dir should have NullHandler"
+
+        logger_rank1_null.info("This rank 1 message should NOT appear anywhere") # Test it doesn't log
+
+        # --- Clean up handlers at the end (called by logging.shutdown() in fixture) ---
+        # Explicit closing here might be redundant but doesn't hurt.
+        for handler in logger_rank0.handlers[:]: handler.close()
+        # logger_rank1_file and logger_rank1_null refer to the same instance
+        for handler in logger_rank1_null.handlers[:]: handler.close()
 
 
 # ============================================================================
@@ -202,7 +282,7 @@ class TestMetrics:
 
         # Get averages
         avg = tracker.get_average()
-        assert avg["loss"] == 0.45  # (0.5 + 0.4) / 2
+        assert avg["loss"] == pytest.approx(0.45)  # (0.5 + 0.4) / 2
 
         # Reset
         tracker.reset("loss")
@@ -241,7 +321,7 @@ class TestMetrics:
 
         assert advantages.shape == rewards.shape
         # Check normalization
-        assert torch.abs(advantages.mean()) < 0.1
+        assert torch.abs(advantages.mean()) < 0.1 # Relaxed check for mean after normalization
 
     def test_compute_returns(self):
         """Test returns computation."""
@@ -250,6 +330,8 @@ class TestMetrics:
 
         assert returns.shape == rewards.shape
         # First return should be highest (includes all future rewards)
+        # 1.0 + 0.9*2.0 + 0.9*0.9*3.0 = 1 + 1.8 + 2.43 = 5.23
+        assert torch.allclose(returns[0, 0], torch.tensor(5.23))
         assert returns[0, 0] > rewards[0, 0]
 
     def test_compute_policy_entropy(self):
@@ -267,7 +349,7 @@ class TestMetrics:
 
         accuracy = compute_accuracy(predictions, targets)
         assert 0.0 <= accuracy <= 1.0
-        assert accuracy == 5 / 6  # 5 correct out of 6
+        assert accuracy == pytest.approx(5 / 6)  # 5 correct out of 6
 
     def test_compute_perplexity(self):
         """Test perplexity computation."""
@@ -283,8 +365,8 @@ class TestMetrics:
         clip_frac = compute_clip_fraction(ratio, epsilon=0.2)
 
         assert 0.0 <= clip_frac <= 1.0
-        # Ratios 0.5 and 2.0 are outside [0.8, 1.2]
-        assert clip_frac == 0.5  # 2/4
+        # Ratios 0.5 (< 0.8), 1.5 (> 1.2), and 2.0 (> 1.2) are clipped
+        assert clip_frac == 0.75 # 3/4
 
     def test_compute_explained_variance(self):
         """Test explained variance computation."""
@@ -305,7 +387,7 @@ class TestMetrics:
         avg_metrics = aggregate_metrics(metrics_list)
         assert "loss" in avg_metrics
         assert "accuracy" in avg_metrics
-        assert avg_metrics["loss"] == 0.5  # (0.5 + 0.6 + 0.4) / 3
+        assert avg_metrics["loss"] == pytest.approx(0.5)  # (0.5 + 0.6 + 0.4) / 3
 
     def test_compute_statistical_metrics(self):
         """Test statistical metrics computation."""
@@ -372,7 +454,7 @@ class TestCheckpoint:
 
         # Best checkpoint should have lowest loss
         assert manager.best_checkpoint is not None
-        assert manager.best_checkpoint["metrics"]["loss"] == 0.2  # 1/5
+        assert manager.best_checkpoint["metrics"]["loss"] == pytest.approx(0.2) # 1/5
 
         # Load best checkpoint
         new_model = type(simple_model)()
@@ -560,11 +642,11 @@ class TestTokenizers:
 
     def test_decode_tokens(self, tokenizer):
         """Test token decoding."""
-        token_ids = [15496, 11, 995, 0]
-        text = decode_tokens(token_ids, tokenizer)
+        token_ids = tokenizer.encode("Hello, world!", add_special_tokens=False) # Get actual IDs
+        text = decode_tokens(token_ids, tokenizer, skip_special_tokens=True)
 
         assert isinstance(text, str)
-        assert len(text) > 0
+        assert text == "Hello, world!" # Should match exactly now
 
     def test_get_special_tokens(self, tokenizer):
         """Test special tokens extraction."""
@@ -578,9 +660,10 @@ class TestTokenizers:
         """Test token counting."""
         text = "Hello, world!"
         count = count_tokens(text, tokenizer)
+        expected_count = len(tokenizer.encode(text, add_special_tokens=True))
 
         assert isinstance(count, int)
-        assert count > 0
+        assert count == expected_count
 
 
 # ============================================================================
@@ -593,28 +676,34 @@ class TestIntegration:
 
     def test_training_workflow(self, temp_dir, simple_model, sample_batch):
         """Test a typical training workflow using multiple utils."""
+        logger_name = "training_integration"
         # Setup logger
-        logger = setup_logger("training", log_dir=temp_dir)
-        logger.info("Starting training")
+        logger = setup_logger(logger_name, log_dir=temp_dir)
+        logger.info("Starting training integration test")
 
         # Setup checkpoint manager
         manager = CheckpointManager(
-            checkpoint_dir=temp_dir / "checkpoints", max_checkpoints=3
+            checkpoint_dir=temp_dir / "checkpoints",
+            max_checkpoints=3,
+            metric_name="loss",
+            mode="min",
         )
 
         # Setup metrics tracker
         tracker = MetricsTracker()
 
         # Simulate training loop
+        initial_loss = 10.0 # Start with a higher loss
         for epoch in range(3):
             # Prepare batch
             batch = prepare_batch_for_training(
                 sample_batch, device="cpu", create_labels=True
             )
 
-            # Simulate forward pass
+            # Simulate forward pass and decreasing loss
             outputs = simple_model(batch["input_ids"].float())
-            loss = outputs.mean()
+            current_loss = initial_loss / (epoch + 1)
+            loss = torch.tensor(current_loss)
 
             # Track metrics
             tracker.update("loss", loss.item())
@@ -627,9 +716,15 @@ class TestIntegration:
             logger.info(f"Epoch {epoch}: loss={loss.item():.4f}")
 
         # Verify everything worked
-        assert manager.best_checkpoint is not None
+        assert manager.best_checkpoint is not None # Best checkpoint should now be found
         assert tracker.get_average("loss") is not None
-        assert len(list(temp_dir.glob("*.log"))) > 0
+        assert len(list(temp_dir.glob(f"{logger_name}_*.log"))) > 0
+
+        # --- Explicitly close handlers for this logger ---
+        # (Redundant due to fixture shutdown, but safe)
+        for handler in logger.handlers[:]:
+            handler.close()
+            logger.removeHandler(handler)
 
 
 # ============================================================================
