@@ -102,8 +102,8 @@ def collate_batch(
                      # Fallback: stack if possible or list
                      try:
                          collated[key] = torch.stack(items)
-                     except:
-                         collated[key] = items
+                     except Exception:
+                        collated[key] = items
         elif isinstance(items[0], (int, float)):
              collated[key] = torch.tensor(items)
         else:

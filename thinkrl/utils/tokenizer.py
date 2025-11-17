@@ -463,8 +463,8 @@ def add_special_tokens(
         logger.info(f"Added {num_added} special tokens to tokenizer")
         if resize_embeddings:
             logger.info(
-                f"Remember to resize model embeddings: "
-                f"model.resize_token_embeddings(len(tokenizer))"
+                "Remember to resize model embeddings: "
+                "model.resize_token_embeddings(len(tokenizer))"
             )
 
     return num_added

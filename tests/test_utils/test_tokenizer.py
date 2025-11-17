@@ -27,12 +27,10 @@ from unittest.mock import patch, MagicMock
 # Check for optional dependencies
 try:
     from transformers import (
-        AutoTokenizer,
         PreTrainedTokenizer,
         PreTrainedTokenizerFast,
     )
     from thinkrl.utils.tokenizer import (
-        TokenizerConfig,
         get_tokenizer,
         tokenize_text,
         tokenize_batch,

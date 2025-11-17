@@ -15,7 +15,6 @@ import torch
 import tempfile
 import json
 import os
-import shutil
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -441,7 +440,7 @@ class TestRLHFDataLoader:
         assert len(loader) == 2 # 3 samples, batch_size=2, drop_last=False
         
         batch_iter = iter(loader)
-        first_batch = next(batch_iter)
+        _ = next(batch_iter)
         second_batch = next(batch_iter)
 
         # Second batch has "prompt three" -> [6, 5]

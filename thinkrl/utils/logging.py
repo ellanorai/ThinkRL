@@ -358,8 +358,6 @@ def setup_logger(
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             # Use logger name in the filename
             log_path = log_dir_path / f"{name}_{timestamp}.log"
-
-        actual_log_path = log_path
         # Create parent directory if it doesn't exist
         log_path.parent.mkdir(parents=True, exist_ok=True)
 
