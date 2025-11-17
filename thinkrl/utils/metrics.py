@@ -588,7 +588,6 @@ def compute_group_metrics(
         "group_mins": torch.stack(group_mins),
     }
 
-
 def compute_ranking_metrics(
     scores: torch.Tensor, labels: torch.Tensor, k: int = 10
 ) -> Dict[str, float]:
@@ -650,25 +649,16 @@ def compute_statistical_metrics(
 ) -> Dict[str, float]:
     """
     Compute comprehensive statistical metrics.
-
-    Args:
-        values: Values to compute statistics for
-
-    Returns:
-        Dictionary with statistical metrics
-
-    Example:
-        ```python
-        values = torch.randn(1000)
-        stats = compute_statistical_metrics(values)
-        print(stats)
-        ```
     """
     # Convert to numpy
     if isinstance(values, torch.Tensor):
         values = values.detach().cpu().numpy()
     elif isinstance(values, list):
         values = np.array(values)
+        
+    # Handle single element arrays to avoid scalar conversion errors
+    if values.ndim == 0:
+        values = np.expand_dims(values, 0)
 
     metrics = {
         "mean": float(np.mean(values)),
@@ -684,8 +674,21 @@ def compute_statistical_metrics(
 
     # Add scipy-based metrics if available
     if _SCIPY_AVAILABLE:
-        metrics["skewness"] = float(stats.skew(values))
-        metrics["kurtosis"] = float(stats.kurtosis(values))
+        try:
+            skew = stats.skew(values, axis=None)
+            # Check if result is array (scipy behavior varies)
+            if isinstance(skew, (np.ndarray, list)):
+                 skew = skew.item()
+            metrics["skewness"] = float(skew)
+            
+            kurt = stats.kurtosis(values, axis=None)
+            if isinstance(kurt, (np.ndarray, list)):
+                kurt = kurt.item()
+            metrics["kurtosis"] = float(kurt)
+        except Exception as e:
+            logger.warning(f"Failed to compute skewness/kurtosis: {e}")
+            metrics["skewness"] = 0.0
+            metrics["kurtosis"] = 0.0
 
     return metrics
 

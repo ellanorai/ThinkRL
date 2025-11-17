@@ -2,12 +2,12 @@ name: Test and Merge
 
 on:
   push:
-    branches: [ test ] # Trigger workflow ONLY on pushes to the 'test' branch
+    branches: [ main ] # Trigger workflow ONLY on pushes to the 'main' branch
   pull_request:
     branches: [ main ] # Keep PR triggers for main if needed for checks before manual merge
 
 jobs:
-  # --- Jobs that run on the 'test' branch ---
+  # --- Jobs that run on the 'main' branch ---
   test:
     runs-on: ubuntu-latest
     strategy:

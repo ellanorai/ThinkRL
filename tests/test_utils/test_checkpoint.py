@@ -218,7 +218,7 @@ class TestTokenizers:
         mock_tokenizer.apply_chat_template.return_value = "Template output"
         
         # Mock tokenize_text to check the input
-        with patch("thinkrl.utils.tokenizers.tokenize_text") as mock_tokenize_text:
+        with patch("thinkrl.utils.tokenizer.tokenize_text") as mock_tokenize_text:
             messages = [{"role": "user", "content": "Hello"}]
             
             tokenize_conversation(

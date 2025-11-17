@@ -1,0 +1,27 @@
+name: Docker Build
+
+on:
+  push:
+    branches: [ main, test ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: Dockerfile  # Assumes you will create a Dockerfile
+          push: false  # Change to true if you configure Docker Hub credentials
+          tags: thinkrl:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

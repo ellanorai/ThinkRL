@@ -49,7 +49,7 @@ from .metrics import (
     compute_metrics,
 )
 
-from .data import (
+from .datasets import (
     BatchEncoding,
     pad_sequences,
     create_attention_mask,
