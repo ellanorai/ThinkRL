@@ -218,7 +218,8 @@ class TestTokenizers:
         mock_tokenizer.apply_chat_template.return_value = "Template output"
         
         # Mock tokenize_text to check the input
-        with patch("thinkrl.utils.tokenizers.tokenize_text") as mock_tokenize_text:
+        # Updated patch path to singular 'tokenizer'
+        with patch("thinkrl.utils.tokenizer.tokenize_text") as mock_tokenize_text:
             messages = [{"role": "user", "content": "Hello"}]
             
             tokenize_conversation(
@@ -263,7 +264,8 @@ class TestTokenizers:
 
         texts = ["Hello!", "How are you?"]
         counts = count_tokens(texts, gpt2_tokenizer)
-        assert counts == [2, 3]
+        # Updated to reflect actual GPT-2 tokenization (4 tokens for 'How are you?')
+        assert counts == [2, 4]
 
     def test_truncate_to_token_limit(self, gpt2_tokenizer):
         """Test truncating text based on token count."""
@@ -280,7 +282,8 @@ class TestTokenizers:
         truncated_left = truncate_to_token_limit(
             long_text, gpt2_tokenizer, max_tokens=7, side="left"
         )
-        assert truncated_left == " text that will surely be truncated."
+        # Updated expectation to match actual tokenization behavior
+        assert truncated_left == " that will surely be truncated."
 
     def test_get_tokenizer_info(self, gpt2_tokenizer):
         """Test getting tokenizer information."""
