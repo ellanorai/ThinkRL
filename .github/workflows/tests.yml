@@ -124,7 +124,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+        os: [ubuntu-latest] # Runs only on Linux as requested
         python-version: ['3.10', '3.11']
     # Run compatibility checks also on the 'test' branch push
     steps:
@@ -182,8 +182,8 @@ jobs:
   # --- Build Job: Runs only on pushes to 'main' (including the merge above) ---
   build:
     runs-on: ubuntu-latest
-    # Needs the merge job to have completed successfully *in a previous run that pushed to main*
-    needs: [merge_to_main]
+    # This job will run in a SEPARATE workflow execution
+    # that is triggered by the 'merge_to_main' job's push.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && success()
     steps:
       - name: Checkout repository
