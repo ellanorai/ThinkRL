@@ -68,7 +68,7 @@ from .data import (
     prepare_batch_for_training,
 )
 
-from .tokenizers import (
+from .tokenizer import (
     TokenizerConfig,
     get_tokenizer,
     tokenize_text,
