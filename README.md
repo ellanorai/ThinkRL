@@ -14,6 +14,7 @@
 ---
 
 ## 🎉 Latest Updates
+- **November 2025** : Implementation of the utils and the unit tests for them. 
 - **July 2025**: ThinkRL will launch with cutting-edge algorithms such as VAPO, DAPO, GRPO, PPO, and REINFORCE, aiming to set new standards in reasoning performance.
 
 ThinkRL will emerge as an open-source, modular platform for large-scale RLHF, delivering robust algorithm implementations, efficient training infrastructure, and curated datasets. Rooted in modern machine learning principles, it will enable researchers and developers to explore the frontiers of artificial intelligence.
