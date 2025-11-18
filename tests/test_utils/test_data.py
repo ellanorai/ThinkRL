@@ -1,514 +1,288 @@
 """
-Test Suite for ThinkRL Data Package
-===================================
+Test Suite for ThinkRL Dataset Utilities
+========================================
 
 Tests for:
-- thinkrl.data.datasets (RLHFDataset, PreferenceDataset)
-- thinkrl.data.loaders (RLHFDataLoader, collate_fn)
-- thinkrl.data.processors (process_image, process_audio)
+- thinkrl.utils.datasets (BatchEncoding, pad_sequences, collate_batch, etc.)
 
-Author: Archit Sood
 """
 
 import pytest
 import torch
-import tempfile
-import json
-import os
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+import numpy as np
+from unittest.mock import MagicMock, patch
 
-# Mock optional dependencies
-try:
-    from PIL import Image
-    _PIL_AVAILABLE = True
-except ImportError:
-    _PIL_AVAILABLE = False
+from thinkrl.utils.datasets import (
+    BatchEncoding,
+    pad_sequences,
+    create_attention_mask,
+    create_position_ids,
+    create_causal_mask,
+    collate_batch,
+    create_dataloader,
+    preprocess_text,
+    truncate_sequence,
+    create_labels_for_clm,
+    mask_padding_in_loss,
+    split_batch,
+    compute_sequence_lengths,
+    shuffle_batch,
+    to_device,
+    prepare_batch_for_training,
+)
 
-try:
-    import librosa
-    _LIBROSA_AVAILABLE = True
-except ImportError:
-    _LIBROSA_AVAILABLE = False
-
-# Modules under test
-from thinkrl.data.datasets import RLHFDataset, PreferenceDataset, BaseRLHFDataset
-from thinkrl.data.loaders import RLHFDataLoader, create_rlhf_collate_fn
-from thinkrl.data.processors import process_image, process_audio
-
-# Mock Tokenizer
-class MockTokenizer:
-    """A mock tokenizer for testing."""
-    def __init__(self, padding_side="right", pad_token_id=0, eos_token="<EOS>", eos_token_id=1):
-        self.padding_side = padding_side
-        self.pad_token_id = pad_token_id
-        self.eos_token = eos_token
-        self.eos_token_id = eos_token_id
-    
-    def __call__(
-        self,
-        text: str,
-        max_length: int = None,
-        padding: bool = False,
-        truncation: bool = False,
-        return_tensors: str = None,
-        **kwargs
-    ):
-        """Mock tokenization."""
-        # Simple whitespace tokenizer
-        tokens = text.split()
-        token_ids = [len(token) for token in tokens] # Use length as token ID
-        
-        if truncation and max_length and len(token_ids) > max_length:
-            if self.padding_side == 'right':
-                token_ids = token_ids[:max_length]
-            else:
-                token_ids = token_ids[-max_length:]
-            
-        attention_mask = [1] * len(token_ids)
-        
-        if return_tensors == "pt":
-            return {
-                "input_ids": torch.tensor([token_ids]),
-                "attention_mask": torch.tensor([attention_mask]),
-            }
-        return {"input_ids": [token_ids], "attention_mask": [attention_mask]}
-
-    def decode(self, token_ids, **kwargs):
-        return " ".join([str(tid) for tid in token_ids])
-
-# Fixtures
+# --- Fixtures ---
 
 @pytest.fixture
-def mock_tokenizer():
-    """Provides a mock tokenizer instance."""
-    return MockTokenizer(padding_side="left") # Default to left padding for generation
+def sample_batch_tensors():
+    return {
+        "input_ids": torch.tensor([[1, 2], [3, 4]]),
+        "attention_mask": torch.tensor([[1, 1], [1, 0]]),
+    }
 
 @pytest.fixture
-def temp_jsonl_file():
-    """Creates a temporary JSONL file with dummy data."""
-    # Use delete=False to manage closure manually for Windows compatibility
-    fd, path = tempfile.mkstemp(suffix=".jsonl")
-    os.close(fd) # Close the file descriptor immediately
-    path = Path(path)
-    
-    data = [
-        {"prompt": "this is prompt 1.", "chosen": "this is chosen 1.", "rejected": "this is rejected 1."},
-        {"prompt": "this is prompt 2.", "chosen": "this is chosen 2.", "rejected": "this is rejected 2."},
-        {"prompt": "this is prompt 3.", "chosen": "this is chosen 3.", "rejected": "this is rejected 3."},
-        {"prompt": "  needs stripping.  ", "chosen": " chosen ", "rejected": " rejected "},
-        {"prompt": None, "chosen": "no prompt", "rejected": "no prompt"}, # Invalid
-        {}, # Invalid
+def sample_list_sequences():
+    return [
+        torch.tensor([1, 2, 3]),
+        torch.tensor([4, 5]),
     ]
+
+# --- Tests ---
+
+class TestBatchEncoding:
+    def test_init(self):
+        data = {"input_ids": torch.tensor([1, 2])}
+        be = BatchEncoding(data, encoding="dummy", tensor_type="pt")
+        assert be["input_ids"] is data["input_ids"]
+        assert be.encoding == "dummy"
+        assert be.tensor_type == "pt"
+
+    def test_to_device(self):
+        data = {
+            "input_ids": torch.tensor([1, 2]),
+            "meta": "metadata" # Should be ignored
+        }
+        be = BatchEncoding(data)
+        
+        # Use real tensors instead of mocks to satisfy isinstance(v, torch.Tensor) checks
+        device = torch.device("cpu")
+        be_moved = be.to(device)
+        
+        assert be_moved is be
+        assert isinstance(be["input_ids"], torch.Tensor)
+        assert be["meta"] == "metadata"
+
+def test_pad_sequences(sample_list_sequences):
+    # Test right padding (default)
+    padded_right = pad_sequences(sample_list_sequences, padding_value=0, padding_side="right")
+    expected_right = torch.tensor([
+        [1, 2, 3],
+        [4, 5, 0]
+    ])
+    assert torch.equal(padded_right, expected_right)
+
+    # Test left padding
+    padded_left = pad_sequences(sample_list_sequences, padding_value=0, padding_side="left")
+    expected_left = torch.tensor([
+        [1, 2, 3],
+        [0, 4, 5]
+    ])
+    assert torch.equal(padded_left, expected_left)
+
+    # Test empty list
+    assert torch.equal(pad_sequences([]), torch.tensor([]))
+
+def test_create_attention_mask():
+    input_ids = torch.tensor([
+        [1, 2, 0],
+        [0, 3, 4]
+    ])
+    mask = create_attention_mask(input_ids, padding_value=0)
+    expected = torch.tensor([
+        [1, 1, 0],
+        [0, 1, 1]
+    ])
+    assert torch.equal(mask, expected)
+
+def test_create_position_ids():
+    mask = torch.tensor([
+        [1, 1, 0], # 1, 2, 0
+        [0, 1, 1]  # 0, 1, 2
+    ])
+    pos_ids = create_position_ids(mask)
+    expected = torch.tensor([
+        [1, 2, 0],
+        [0, 1, 2]
+    ])
+    assert torch.equal(pos_ids, expected)
+
+def test_create_causal_mask():
+    seq_len = 3
+    mask = create_causal_mask(seq_len)
+    expected = torch.tensor([
+        [1, 0, 0],
+        [1, 1, 0],
+        [1, 1, 1]
+    ]).view(1, 1, 3, 3)
+    assert torch.equal(mask, expected.float())
+
+def test_collate_batch():
+    # Test 1: Uniform shapes (stacking) + Int/Float conversion
+    batch = [
+        {"id": 1, "val": torch.tensor([1, 2]), "label": 0, "score": 1.5},
+        {"id": 2, "val": torch.tensor([3, 4]), "label": 1, "score": 2.5},
+    ]
+    collated = collate_batch(batch)
+    assert torch.equal(collated["val"], torch.tensor([[1, 2], [3, 4]]))
+    assert torch.equal(collated["label"], torch.tensor([0, 1]))
+    # The implementation converts int lists to tensors
+    assert torch.equal(collated["id"], torch.tensor([1, 2]))
+    assert torch.equal(collated["score"], torch.tensor([1.5, 2.5]))
+
+    # Test 2: Variable shapes (padding)
+    batch_var = [
+        {"val": torch.tensor([1, 2, 3])},
+        {"val": torch.tensor([4, 5])},
+    ]
+    # Mock tokenizer
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.pad_token_id = 99
     
-    try:
-        with open(path, 'w', encoding='utf-8') as f:
-            for item in data:
-                f.write(json.dumps(item) + "\n")
-        yield path
-    finally:
-        if path.exists():
-            try:
-                path.unlink()
-            except PermissionError:
-                pass # Ignore if still locked on Windows in edge cases
+    collated_var = collate_batch(batch_var, tokenizer=mock_tokenizer)
+    expected = torch.tensor([
+        [1, 2, 3],
+        [4, 5, 99]
+    ])
+    assert torch.equal(collated_var["val"], expected)
 
-@pytest.fixture
-def temp_image_file():
-    """Creates a temporary dummy image file."""
-    if not _PIL_AVAILABLE:
-        pytest.skip("Pillow (PIL) is not installed.")
-        
-    fd, path_str = tempfile.mkstemp(suffix=".png")
-    os.close(fd) # Close the file descriptor
-    path = Path(path_str)
-    try:
-        img = Image.new('RGB', (60, 30), color = 'red')
-        img.save(path)
-        yield path
-    finally:
-        if path.exists():
-            try:
-                path.unlink()
-            except PermissionError:
-                pass
+    # Test 3: Empty batch
+    assert collate_batch([]) == {}
 
-@pytest.fixture
-def temp_audio_file(tmp_path):
-    """Creates a temporary dummy audio file."""
-    if not _LIBROSA_AVAILABLE:
-        pytest.skip("librosa is not installed.")
-        
-    pytest.importorskip("soundfile") # Need soundfile to write
-    import soundfile as sf
-    import numpy as np
+    # Test 4: Device movement
+    # We use patch to verify the call because we might not have a GPU
+    with patch("thinkrl.utils.datasets.to_device") as mock_to_device:
+        mock_device = MagicMock()
+        collate_batch(batch, device=mock_device)
+        mock_to_device.assert_called()
+
+    # Test 5: Higher dim tensors (fallback to list/stack if not 1D padding logic)
+    batch_2d = [{"img": torch.randn(3, 3)}, {"img": torch.randn(3, 3)}]
+    collated_2d = collate_batch(batch_2d)
+    assert collated_2d["img"].shape == (2, 3, 3)
     
-    path = tmp_path / "test.wav"
-    samplerate = 22050
-    data = np.random.uniform(-0.5, 0.5, size=samplerate) # 1 second of noise
-    try:
-        sf.write(path, data, samplerate)
-        yield path
-    finally:
-        if path.exists():
-            try:
-                path.unlink()
-            except PermissionError:
-                pass
+    # Test 6: Mismatch shape higher dim (should fallback to list)
+    batch_mismatch = [{"img": torch.randn(3, 3)}, {"img": torch.randn(2, 2)}]
+    collated_mismatch = collate_batch(batch_mismatch)
+    assert isinstance(collated_mismatch["img"], list)
+    assert len(collated_mismatch["img"]) == 2
 
-# --- Test Classes ---
+    # Test 7: Other types (strings)
+    batch_str = [{"txt": "hello"}, {"txt": "world"}]
+    collated_str = collate_batch(batch_str)
+    assert collated_str["txt"] == ["hello", "world"]
 
-class TestRLHFDataset:
-    """Tests for the RLHFDataset class."""
+def test_create_dataloader():
+    dataset = [1, 2, 3]
+    dl = create_dataloader(dataset, batch_size=1)
+    assert len(dl) == 3
 
-    @patch('thinkrl.data.datasets.load_dataset')
-    def test_init_from_hf(self, mock_load_dataset, mock_tokenizer):
-        """Test loading data from HuggingFace datasets."""
-        # Note: We expect 2 valid rows
-        hf_data = [
-            {"prompt": "hf prompt 1."},
-            {"prompt": "hf prompt 2."},
-            {"prompt": None}, # Invalid
-        ]
-        # Mock a Dataset object that supports filtering via list comprehension in __init__
-        mock_load_dataset.return_value = hf_data
-        
-        dataset = RLHFDataset(
-            dataset_name_or_path="hf/dummy-dataset",
-            tokenizer=mock_tokenizer,
-            prompt_column="prompt",
-        )
-        
-        mock_load_dataset.assert_called_with("hf/dummy-dataset", split="train")
-        assert len(dataset) == 2
-        assert dataset.data[0]["prompt"] == "hf prompt 1."
+def test_preprocess_text():
+    assert preprocess_text("  hello  ") == "hello"
+    assert preprocess_text(123) == "123"
 
-    def test_init_from_jsonl(self, temp_jsonl_file, mock_tokenizer):
-        """Test loading data from a JSONL file."""
-        dataset = RLHFDataset(
-            dataset_name_or_path=str(temp_jsonl_file),
-            tokenizer=mock_tokenizer,
-            prompt_column="prompt",
-        )
-        assert len(dataset) == 4 # 3 valid, 1 needs stripping
-        assert dataset.data[0]["prompt"] == "this is prompt 1."
-        assert dataset.data[3]["prompt"] == "needs stripping." # Stripped and preprocessed
+def test_truncate_sequence():
+    seq = [1, 2, 3, 4, 5]
+    
+    # No truncation
+    assert truncate_sequence(seq, 10) == seq
+    
+    # Right truncation
+    assert truncate_sequence(seq, 3, side="right") == [1, 2, 3]
+    
+    # Left truncation
+    assert truncate_sequence(seq, 3, side="left") == [3, 4, 5]
 
-    def test_getitem(self, temp_jsonl_file, mock_tokenizer):
-        """Test the __getitem__ method for tokenization."""
-        dataset = RLHFDataset(
-            dataset_name_or_path=str(temp_jsonl_file),
-            tokenizer=mock_tokenizer,
-            prompt_column="prompt",
-            max_length=10,
-        )
-        
-        sample = dataset[0]
-        
-        # "this is prompt 1." -> split ["this", "is", "prompt", "1."] -> lens [4, 2, 6, 2]
-        expected_ids = torch.tensor([4, 2, 6, 2])
-        
-        assert "input_ids" in sample
-        assert "attention_mask" in sample
-        assert "prompt_text" in sample
-        assert sample["prompt_text"] == "this is prompt 1."
-        assert torch.allclose(sample["input_ids"], expected_ids)
-        assert torch.allclose(sample["attention_mask"], torch.ones_like(expected_ids))
+def test_create_labels_for_clm():
+    input_ids = torch.tensor([1, 2, 3])
+    labels = create_labels_for_clm(input_ids)
+    assert torch.equal(labels, input_ids)
+    assert labels is not input_ids # Should be a clone
 
-    def test_preprocess_fn(self, temp_jsonl_file, mock_tokenizer):
-        """Test that the preprocessing function is applied."""
-        def add_prefix(sample):
-            sample["prompt"] = "PREFIX: " + sample["prompt"]
-            return sample
+def test_mask_padding_in_loss():
+    labels = torch.tensor([1, 2, 3, 0])
+    mask = torch.tensor([1, 1, 1, 0])
+    masked_labels = mask_padding_in_loss(labels, mask, ignore_index=-100)
+    
+    expected = torch.tensor([1, 2, 3, -100])
+    assert torch.equal(masked_labels, expected)
 
-        dataset = RLHFDataset(
-            dataset_name_or_path=str(temp_jsonl_file),
-            tokenizer=mock_tokenizer,
-            prompt_column="prompt",
-            preprocess_fn=add_prefix,
-        )
-        
-        sample = dataset[0]
-        # "PREFIX: this is prompt 1." -> split ["PREFIX:", "this", "is", "prompt", "1."] -> lens [7, 4, 2, 6, 2]
-        expected_ids = torch.tensor([7, 4, 2, 6, 2])
-        assert sample["prompt_text"] == "PREFIX: this is prompt 1."
-        assert torch.allclose(sample["input_ids"], expected_ids)
+def test_split_batch():
+    batch = {
+        "input_ids": torch.tensor([
+            [1, 1], [2, 2], [3, 3], [4, 4]
+        ]),
+        "labels": [1, 2, 3, 4]
+    }
+    
+    # Split into micro_batch_size=2
+    micro_batches = split_batch(batch, 2)
+    assert len(micro_batches) == 2
+    assert torch.equal(micro_batches[0]["input_ids"], torch.tensor([[1, 1], [2, 2]]))
+    assert micro_batches[1]["labels"] == [3, 4]
 
-    def test_out_of_bounds(self, temp_jsonl_file, mock_tokenizer):
-        """Test index out of bounds raises IndexError."""
-        dataset = RLHFDataset(
-            dataset_name_or_path=str(temp_jsonl_file),
-            tokenizer=mock_tokenizer,
-        )
-        assert len(dataset) == 4
-        with pytest.raises(IndexError):
-            _ = dataset[10]
-        with pytest.raises(IndexError):
-            _ = dataset[-5]
+    # Batch size 0 case (empty dict)
+    assert split_batch({}, 2) == [{}]
 
+    # Batch size 0 case (dict with non-sequence items)
+    batch_meta = {"meta": "data"}
+    assert split_batch(batch_meta, 2) == [batch_meta]
 
-class TestPreferenceDataset:
-    """Tests for the PreferenceDataset class."""
+def test_compute_sequence_lengths():
+    mask = torch.tensor([
+        [1, 1, 0],
+        [1, 1, 1]
+    ])
+    lengths = compute_sequence_lengths(mask)
+    assert torch.equal(lengths, torch.tensor([2, 3]))
 
-    @patch('thinkrl.data.datasets.load_dataset')
-    def test_init_from_hf(self, mock_load_dataset, mock_tokenizer):
-        """Test loading preference pairs from HuggingFace."""
-        hf_data = [
-            {"prompt": "hf prompt 1.", "chosen": "good", "rejected": "bad"},
-            {"prompt": "hf prompt 2.", "chosen": "better", "rejected": "worse"},
-            {"prompt": "hf prompt 3.", "chosen": "best", "rejected": None}, # Invalid
-        ]
-        mock_load_dataset.return_value = hf_data
+def test_shuffle_batch():
+    batch = {
+        "a": torch.tensor([1, 2, 3]),
+        "b": ["x", "y", "z"],
+        "c": "constant" # Should not be shuffled (or copied as is)
+    }
+    
+    # Seed for reproducibility
+    torch.manual_seed(42)
+    shuffled = shuffle_batch(batch)
+    
+    # Check shapes/lengths preserved
+    assert len(shuffled["a"]) == 3
+    assert len(shuffled["b"]) == 3
+    assert shuffled["c"] == "constant"
+    
+    # Test empty/single item batch
+    assert shuffle_batch({}) == {}
 
-        dataset = PreferenceDataset(
-            dataset_name_or_path="hf/dummy-pref-dataset",
-            tokenizer=mock_tokenizer,
-        )
-        assert len(dataset) == 2
-        assert dataset.data[0]["prompt"] == "hf prompt 1."
-        assert dataset.data[0]["chosen"] == "good"
-        assert dataset.data[0]["rejected"] == "bad"
+def test_to_device_recursive():
+    batch = {
+        "tensor": torch.tensor([1]),
+        "nested": {
+            "tensor": torch.tensor([2])
+        },
+        "list": [1, 2]
+    }
+    
+    # Use real tensors to verify recursion works with torch.Tensor check
+    device = torch.device("cpu")
+    moved = to_device(batch, device)
+    
+    assert isinstance(moved["tensor"], torch.Tensor)
+    assert isinstance(moved["nested"]["tensor"], torch.Tensor)
+    assert moved["list"] == [1, 2]
 
-    def test_init_from_jsonl(self, temp_jsonl_file, mock_tokenizer):
-        """Test loading preference pairs from a JSONL file."""
-        dataset = PreferenceDataset(
-            dataset_name_or_path=str(temp_jsonl_file),
-            tokenizer=mock_tokenizer,
-        )
-        assert len(dataset) == 4 # 3 valid, 1 needs stripping
-        assert dataset.data[0]["prompt"] == "this is prompt 1."
-        assert dataset.data[0]["chosen"] == "this is chosen 1."
-        assert dataset.data[0]["rejected"] == "this is rejected 1."
-        assert dataset.data[3]["chosen"] == "chosen" # Stripped
-
-    def test_getitem_tokenization(self, temp_jsonl_file, mock_tokenizer):
-        """Test tokenization of chosen and rejected pairs."""
-        dataset = PreferenceDataset(
-            dataset_name_or_path=str(temp_jsonl_file),
-            tokenizer=mock_tokenizer,
-            max_length=20, # Ensure truncation
-        )
-        
-        sample = dataset[0]
-        
-        # Input: "this is prompt 1.this is chosen 1.<EOS>"
-        # Split: ["this", "is", "prompt", "1.this", "is", "chosen", "1.<EOS>"] (Space tokenizer logic)
-        # Lengths: [4, 2, 6, 6, 2, 6, 7]
-        # Wait, the Dataset implementation joins with NO space: f"{prompt}{chosen}{eos}"
-        # Prompt: "this is prompt 1."
-        # Chosen: "this is chosen 1."
-        # Full: "this is prompt 1.this is chosen 1.<EOS>"
-        # Tokens (space split): "this", "is", "prompt", "1.this", "is", "chosen", "1.<EOS>"
-        # IDs: [4, 2, 6, 6, 2, 6, 7]
-        
-        expected_chosen_ids = torch.tensor([4, 2, 6, 6, 2, 6, 7])
-        
-        # Rejected: "this is prompt 1.this is rejected 1.<EOS>"
-        # Tokens: "this", "is", "prompt", "1.this", "is", "rejected", "1.<EOS>"
-        # IDs: [4, 2, 6, 6, 2, 8, 7]
-        expected_rejected_ids = torch.tensor([4, 2, 6, 6, 2, 8, 7])
-        
-        assert "chosen_input_ids" in sample
-        assert "chosen_attention_mask" in sample
-        assert "rejected_input_ids" in sample
-        assert "rejected_attention_mask" in sample
-        
-        assert torch.allclose(sample["chosen_input_ids"], expected_chosen_ids)
-        assert torch.allclose(sample["rejected_input_ids"], expected_rejected_ids)
-        assert sample["chosen_attention_mask"].shape == expected_chosen_ids.shape
-        assert sample["rejected_attention_mask"].shape == expected_rejected_ids.shape
-
-
-class TestRLHFDataLoader:
-    """Tests for the RLHFDataLoader and its collate function."""
-
-    @pytest.fixture
-    def rlhf_dataset(self, mock_tokenizer):
-        """Creates a dummy RLHFDataset for loader tests."""
-        # Create a dummy class to avoid file/HF dependency
-        class DummyRLHFDataset(BaseRLHFDataset):
-            def __init__(self, tokenizer):
-                # Pass None as dataset_name_or_path to bypass load_dataset
-                super().__init__(tokenizer, None, 20)
-                self.data = [
-                    {"prompt": "short prompt"},
-                    {"prompt": "a much longer prompt here"},
-                    {"prompt": "prompt three"},
-                ]
-                self.prompt_column = "prompt"
-                # Manually set dataset to list since BaseRLHFDataset init skipped it
-                self.dataset = self.data 
-            
-            def __len__(self):
-                return len(self.data)
-
-            def __getitem__(self, idx):
-                return self._tokenize_sample(self.data[idx])
-
-            def _tokenize_sample(self, sample):
-                text = sample["prompt"]
-                tokenized = self.tokenizer(
-                    text,
-                    max_length=self.max_length,
-                    truncation=True,
-                    return_tensors="pt"
-                )
-                return {
-                    "prompt_text": text,
-                    "input_ids": tokenized["input_ids"].squeeze(0),
-                    "attention_mask": tokenized["attention_mask"].squeeze(0),
-                }
-        
-        return DummyRLHFDataset(mock_tokenizer)
-
-    def test_collate_fn_left_padding(self, rlhf_dataset, mock_tokenizer):
-        """Test that the collate function performs left padding correctly."""
-        collate_fn = create_rlhf_collate_fn(mock_tokenizer, padding_side="left")
-        
-        batch_samples = [rlhf_dataset[0], rlhf_dataset[1], rlhf_dataset[2]]
-        
-        # Manually get expected token IDs using MockTokenizer logic (whitespace split length)
-        # "short prompt" -> [5, 6]
-        # "a much longer prompt here" -> [1, 4, 6, 6, 4] (longest, len 5)
-        # "prompt three" -> [6, 5]
-        
-        collated_batch = collate_fn(batch_samples)
-        
-        expected_input_ids = torch.tensor([
-            [0, 0, 0, 5, 6],  # [pad, pad, pad, 5, 6]
-            [1, 4, 6, 6, 4],  # [1, 4, 6, 6, 4]
-            [0, 0, 0, 6, 5],  # [pad, pad, pad, 6, 5]
-        ])
-        
-        expected_attn_mask = torch.tensor([
-            [0, 0, 0, 1, 1],
-            [1, 1, 1, 1, 1],
-            [0, 0, 0, 1, 1],
-        ])
-        
-        assert "input_ids" in collated_batch
-        assert "attention_mask" in collated_batch
-        assert "prompt_text" in collated_batch # Changed from 'prompt_texts' to 'prompt_text'
-        assert collated_batch["prompt_text"] == [ # Changed from 'prompt_texts' to 'prompt_text'
-            "short prompt",
-            "a much longer prompt here",
-            "prompt three"
-        ]
-        
-        assert torch.allclose(collated_batch["input_ids"], expected_input_ids)
-        assert torch.allclose(collated_batch["attention_mask"], expected_attn_mask)
-
-    def test_dataloader_wrapper(self, rlhf_dataset, mock_tokenizer):
-        """Test the RLHFDataLoader wrapper with drop_last=True (default)."""
-        loader = RLHFDataLoader(
-            dataset=rlhf_dataset,
-            tokenizer=mock_tokenizer,
-            batch_size=2,
-            shuffle=False,
-            drop_last=True # Explicitly setting default
-        )
-        
-        assert len(loader) == 1 # 3 samples, batch_size=2, drop_last=True
-        
-        batch_iter = iter(loader)
-        first_batch = next(batch_iter)
-        
-        # First batch has "short prompt" and "a much longer prompt here"
-        # Longest is [1, 4, 6, 6, 4] (len 5)
-        # Default padding side is "right" in DataLoader unless specified
-        # RLHFDataLoader uses "right" by default in my implementation
-        expected_input_ids_b1 = torch.tensor([
-            [5, 6, 0, 0, 0],
-            [1, 4, 6, 6, 4],
-        ])
-        
-        assert torch.allclose(first_batch["input_ids"], expected_input_ids_b1)
-        
-        with pytest.raises(StopIteration):
-            next(batch_iter) # No second batch
-
-    def test_dataloader_wrapper_no_drop_last(self, rlhf_dataset, mock_tokenizer):
-        """Test the RLHFDataLoader wrapper with drop_last=False."""
-        loader = RLHFDataLoader(
-            dataset=rlhf_dataset,
-            tokenizer=mock_tokenizer,
-            batch_size=2,
-            shuffle=False,
-            drop_last=False, # Override default
-        )
-        
-        assert len(loader) == 2 # 3 samples, batch_size=2, drop_last=False
-        
-        batch_iter = iter(loader)
-        _ = next(batch_iter)
-        second_batch = next(batch_iter)
-
-        # Second batch has "prompt three" -> [6, 5]
-        # Padded to its own max length (which is 2)
-        expected_input_ids_b2 = torch.tensor([
-            [6, 5],
-        ])
-        assert torch.allclose(second_batch["input_ids"], expected_input_ids_b2)
-        assert torch.allclose(second_batch["attention_mask"], torch.tensor([[1, 1]]))
-
-
-class TestProcessors:
-    """Tests for multimodal data processors."""
-
-    @pytest.mark.skipif(not _PIL_AVAILABLE, reason="Pillow (PIL) is not installed.")
-    def test_process_image(self, temp_image_file):
-        """Test basic image loading."""
-        img = process_image(str(temp_image_file))
-        assert img is not None
-        assert isinstance(img, Image.Image)
-        assert img.size == (60, 30)
-
-    @pytest.mark.skipif(not _PIL_AVAILABLE, reason="Pillow (PIL) is not installed.")
-    def test_process_image_with_transform(self, temp_image_file):
-        """Test image loading with a mock transform."""
-        mock_transform = MagicMock(return_value="transformed_image")
-        img = process_image(str(temp_image_file), transform=mock_transform)
-        
-        assert img == "transformed_image"
-        mock_transform.assert_called_once()
-        assert isinstance(mock_transform.call_args[0][0], Image.Image)
-
-    def test_process_image_fail(self, tmp_path):
-        """Test graceful failure on non-existent or corrupt image."""
-        non_existent_file = tmp_path / "fake.png"
-        img = process_image(str(non_existent_file))
-        assert img is None
-
-    @pytest.mark.skipif(not _LIBROSA_AVAILABLE, reason="librosa is not installed.")
-    def test_process_audio(self, temp_audio_file):
-        """Test basic audio loading and resampling."""
-        # Mock librosa.load and librosa.resample
-        with patch('thinkrl.data.processors.librosa') as mock_librosa:
-            mock_librosa.load.return_value = ("fake_waveform_22k", 22050)
-            mock_librosa.resample.return_value = "fake_waveform_16k"
-            
-            audio = process_audio(str(temp_audio_file), sr=16000)
-            
-            mock_librosa.load.assert_called_with(str(temp_audio_file), sr=None)
-            mock_librosa.resample.assert_called_with("fake_waveform_22k", orig_sr=22050, target_sr=16000)
-            assert audio == "fake_waveform_16k"
-
-    @pytest.mark.skipif(not _LIBROSA_AVAILABLE, reason="librosa is not installed.")
-    def test_process_audio_with_transform(self, temp_audio_file):
-        """Test audio loading with a mock transform."""
-        mock_transform = MagicMock(return_value="transformed_audio")
-        
-        with patch('thinkrl.data.processors.librosa') as mock_librosa:
-            mock_librosa.load.return_value = ("fake_waveform_16k", 16000)
-            
-            audio = process_audio(str(temp_audio_file), transform=mock_transform, sr=16000)
-            
-            mock_librosa.load.assert_called_with(str(temp_audio_file), sr=None)
-            mock_transform.assert_called_with("fake_waveform_16k", sampling_rate=16000, return_tensors="pt")
-            assert audio == "transformed_audio"
-
-    def test_process_audio_fail(self, tmp_path):
-        """Test graceful failure on non-existent audio."""
-        non_existent_file = tmp_path / "fake.wav"
-        audio = process_audio(str(non_existent_file))
-        assert audio is None
+def test_prepare_batch_for_training():
+    # Just a wrapper around to_device
+    with patch("thinkrl.utils.datasets.to_device") as mock_to:
+        prepare_batch_for_training({}, "cpu")
+        mock_to.assert_called_once()
