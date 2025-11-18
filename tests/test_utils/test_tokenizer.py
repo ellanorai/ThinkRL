@@ -1,24 +1,9 @@
 """
 Test Suite for ThinkRL Tokenizer Utilities
 ==========================================
-
-Tests for:
-- get_tokenizer
-- tokenize_text, tokenize_batch
-- decode_tokens
-- get_special_tokens, add_special_tokens
-- tokenize_conversation
-- prepare_input_for_generation
-- count_tokens
-- truncate_to_token_limit
-- get_tokenizer_info
-- save_tokenizer, load_tokenizer
-
-Author: Archit Sood
 """
-
-import pytest
 import torch
+import pytest
 import tempfile
 import shutil
 from pathlib import Path
@@ -54,13 +39,11 @@ pytestmark = pytest.mark.skipif(
     not _TRANSFORMERS_AVAILABLE, reason="transformers not installed"
 )
 
-# ============================================================================
-# Fixtures
-# ============================================================================
-
 @pytest.fixture(scope="module")
 def gpt2_tokenizer():
     """Provides a real GPT-2 tokenizer for testing."""
+    if not _TRANSFORMERS_AVAILABLE:
+        return None
     return get_tokenizer("gpt2", padding_side="right")
 
 @pytest.fixture
@@ -70,10 +53,6 @@ def temp_dir():
     yield Path(d)
     shutil.rmtree(d)
 
-# ============================================================================
-# Tokenizer Tests
-# ============================================================================
-
 class TestTokenizers:
     """Test tokenizer utilities (requires transformers)."""
 
@@ -81,7 +60,6 @@ class TestTokenizers:
         """Test tokenizer loading and default pad token setting."""
         assert gpt2_tokenizer is not None
         assert gpt2_tokenizer.vocab_size == 50257
-        # gpt2 doesn't have a pad token by default, check it was set to eos
         assert gpt2_tokenizer.pad_token == gpt2_tokenizer.eos_token
         assert gpt2_tokenizer.padding_side == "right"
 
@@ -108,7 +86,7 @@ class TestTokenizers:
             texts, gpt2_tokenizer, padding=True, return_tensors="pt"
         )
         assert encoded_batch["input_ids"].shape[0] == 2
-        assert encoded_batch["input_ids"].shape[1] >= 3 # "How are you?" is 3 tokens
+        assert encoded_batch["input_ids"].shape[1] >= 3
 
     def test_tokenize_batch(self, gpt2_tokenizer):
         """Test efficient batch tokenization."""
@@ -133,11 +111,9 @@ class TestTokenizers:
         text = "Hello, world!"
         token_ids = gpt2_tokenizer.encode(text)
 
-        # Test single decode
         decoded_text = decode_tokens(token_ids, gpt2_tokenizer, skip_special_tokens=True)
         assert decoded_text == text
 
-        # Test batch decode
         texts = ["Hello!", "How are you?"]
         batch_ids = [gpt2_tokenizer.encode(t) for t in texts]
         decoded_batch = decode_tokens(batch_ids, gpt2_tokenizer, skip_special_tokens=True)
@@ -159,7 +135,6 @@ class TestTokenizers:
 
     def test_add_special_tokens(self):
         """Test adding new special tokens."""
-        # Load a fresh tokenizer
         tokenizer = get_tokenizer("gpt2")
         original_vocab_size = len(tokenizer)
         
@@ -181,7 +156,6 @@ class TestTokenizers:
             {"role": "assistant", "content": "Hi!"},
         ]
 
-        # Test without generation prompt
         encoded = tokenize_conversation(
             messages,
             gpt2_tokenizer,
@@ -195,7 +169,6 @@ class TestTokenizers:
         decoded = decode_tokens(encoded["input_ids"].squeeze(0), gpt2_tokenizer)
         assert decoded == "SYS: You are helpful.\nUSER: Hello!\nASSIST: Hi!"
 
-        # Test with generation prompt
         encoded_gen = tokenize_conversation(
             messages,
             gpt2_tokenizer,
@@ -215,8 +188,6 @@ class TestTokenizers:
         mock_tokenizer.chat_template = "fake_template"
         mock_tokenizer.apply_chat_template.return_value = "Template output"
         
-        # Mock tokenize_text to check the input
-        # Updated patch path to singular 'tokenizer'
         with patch("thinkrl.utils.tokenizer.tokenize_text") as mock_tokenize_text:
             messages = [{"role": "user", "content": "Hello"}]
             
@@ -226,14 +197,12 @@ class TestTokenizers:
                 add_generation_prompt=True
             )
             
-            # Check that apply_chat_template was called correctly
             mock_tokenizer.apply_chat_template.assert_called_with(
                 messages,
                 tokenize=False,
                 add_generation_prompt=True
             )
             
-            # Check that tokenize_text was called with the template's output
             mock_tokenize_text.assert_called_with(
                 "Template output",
                 mock_tokenizer
@@ -252,35 +221,30 @@ class TestTokenizers:
         assert "attention_mask" in inputs
         assert isinstance(inputs["input_ids"], torch.Tensor)
         assert inputs["input_ids"].device.type == "cpu"
-        assert inputs["input_ids"].shape[0] == 1 # Batch size of 1
+        assert inputs["input_ids"].shape[0] == 1
 
     def test_count_tokens(self, gpt2_tokenizer):
         """Test token counting."""
         text = "Hello, world!"
         count = count_tokens(text, gpt2_tokenizer)
-        assert count == 4 # "Hello", ",", " world", "!"
+        assert count == 4
 
         texts = ["Hello!", "How are you?"]
         counts = count_tokens(texts, gpt2_tokenizer)
-        # Updated to reflect actual GPT-2 tokenization (4 tokens for 'How are you?')
         assert counts == [2, 4]
 
     def test_truncate_to_token_limit(self, gpt2_tokenizer):
         """Test truncating text based on token count."""
         long_text = "This is a very long text that will surely be truncated."
-        # Tokens: "This", " is", " a", " very", " long", " text", " that", " will", " surely", " be", " tr", "uncated", "." (13 tokens)
         
-        # Right truncation (default)
         truncated_right = truncate_to_token_limit(
             long_text, gpt2_tokenizer, max_tokens=7
         )
         assert truncated_right == "This is a very long text that"
 
-        # Left truncation
         truncated_left = truncate_to_token_limit(
             long_text, gpt2_tokenizer, max_tokens=7, side="left"
         )
-        # Updated expectation to match actual tokenization behavior
         assert truncated_left == " that will surely be truncated."
 
     def test_get_tokenizer_info(self, gpt2_tokenizer):
@@ -298,7 +262,6 @@ class TestTokenizers:
 
     def test_save_and_load_tokenizer(self, temp_dir):
         """Test saving and loading a modified tokenizer."""
-        # Load, modify, and save
         tokenizer_to_save = get_tokenizer("gpt2")
         add_special_tokens(tokenizer_to_save, {"additional_special_tokens": ["<|my_token|>"]})
         
@@ -309,7 +272,6 @@ class TestTokenizers:
         assert (temp_dir / "tokenizer.json").exists()
         assert (temp_dir / "special_tokens_map.json").exists()
         
-        # Load back
         loaded_tokenizer = load_tokenizer(temp_dir)
         
         assert isinstance(loaded_tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast))

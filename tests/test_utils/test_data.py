@@ -3,14 +3,18 @@ Test Suite for ThinkRL Dataset Utilities
 ========================================
 
 Tests for:
-- thinkrl.utils.datasets (BatchEncoding, pad_sequences, collate_batch, etc.)
-
+- thinkrl.utils.datasets
 """
 
 import pytest
 import torch
-# REPLACED: import numpy as np
-import cupy as cp
+try:
+    import cupy as cp
+    _CUPY_AVAILABLE = True
+except (ImportError, OSError):
+    import numpy as cp
+    _CUPY_AVAILABLE = False
+
 from unittest.mock import MagicMock, patch
 
 from thinkrl.utils.datasets import (
@@ -32,8 +36,6 @@ from thinkrl.utils.datasets import (
     prepare_batch_for_training,
 )
 
-# --- Fixtures ---
-
 @pytest.fixture
 def sample_batch_tensors():
     return {
@@ -48,8 +50,6 @@ def sample_list_sequences():
         torch.tensor([4, 5]),
     ]
 
-# --- Tests ---
-
 class TestBatchEncoding:
     def test_init(self):
         data = {"input_ids": torch.tensor([1, 2])}
@@ -61,11 +61,9 @@ class TestBatchEncoding:
     def test_to_device(self):
         data = {
             "input_ids": torch.tensor([1, 2]),
-            "meta": "metadata" # Should be ignored
+            "meta": "metadata"
         }
         be = BatchEncoding(data)
-        
-        # Use real tensors instead of mocks to satisfy isinstance(v, torch.Tensor) checks
         device = torch.device("cpu")
         be_moved = be.to(device)
         
@@ -74,7 +72,6 @@ class TestBatchEncoding:
         assert be["meta"] == "metadata"
 
 def test_pad_sequences(sample_list_sequences):
-    # Test right padding (default)
     padded_right = pad_sequences(sample_list_sequences, padding_value=0, padding_side="right")
     expected_right = torch.tensor([
         [1, 2, 3],
@@ -82,7 +79,6 @@ def test_pad_sequences(sample_list_sequences):
     ])
     assert torch.equal(padded_right, expected_right)
 
-    # Test left padding
     padded_left = pad_sequences(sample_list_sequences, padding_value=0, padding_side="left")
     expected_left = torch.tensor([
         [1, 2, 3],
@@ -90,7 +86,6 @@ def test_pad_sequences(sample_list_sequences):
     ])
     assert torch.equal(padded_left, expected_left)
 
-    # Test empty list
     assert torch.equal(pad_sequences([]), torch.tensor([]))
 
 def test_create_attention_mask():
@@ -128,7 +123,6 @@ def test_create_causal_mask():
     assert torch.equal(mask, expected.float())
 
 def test_collate_batch():
-    # Test 1: Uniform shapes (stacking) + Int/Float conversion
     batch = [
         {"id": 1, "val": torch.tensor([1, 2]), "label": 0, "score": 1.5},
         {"id": 2, "val": torch.tensor([3, 4]), "label": 1, "score": 2.5},
@@ -136,16 +130,13 @@ def test_collate_batch():
     collated = collate_batch(batch)
     assert torch.equal(collated["val"], torch.tensor([[1, 2], [3, 4]]))
     assert torch.equal(collated["label"], torch.tensor([0, 1]))
-    # The implementation converts int lists to tensors
     assert torch.equal(collated["id"], torch.tensor([1, 2]))
     assert torch.equal(collated["score"], torch.tensor([1.5, 2.5]))
 
-    # Test 2: Variable shapes (padding)
     batch_var = [
         {"val": torch.tensor([1, 2, 3])},
         {"val": torch.tensor([4, 5])},
     ]
-    # Mock tokenizer
     mock_tokenizer = MagicMock()
     mock_tokenizer.pad_token_id = 99
     
@@ -156,28 +147,22 @@ def test_collate_batch():
     ])
     assert torch.equal(collated_var["val"], expected)
 
-    # Test 3: Empty batch
     assert collate_batch([]) == {}
 
-    # Test 4: Device movement
-    # We use patch to verify the call because we might not have a GPU
     with patch("thinkrl.utils.datasets.to_device") as mock_to_device:
         mock_device = MagicMock()
         collate_batch(batch, device=mock_device)
         mock_to_device.assert_called()
 
-    # Test 5: Higher dim tensors (fallback to list/stack if not 1D padding logic)
     batch_2d = [{"img": torch.randn(3, 3)}, {"img": torch.randn(3, 3)}]
     collated_2d = collate_batch(batch_2d)
     assert collated_2d["img"].shape == (2, 3, 3)
     
-    # Test 6: Mismatch shape higher dim (should fallback to list)
     batch_mismatch = [{"img": torch.randn(3, 3)}, {"img": torch.randn(2, 2)}]
     collated_mismatch = collate_batch(batch_mismatch)
     assert isinstance(collated_mismatch["img"], list)
     assert len(collated_mismatch["img"]) == 2
 
-    # Test 7: Other types (strings)
     batch_str = [{"txt": "hello"}, {"txt": "world"}]
     collated_str = collate_batch(batch_str)
     assert collated_str["txt"] == ["hello", "world"]
@@ -193,21 +178,15 @@ def test_preprocess_text():
 
 def test_truncate_sequence():
     seq = [1, 2, 3, 4, 5]
-    
-    # No truncation
     assert truncate_sequence(seq, 10) == seq
-    
-    # Right truncation
     assert truncate_sequence(seq, 3, side="right") == [1, 2, 3]
-    
-    # Left truncation
     assert truncate_sequence(seq, 3, side="left") == [3, 4, 5]
 
 def test_create_labels_for_clm():
     input_ids = torch.tensor([1, 2, 3])
     labels = create_labels_for_clm(input_ids)
     assert torch.equal(labels, input_ids)
-    assert labels is not input_ids # Should be a clone
+    assert labels is not input_ids
 
 def test_mask_padding_in_loss():
     labels = torch.tensor([1, 2, 3, 0])
@@ -225,16 +204,13 @@ def test_split_batch():
         "labels": [1, 2, 3, 4]
     }
     
-    # Split into micro_batch_size=2
     micro_batches = split_batch(batch, 2)
     assert len(micro_batches) == 2
     assert torch.equal(micro_batches[0]["input_ids"], torch.tensor([[1, 1], [2, 2]]))
     assert micro_batches[1]["labels"] == [3, 4]
 
-    # Batch size 0 case (empty dict)
     assert split_batch({}, 2) == [{}]
 
-    # Batch size 0 case (dict with non-sequence items)
     batch_meta = {"meta": "data"}
     assert split_batch(batch_meta, 2) == [batch_meta]
 
@@ -250,19 +226,16 @@ def test_shuffle_batch():
     batch = {
         "a": torch.tensor([1, 2, 3]),
         "b": ["x", "y", "z"],
-        "c": "constant" # Should not be shuffled (or copied as is)
+        "c": "constant"
     }
     
-    # Seed for reproducibility
     torch.manual_seed(42)
     shuffled = shuffle_batch(batch)
     
-    # Check shapes/lengths preserved
     assert len(shuffled["a"]) == 3
     assert len(shuffled["b"]) == 3
     assert shuffled["c"] == "constant"
     
-    # Test empty/single item batch
     assert shuffle_batch({}) == {}
 
 def test_to_device_recursive():
@@ -274,7 +247,6 @@ def test_to_device_recursive():
         "list": [1, 2]
     }
     
-    # Use real tensors to verify recursion works with torch.Tensor check
     device = torch.device("cpu")
     moved = to_device(batch, device)
     
@@ -283,7 +255,6 @@ def test_to_device_recursive():
     assert moved["list"] == [1, 2]
 
 def test_prepare_batch_for_training():
-    # Just a wrapper around to_device
     with patch("thinkrl.utils.datasets.to_device") as mock_to:
         prepare_batch_for_training({}, "cpu")
         mock_to.assert_called_once()

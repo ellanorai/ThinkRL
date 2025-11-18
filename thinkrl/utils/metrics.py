@@ -2,15 +2,7 @@
 ThinkRL Metrics Utilities
 ==========================
 
-Comprehensive metrics computation for RLHF training including:
-- Reward computation and normalization
-- KL divergence calculation
-- Policy metrics (entropy, advantage, etc.)
-- Accuracy and evaluation metrics
-- Metric aggregation and tracking
-- Statistical utilities
-
-Author: Archit Sood @ EllanorAI
+Comprehensive metrics computation for RLHF training.
 """
 
 import logging
@@ -23,42 +15,33 @@ import torch.nn.functional as F
 import numpy as np
 import torch.utils.dlpack
 
-# Safe import for CuPy
+# Handle CuPy import failure gracefully (e.g., no GPU/CUDA)
 try:
     import cupy as cp
-    _CUPY_AVAILABLE = True
-except (ImportError, OSError):
-    cp = None
-    _CUPY_AVAILABLE = False
-
-# Optional dependencies
-try:
-    if _CUPY_AVAILABLE:
+    try:
         from cupyx.scipy import stats as cupy_stats
         _CUPY_SCIPY_AVAILABLE = True
-    else:
+    except ImportError:
         _CUPY_SCIPY_AVAILABLE = False
+    _CUPY_AVAILABLE = True
 except (ImportError, OSError):
+    # ImportError: Package not installed
+    # OSError: Shared library (libcuda.so) not found
+    cp = None
+    _CUPY_AVAILABLE = False
     _CUPY_SCIPY_AVAILABLE = False
 
 try:
     from scipy import stats as scipy_stats
     _SCIPY_AVAILABLE = True
-except (ImportError, OSError):
+except ImportError:
     _SCIPY_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 
-
 class MetricsTracker:
     """
     Track and aggregate metrics over training.
-
-    Features:
-    - Running average computation
-    - Metric history tracking
-    - Statistical summaries
-    - Batch and epoch aggregation
     """
 
     def __init__(self):
@@ -67,7 +50,9 @@ class MetricsTracker:
         self.current_values: Dict[str, float] = {}
 
     def update(self, name: str, value: Union[float, torch.Tensor], count: int = 1):
-        """Update a metric with a new value."""
+        """
+        Update a metric with a new value.
+        """
         # Convert tensor to float
         if isinstance(value, torch.Tensor):
             value = value.detach().cpu().item()
@@ -117,7 +102,6 @@ class MetricsTracker:
             return {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0}
 
         # OPTIMIZATION: Use NumPy here.
-        # 'history' is a list of CPU floats. Moving to GPU (CuPy) adds overhead.
         return {
             "mean": float(np.mean(history)),
             "std": float(np.std(history)),
@@ -137,7 +121,6 @@ class MetricsTracker:
             self.current_values.clear()
 
     def __repr__(self) -> str:
-        """String representation of tracker."""
         avg_metrics = self.get_average()
         return f"MetricsTracker({avg_metrics})"
 
@@ -251,6 +234,8 @@ def compute_accuracy(
 
     # Compute accuracy
     correct = (predictions == targets) & mask
+    if mask.sum() == 0:
+        return 0.0
     accuracy = correct.sum().float() / mask.sum().float()
 
     return accuracy.item()
@@ -260,9 +245,6 @@ def compute_perplexity(loss: Union[float, torch.Tensor]) -> float:
     """Compute perplexity from cross-entropy loss."""
     if isinstance(loss, torch.Tensor):
         loss = loss.item()
-
-    # OPTIMIZATION: Use NumPy here.
-    # Loss is a scalar. CuPy kernel launch overhead is wasteful for single floats.
     return float(np.exp(loss))
 
 
@@ -314,7 +296,7 @@ def aggregate_metrics(
 def compute_group_metrics(
     rewards: torch.Tensor, group_ids: torch.Tensor
 ) -> Dict[str, torch.Tensor]:
-    """Compute metrics per group (useful for GRPO)."""
+    """Compute metrics per group."""
     unique_groups = torch.unique(group_ids)
 
     group_means = []
@@ -328,11 +310,10 @@ def compute_group_metrics(
 
         group_means.append(group_rewards.mean())
         
-        # FIX: Handle groups with 1 element to avoid std() NaN/Warning
+        # Handle groups with 1 element
         if group_rewards.numel() > 1:
             group_stds.append(group_rewards.std())
         else:
-            # Standard deviation of a single item is 0
             group_stds.append(torch.tensor(0.0, device=rewards.device, dtype=rewards.dtype))
             
         group_maxs.append(group_rewards.max())
@@ -392,29 +373,24 @@ def compute_statistical_metrics(
     Compute comprehensive statistical metrics.
     Uses CuPy for GPU tensors/arrays and NumPy for CPU data to optimize performance.
     """
-    # OPTIMIZATION: Determine backend based on input location.
     use_cupy = False
     
     try:
+        # Check for CuPy availability and input type
         if _CUPY_AVAILABLE:
-            # Check for CuPy availability and input type
             if isinstance(values, torch.Tensor):
                 if values.is_cuda:
-                    # Zero-copy conversion for CUDA tensors -> GPU processing (FAST)
                     data = cp.from_dlpack(torch.utils.dlpack.to_dlpack(values))
                     use_cupy = True
                 else:
-                    # CPU tensor -> CPU processing
                     data = values.detach().numpy()
             elif isinstance(values, cp.ndarray):
-                # Already on GPU
                 data = values
                 use_cupy = True
             else:
-                # List or NumPy array -> CPU processing
                 data = np.array(values)
         else:
-            # CuPy not available, force CPU
+            # Fallback to NumPy if CuPy is not available
             if isinstance(values, torch.Tensor):
                 data = values.detach().cpu().numpy()
             else:
@@ -422,7 +398,6 @@ def compute_statistical_metrics(
 
         xp = cp if use_cupy else np
         
-        # Handle single element arrays
         if data.ndim == 0:
             data = xp.expand_dims(data, 0)
 
@@ -434,46 +409,32 @@ def compute_statistical_metrics(
             "median": float(xp.median(data)),
         }
 
-        # Add percentiles
         for percentile in [25, 75, 90, 95, 99]:
             metrics[f"p{percentile}"] = float(xp.percentile(data, percentile))
 
-        # Add distribution stats (skew/kurtosis)
         metrics["skewness"] = 0.0
         metrics["kurtosis"] = 0.0
 
         try:
             if use_cupy and _CUPY_SCIPY_AVAILABLE:
-                # Use CuPy-accelerated SciPy
                 skew = cupy_stats.skew(data, axis=None)
                 kurt = cupy_stats.kurtosis(data, axis=None)
-                
-                # Safely convert result to float, handling 0-dim arrays
                 if isinstance(skew, cp.ndarray): skew = skew.item()
                 if isinstance(kurt, cp.ndarray): kurt = kurt.item()
-                
                 metrics["skewness"] = float(skew)
                 metrics["kurtosis"] = float(kurt)
-
             elif not use_cupy and _SCIPY_AVAILABLE:
-                # Use standard SciPy
                 skew = scipy_stats.skew(data, axis=None)
                 kurt = scipy_stats.kurtosis(data, axis=None)
-                
                 metrics["skewness"] = float(skew)
                 metrics["kurtosis"] = float(kurt)
-                
         except Exception as e:
-            # Statistics computation errors shouldn't crash training
             logger.debug(f"Failed to compute skewness/kurtosis: {e}")
 
         return metrics
 
     except Exception as e:
-        # Fallback to robust NumPy implementation if anything fails (e.g. dlpack errors, missing compiler)
-        logger.warning(f"Statistical computation failed with selected backend: {e}. Falling back to pure NumPy.")
-        
-        # Force conversion to simple numpy array
+        logger.warning(f"Statistical computation failed: {e}. Falling back to pure NumPy.")
         if isinstance(values, torch.Tensor):
             data_np = values.detach().cpu().numpy()
         elif _CUPY_AVAILABLE and isinstance(values, cp.ndarray):
@@ -497,7 +458,6 @@ def compute_statistical_metrics(
         
         for percentile in [25, 75, 90, 95, 99]:
             metrics[f"p{percentile}"] = float(np.percentile(data_np, percentile))
-            
         metrics["skewness"] = 0.0
         metrics["kurtosis"] = 0.0
         
@@ -512,61 +472,36 @@ def compute_metrics(
     """Compute multiple metrics from model outputs."""
     metrics = {}
 
-    # Determine which metrics to compute
     if metric_names is None:
         metric_names = ["all"]
 
     compute_all = "all" in metric_names
 
-    # Accuracy
-    if (
-        (compute_all or "accuracy" in metric_names)
-        and "logits" in outputs
-        and targets is not None
-    ):
+    if (compute_all or "accuracy" in metric_names) and "logits" in outputs and targets is not None:
         metrics["accuracy"] = compute_accuracy(outputs["logits"], targets)
 
-    # Perplexity
     if (compute_all or "perplexity" in metric_names) and "loss" in outputs:
         metrics["perplexity"] = compute_perplexity(outputs["loss"])
 
-    # Entropy
     if (compute_all or "entropy" in metric_names) and "logits" in outputs:
         metrics["entropy"] = compute_policy_entropy(outputs["logits"]).item()
 
-    # Reward statistics
     if (compute_all or "reward_stats" in metric_names) and "rewards" in outputs:
         reward_stats = compute_statistical_metrics(outputs["rewards"])
         metrics.update({f"reward_{k}": v for k, v in reward_stats.items()})
 
-    # Value statistics
     if (compute_all or "value_stats" in metric_names) and "values" in outputs:
         value_stats = compute_statistical_metrics(outputs["values"])
         metrics.update({f"value_{k}": v for k, v in value_stats.items()})
 
-    # KL divergence
-    if (
-        (compute_all or "kl_div" in metric_names)
-        and "log_probs" in outputs
-        and "ref_log_probs" in outputs
-    ):
-        metrics["kl_div"] = compute_kl_divergence(
-            outputs["log_probs"], outputs["ref_log_probs"]
-        ).item()
+    if (compute_all or "kl_div" in metric_names) and "log_probs" in outputs and "ref_log_probs" in outputs:
+        metrics["kl_div"] = compute_kl_divergence(outputs["log_probs"], outputs["ref_log_probs"]).item()
 
-    # Clip fraction
     if (compute_all or "clip_fraction" in metric_names) and "ratio" in outputs:
         metrics["clip_fraction"] = compute_clip_fraction(outputs["ratio"])
 
-    # Explained variance
-    if (
-        (compute_all or "explained_variance" in metric_names)
-        and "values" in outputs
-        and "returns" in outputs
-    ):
-        metrics["explained_variance"] = compute_explained_variance(
-            outputs["values"], outputs["returns"]
-        )
+    if (compute_all or "explained_variance" in metric_names) and "values" in outputs and "returns" in outputs:
+        metrics["explained_variance"] = compute_explained_variance(outputs["values"], outputs["returns"])
 
     return metrics
 

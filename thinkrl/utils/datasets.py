@@ -9,9 +9,7 @@ import torch
 from typing import List, Dict, Any, Optional, Union
 
 class BatchEncoding(dict):
-    """
-    Holds the output of the tokenizer.
-    """
+    """Holds the output of the tokenizer."""
     def __init__(self, data: Dict[str, Any], encoding: Any = None, tensor_type: str = "pt"):
         super().__init__(data)
         self.encoding = encoding
@@ -29,9 +27,7 @@ def pad_sequences(
     padding_value: int = 0, 
     padding_side: str = "right"
 ) -> torch.Tensor:
-    """
-    Pad a list of sequences to the same length.
-    """
+    """Pad a list of sequences to the same length."""
     from torch.nn.utils.rnn import pad_sequence
     
     if not sequences:
@@ -46,22 +42,16 @@ def pad_sequences(
     return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
 
 def create_attention_mask(input_ids: torch.Tensor, padding_value: int = 0) -> torch.Tensor:
-    """
-    Create attention mask from input_ids.
-    """
+    """Create attention mask from input_ids."""
     return (input_ids != padding_value).long()
 
 def create_position_ids(attention_mask: torch.Tensor) -> torch.Tensor:
-    """
-    Create position IDs from attention mask.
-    """
+    """Create position IDs from attention mask."""
     # Cumulative sum to get positions, masked by attention_mask
     return torch.cumsum(attention_mask, dim=1) * attention_mask
 
 def create_causal_mask(seq_len: int, device: torch.device = None) -> torch.Tensor:
-    """
-    Create a causal (lower triangular) mask for auto-regressive attention.
-    """
+    """Create a causal (lower triangular) mask for auto-regressive attention."""
     mask = torch.tril(torch.ones((seq_len, seq_len), device=device))
     return mask.view(1, 1, seq_len, seq_len)
 
@@ -70,9 +60,7 @@ def collate_batch(
     tokenizer: Any = None, 
     device: torch.device = None
 ) -> Dict[str, torch.Tensor]:
-    """
-    Collate a list of samples into a batch.
-    """
+    """Collate a list of samples into a batch."""
     if not batch:
         return {}
     
@@ -94,7 +82,6 @@ def collate_batch(
                 collated[key] = torch.stack(items)
             else:
                 # Pad sequences
-                # Assuming 1D tensors for padding. If higher dim, might need different logic
                 if items[0].dim() == 1:
                      collated[key] = pad_sequences(items, padding_value=pad_token_id)
                 else:
@@ -120,18 +107,14 @@ def create_dataloader(
     collate_fn=None, 
     **kwargs
 ):
-    """
-    Create a PyTorch DataLoader.
-    """
+    """Create a PyTorch DataLoader."""
     from torch.utils.data import DataLoader
     if collate_fn is None:
         collate_fn = collate_batch
     return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn, **kwargs)
 
 def preprocess_text(text: str) -> str:
-    """
-    Basic text preprocessing.
-    """
+    """Basic text preprocessing."""
     if not isinstance(text, str):
         return str(text)
     return text.strip()
@@ -141,9 +124,7 @@ def truncate_sequence(
     max_length: int, 
     side: str = "right"
 ) -> Union[List, torch.Tensor]:
-    """
-    Truncate a sequence to max_length.
-    """
+    """Truncate a sequence to max_length."""
     if len(sequence) <= max_length:
         return sequence
     
@@ -153,9 +134,7 @@ def truncate_sequence(
         return sequence[-max_length:]
 
 def create_labels_for_clm(input_ids: torch.Tensor, ignore_index: int = -100) -> torch.Tensor:
-    """
-    Create labels for Causal Language Modeling (usually same as input_ids).
-    """
+    """Create labels for Causal Language Modeling (usually same as input_ids)."""
     return input_ids.clone()
 
 def mask_padding_in_loss(
@@ -163,17 +142,13 @@ def mask_padding_in_loss(
     attention_mask: torch.Tensor, 
     ignore_index: int = -100
 ) -> torch.Tensor:
-    """
-    Mask padding tokens in labels so they don't contribute to loss.
-    """
+    """Mask padding tokens in labels so they don't contribute to loss."""
     labels = labels.clone()
     labels[attention_mask == 0] = ignore_index
     return labels
 
 def split_batch(batch: Dict[str, Any], micro_batch_size: int) -> List[Dict[str, Any]]:
-    """
-    Split a large batch into smaller micro-batches.
-    """
+    """Split a large batch into smaller micro-batches."""
     # Find batch size from first tensor item
     batch_size = 0
     for v in batch.values():
@@ -197,15 +172,11 @@ def split_batch(batch: Dict[str, Any], micro_batch_size: int) -> List[Dict[str, 
     return micro_batches
 
 def compute_sequence_lengths(attention_mask: torch.Tensor) -> torch.Tensor:
-    """
-    Compute sequence lengths from attention mask.
-    """
+    """Compute sequence lengths from attention mask."""
     return attention_mask.sum(dim=1)
 
 def shuffle_batch(batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
-    """
-    Shuffle items within a batch.
-    """
+    """Shuffle items within a batch."""
     # Find batch size
     batch_size = 0
     for v in batch.values():
@@ -228,9 +199,7 @@ def shuffle_batch(batch: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
     return shuffled
 
 def to_device(batch: Dict[str, Any], device: Union[str, torch.device]) -> Dict[str, Any]:
-    """
-    Move all tensors in batch to device.
-    """
+    """Move all tensors in batch to device."""
     new_batch = {}
     for k, v in batch.items():
         if isinstance(v, torch.Tensor):
@@ -242,7 +211,5 @@ def to_device(batch: Dict[str, Any], device: Union[str, torch.device]) -> Dict[s
     return new_batch
 
 def prepare_batch_for_training(batch: Dict[str, Any], device: Union[str, torch.device]) -> Dict[str, Any]:
-    """
-    Prepare batch for training (move to device, etc.).
-    """
+    """Prepare batch for training (move to device, etc.)."""
     return to_device(batch, device)
