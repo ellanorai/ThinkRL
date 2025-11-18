@@ -15,7 +15,15 @@ import logging
 from typing import Any, Callable, Dict, List, Optional, Union
 import torch
 from torch.utils.data import Dataset
-from datasets import load_dataset
+
+# --- Fix: Make datasets optional ---
+try:
+    from datasets import load_dataset
+    _DATASETS_AVAILABLE = True
+except ImportError:
+    load_dataset = None
+    _DATASETS_AVAILABLE = False
+# -----------------------------------
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +44,13 @@ class BaseRLHFDataset(Dataset):
         self.preprocess_fn = preprocess_fn
         
         if dataset_name_or_path:
+            # Check availability before usage
+            if not _DATASETS_AVAILABLE:
+                raise ImportError(
+                    "The 'datasets' library is required to load datasets from path/name. "
+                    "Please install it via `pip install datasets` or `pip install thinkrl[sota]`."
+                )
+            
             # Load dataset
             if isinstance(dataset_name_or_path, str):
                 if dataset_name_or_path.endswith((".json", ".jsonl")):
@@ -48,7 +63,6 @@ class BaseRLHFDataset(Dataset):
             self.dataset = []
 
     def __len__(self) -> int:
-        # Assuming self.data holds the processed list if populated in subclasses
         if hasattr(self, 'data') and self.data:
              return len(self.data)
         return len(self.dataset)
