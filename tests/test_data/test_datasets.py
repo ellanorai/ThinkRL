@@ -16,6 +16,13 @@ import os
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
+# Check availability for skip logic
+try:
+    import datasets
+    _DATASETS_AVAILABLE = True
+except ImportError:
+    _DATASETS_AVAILABLE = False
+
 from thinkrl.data.datasets import RLHFDataset, PreferenceDataset
 
 # Mock Tokenizer
@@ -93,6 +100,7 @@ def temp_jsonl_file():
             except PermissionError:
                 pass # Ignore if still locked on Windows in edge cases
 
+@pytest.mark.skipif(not _DATASETS_AVAILABLE, reason="datasets library not installed")
 class TestRLHFDataset:
     """Tests for the RLHFDataset class."""
 
@@ -181,7 +189,7 @@ class TestRLHFDataset:
         with pytest.raises(IndexError):
             _ = dataset[-5]
 
-
+@pytest.mark.skipif(not _DATASETS_AVAILABLE, reason="datasets library not installed")
 class TestPreferenceDataset:
     """Tests for the PreferenceDataset class."""
 
