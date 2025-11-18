@@ -25,3 +25,5 @@ thinkrl.egg-info/top_level.txt
 .coverage
 
 scripts\*.exe
+build/
+thinkrl.egg-info/not-zip-safe

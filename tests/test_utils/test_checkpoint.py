@@ -13,12 +13,10 @@ Author: Archit Sood
 """
 
 import pytest
-import torch
 import torch.nn as nn
 import torch.optim as optim
 import tempfile
 import shutil
-import json
 from pathlib import Path
 
 from thinkrl.utils.checkpoint import (
