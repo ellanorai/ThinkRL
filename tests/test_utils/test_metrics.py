@@ -24,8 +24,14 @@ Author: Archit Sood
 
 import pytest
 import torch
-# REPLACED: replaced numpy with cupy for GPU acceleration.
-import cupy as cp
+import numpy as np
+
+try:
+    import cupy as cp
+    _CUPY_AVAILABLE = True
+except (ImportError, OSError):
+    cp = None
+    _CUPY_AVAILABLE = False
 
 # Modules under test
 from thinkrl.utils.metrics import (
@@ -227,13 +233,11 @@ class TestMetrics:
         ppl = compute_perplexity(loss)
 
         assert ppl > 0
-        # UPDATED: Using cupy for verification
-        assert float(cp.abs(ppl - cp.exp(2.5))) < 1e-6
+        assert np.abs(ppl - np.exp(2.5)) < 1e-6
 
         loss_tensor = torch.tensor(1.5)
         ppl_tensor = compute_perplexity(loss_tensor)
-        # UPDATED: Using cupy for verification
-        assert float(cp.abs(ppl_tensor - cp.exp(1.5))) < 1e-6
+        assert np.abs(ppl_tensor - np.exp(1.5)) < 1e-6
 
     def test_compute_clip_fraction(self):
         """Test clip fraction computation."""
@@ -283,8 +287,9 @@ class TestMetrics:
 
     def test_compute_statistical_metrics(self):
         """Test statistical metrics computation."""
-        # UPDATED: Using cupy array for test data
-        values = cp.arange(1, 101, dtype=cp.float32) # 1 to 100
+        
+        # Case 1: CPU/NumPy test (always runs)
+        values = torch.arange(1, 101, dtype=torch.float32) # 1 to 100
         stats = compute_statistical_metrics(values)
 
         assert "mean" in stats
@@ -303,6 +308,15 @@ class TestMetrics:
         assert stats["p25"] == pytest.approx(25.75)
         assert stats["p75"] == pytest.approx(75.25)
         
+        # Case 2: GPU/CuPy test (only if available)
+        if _CUPY_AVAILABLE:
+            values_gpu = cp.arange(1, 101, dtype=cp.float32)
+            stats_gpu = compute_statistical_metrics(values_gpu)
+            
+            assert stats_gpu["mean"] == pytest.approx(50.5)
+            assert stats_gpu["min"] == 1.0
+            assert stats_gpu["max"] == 100.0
+
         # Test scipy metrics if available
         if "skewness" in stats:
             assert stats["skewness"] == pytest.approx(0.0)
@@ -384,8 +398,8 @@ class TestMetrics:
         assert "clip_fraction" in metrics
         assert "explained_variance" in metrics
         
-        # UPDATED: Using cupy for verification
-        assert metrics["perplexity"] == pytest.approx(float(cp.exp(1.2)))
+        # Use numpy for verification
+        assert metrics["perplexity"] == pytest.approx(float(np.exp(1.2)))
         
         # Test with specific metrics
         metrics_subset = compute_metrics(

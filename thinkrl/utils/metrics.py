@@ -21,22 +21,30 @@ import warnings
 import torch
 import torch.nn.functional as F
 import numpy as np
-import cupy as cp
 import torch.utils.dlpack
+
+# Safe import for CuPy
+try:
+    import cupy as cp
+    _CUPY_AVAILABLE = True
+except (ImportError, OSError):
+    cp = None
+    _CUPY_AVAILABLE = False
 
 # Optional dependencies
 try:
-    from cupyx.scipy import stats as cupy_stats
-    _CUPY_SCIPY_AVAILABLE = True
-except ImportError:
+    if _CUPY_AVAILABLE:
+        from cupyx.scipy import stats as cupy_stats
+        _CUPY_SCIPY_AVAILABLE = True
+    else:
+        _CUPY_SCIPY_AVAILABLE = False
+except (ImportError, OSError):
     _CUPY_SCIPY_AVAILABLE = False
-    # Only warn if we are actually trying to use it, to reduce noise
-    pass
 
 try:
     from scipy import stats as scipy_stats
     _SCIPY_AVAILABLE = True
-except ImportError:
+except (ImportError, OSError):
     _SCIPY_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
@@ -51,24 +59,6 @@ class MetricsTracker:
     - Metric history tracking
     - Statistical summaries
     - Batch and epoch aggregation
-
-    Example:
-        ```python
-        tracker = MetricsTracker()
-
-        # Add metrics
-        tracker.update("loss", 0.5)
-        tracker.update("accuracy", 0.95)
-
-        # Get current values
-        print(tracker.get_current())
-
-        # Get averages
-        print(tracker.get_average())
-
-        # Reset for new epoch
-        tracker.reset()
-        ```
     """
 
     def __init__(self):
@@ -77,14 +67,7 @@ class MetricsTracker:
         self.current_values: Dict[str, float] = {}
 
     def update(self, name: str, value: Union[float, torch.Tensor], count: int = 1):
-        """
-        Update a metric with a new value.
-
-        Args:
-            name: Metric name
-            value: Metric value (scalar or tensor)
-            count: Number of samples (for weighted averaging)
-        """
+        """Update a metric with a new value."""
         # Convert tensor to float
         if isinstance(value, torch.Tensor):
             value = value.detach().cpu().item()
@@ -94,39 +77,18 @@ class MetricsTracker:
         self.current_values[name] = value
 
     def update_dict(self, metrics: Dict[str, Union[float, torch.Tensor]]):
-        """
-        Update multiple metrics at once.
-
-        Args:
-            metrics: Dictionary of metric names to values
-        """
+        """Update multiple metrics at once."""
         for name, value in metrics.items():
             self.update(name, value)
 
     def get_current(self, name: Optional[str] = None) -> Union[float, Dict[str, float]]:
-        """
-        Get current (most recent) metric value(s).
-
-        Args:
-            name: Metric name (if None, returns all metrics)
-
-        Returns:
-            Current metric value or dictionary of all current values
-        """
+        """Get current (most recent) metric value(s)."""
         if name is not None:
             return self.current_values.get(name, 0.0)
         return self.current_values.copy()
 
     def get_average(self, name: Optional[str] = None) -> Union[float, Dict[str, float]]:
-        """
-        Get average metric value(s) over all updates.
-
-        Args:
-            name: Metric name (if None, returns all metrics)
-
-        Returns:
-            Average metric value or dictionary of all averages
-        """
+        """Get average metric value(s) over all updates."""
         if name is not None:
             if name not in self.metrics or not self.metrics[name]:
                 return 0.0
@@ -143,29 +105,13 @@ class MetricsTracker:
         }
 
     def get_history(self, name: str) -> List[float]:
-        """
-        Get full history of a metric.
-
-        Args:
-            name: Metric name
-
-        Returns:
-            List of metric values
-        """
+        """Get full history of a metric."""
         if name not in self.metrics:
             return []
         return [value for value, _ in self.metrics[name]]
 
     def get_summary(self, name: str) -> Dict[str, float]:
-        """
-        Get statistical summary of a metric.
-
-        Args:
-            name: Metric name
-
-        Returns:
-            Dictionary with mean, std, min, max
-        """
+        """Get statistical summary of a metric."""
         history = self.get_history(name)
         if not history:
             return {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0}
@@ -180,12 +126,7 @@ class MetricsTracker:
         }
 
     def reset(self, name: Optional[str] = None):
-        """
-        Reset tracked metrics.
-
-        Args:
-            name: Metric name to reset (if None, resets all)
-        """
+        """Reset tracked metrics."""
         if name is not None:
             if name in self.metrics:
                 self.metrics[name].clear()
@@ -204,17 +145,7 @@ class MetricsTracker:
 def compute_reward(
     rewards: torch.Tensor, normalize: bool = True, epsilon: float = 1e-8
 ) -> torch.Tensor:
-    """
-    Compute and optionally normalize rewards.
-
-    Args:
-        rewards: Reward tensor of shape (batch_size,) or (batch_size, seq_len)
-        normalize: Whether to normalize rewards (zero mean, unit variance)
-        epsilon: Small constant for numerical stability
-
-    Returns:
-        Processed reward tensor
-    """
+    """Compute and optionally normalize rewards."""
     if normalize:
         mean = rewards.mean()
         std = rewards.std() + epsilon
@@ -226,19 +157,7 @@ def compute_reward(
 def compute_kl_divergence(
     log_probs_policy: torch.Tensor, log_probs_ref: torch.Tensor, reduction: str = "mean"
 ) -> torch.Tensor:
-    """
-    Compute KL divergence between policy and reference distributions.
-
-    KL(policy || ref) = E[log(policy) - log(ref)]
-
-    Args:
-        log_probs_policy: Log probabilities from policy model
-        log_probs_ref: Log probabilities from reference model
-        reduction: How to reduce the KL divergence ("mean", "sum", "none")
-
-    Returns:
-        KL divergence tensor
-    """
+    """Compute KL divergence between policy and reference distributions."""
     kl_div = log_probs_policy - log_probs_ref
 
     if reduction == "mean":
@@ -258,22 +177,7 @@ def compute_advantages(
     lambda_: float = 0.95,
     normalize: bool = True,
 ) -> torch.Tensor:
-    """
-    Compute Generalized Advantage Estimation (GAE).
-
-    GAE(λ) = Σ(γλ)^t δ_t
-    where δ_t = r_t + γV(s_{t+1}) - V(s_t)
-
-    Args:
-        rewards: Rewards tensor of shape (batch_size, seq_len)
-        values: Value estimates of shape (batch_size, seq_len)
-        gamma: Discount factor
-        lambda_: GAE lambda parameter
-        normalize: Whether to normalize advantages
-
-    Returns:
-        Advantage tensor of shape (batch_size, seq_len)
-    """
+    """Compute Generalized Advantage Estimation (GAE)."""
     batch_size, seq_len = rewards.shape
     advantages = torch.zeros_like(rewards)
 
@@ -299,19 +203,7 @@ def compute_advantages(
 def compute_returns(
     rewards: torch.Tensor, gamma: float = 0.99, normalize: bool = False
 ) -> torch.Tensor:
-    """
-    Compute discounted returns.
-
-    G_t = Σ(γ^k * r_{t+k}) for k = 0 to T-t
-
-    Args:
-        rewards: Rewards tensor of shape (batch_size, seq_len)
-        gamma: Discount factor
-        normalize: Whether to normalize returns
-
-    Returns:
-        Returns tensor of shape (batch_size, seq_len)
-    """
+    """Compute discounted returns."""
     batch_size, seq_len = rewards.shape
     returns = torch.zeros_like(rewards)
 
@@ -331,18 +223,7 @@ def compute_returns(
 def compute_policy_entropy(
     logits: torch.Tensor, reduction: str = "mean"
 ) -> torch.Tensor:
-    """
-    Compute entropy of policy distribution.
-
-    H(π) = -Σ π(a|s) log π(a|s)
-
-    Args:
-        logits: Logits tensor of shape (batch_size, seq_len, vocab_size)
-        reduction: How to reduce entropy ("mean", "sum", "none")
-
-    Returns:
-        Entropy tensor
-    """
+    """Compute entropy of policy distribution."""
     probs = F.softmax(logits, dim=-1)
     log_probs = F.log_softmax(logits, dim=-1)
     entropy = -(probs * log_probs).sum(dim=-1)
@@ -360,17 +241,7 @@ def compute_policy_entropy(
 def compute_accuracy(
     predictions: torch.Tensor, targets: torch.Tensor, ignore_index: int = -100
 ) -> float:
-    """
-    Compute accuracy of predictions.
-
-    Args:
-        predictions: Predicted labels of shape (batch_size, seq_len) or logits
-        targets: Target labels of shape (batch_size, seq_len)
-        ignore_index: Index to ignore in accuracy computation
-
-    Returns:
-        Accuracy as a float between 0 and 1
-    """
+    """Compute accuracy of predictions."""
     # If predictions are logits, get argmax
     if predictions.dim() > targets.dim():
         predictions = predictions.argmax(dim=-1)
@@ -386,17 +257,7 @@ def compute_accuracy(
 
 
 def compute_perplexity(loss: Union[float, torch.Tensor]) -> float:
-    """
-    Compute perplexity from cross-entropy loss.
-
-    Perplexity = exp(loss)
-
-    Args:
-        loss: Cross-entropy loss value
-
-    Returns:
-        Perplexity value
-    """
+    """Compute perplexity from cross-entropy loss."""
     if isinstance(loss, torch.Tensor):
         loss = loss.item()
 
@@ -406,18 +267,7 @@ def compute_perplexity(loss: Union[float, torch.Tensor]) -> float:
 
 
 def compute_clip_fraction(ratio: torch.Tensor, epsilon: float = 0.2) -> float:
-    """
-    Compute fraction of ratios that were clipped in PPO.
-
-    This is useful for monitoring if clipping is too aggressive.
-
-    Args:
-        ratio: Probability ratio r_t(θ) = π_θ(a|s) / π_θ_old(a|s)
-        epsilon: Clipping threshold
-
-    Returns:
-        Fraction of ratios that were clipped
-    """
+    """Compute fraction of ratios that were clipped in PPO."""
     clipped = ((ratio < 1 - epsilon) | (ratio > 1 + epsilon)).float()
     return clipped.mean().item()
 
@@ -425,20 +275,7 @@ def compute_clip_fraction(ratio: torch.Tensor, epsilon: float = 0.2) -> float:
 def compute_explained_variance(
     predictions: torch.Tensor, targets: torch.Tensor
 ) -> float:
-    """
-    Compute explained variance for value function.
-
-    EV = 1 - Var(y - ŷ) / Var(y)
-
-    A value close to 1 indicates the value function is doing a good job.
-
-    Args:
-        predictions: Predicted values
-        targets: Target values (e.g., returns)
-
-    Returns:
-        Explained variance between -inf and 1
-    """
+    """Compute explained variance for value function."""
     var_y = targets.var()
     if var_y == 0:
         return 0.0
@@ -449,16 +286,7 @@ def compute_explained_variance(
 def aggregate_metrics(
     metrics_list: List[Dict[str, float]], weights: Optional[List[float]] = None
 ) -> Dict[str, float]:
-    """
-    Aggregate metrics from multiple batches or processes.
-
-    Args:
-        metrics_list: List of metric dictionaries
-        weights: Optional weights for weighted averaging
-
-    Returns:
-        Dictionary of aggregated metrics
-    """
+    """Aggregate metrics from multiple batches or processes."""
     if not metrics_list:
         return {}
 
@@ -486,16 +314,7 @@ def aggregate_metrics(
 def compute_group_metrics(
     rewards: torch.Tensor, group_ids: torch.Tensor
 ) -> Dict[str, torch.Tensor]:
-    """
-    Compute metrics per group (useful for GRPO - Group Relative Policy Optimization).
-
-    Args:
-        rewards: Reward tensor of shape (batch_size,)
-        group_ids: Group IDs tensor of shape (batch_size,)
-
-    Returns:
-        Dictionary with group-wise statistics
-    """
+    """Compute metrics per group (useful for GRPO)."""
     unique_groups = torch.unique(group_ids)
 
     group_means = []
@@ -530,17 +349,7 @@ def compute_group_metrics(
 def compute_ranking_metrics(
     scores: torch.Tensor, labels: torch.Tensor, k: int = 10
 ) -> Dict[str, float]:
-    """
-    Compute ranking metrics (useful for preference learning).
-
-    Args:
-        scores: Predicted scores of shape (n_samples,)
-        labels: True preference labels (1 for preferred, 0 otherwise)
-        k: Top-k for precision@k and recall@k
-
-    Returns:
-        Dictionary with ranking metrics
-    """
+    """Compute ranking metrics (useful for preference learning)."""
     # Sort by scores
     sorted_indices = torch.argsort(scores, descending=True)
     sorted_labels = labels[sorted_indices]
@@ -577,33 +386,39 @@ def compute_ranking_metrics(
 
 
 def compute_statistical_metrics(
-    values: Union[torch.Tensor, cp.ndarray, np.ndarray, List[float]]
+    values: Union[torch.Tensor, Any, np.ndarray, List[float]]
 ) -> Dict[str, float]:
     """
     Compute comprehensive statistical metrics.
     Uses CuPy for GPU tensors/arrays and NumPy for CPU data to optimize performance.
     """
     # OPTIMIZATION: Determine backend based on input location.
-    # This avoids unnecessary CPU<->GPU transfers.
     use_cupy = False
     
     try:
-        # Check for CuPy availability and input type
-        if isinstance(values, torch.Tensor):
-            if values.is_cuda:
-                # Zero-copy conversion for CUDA tensors -> GPU processing (FAST)
-                data = cp.from_dlpack(torch.utils.dlpack.to_dlpack(values))
+        if _CUPY_AVAILABLE:
+            # Check for CuPy availability and input type
+            if isinstance(values, torch.Tensor):
+                if values.is_cuda:
+                    # Zero-copy conversion for CUDA tensors -> GPU processing (FAST)
+                    data = cp.from_dlpack(torch.utils.dlpack.to_dlpack(values))
+                    use_cupy = True
+                else:
+                    # CPU tensor -> CPU processing
+                    data = values.detach().numpy()
+            elif isinstance(values, cp.ndarray):
+                # Already on GPU
+                data = values
                 use_cupy = True
             else:
-                # CPU tensor -> CPU processing
-                data = values.detach().numpy()
-        elif isinstance(values, cp.ndarray):
-            # Already on GPU
-            data = values
-            use_cupy = True
+                # List or NumPy array -> CPU processing
+                data = np.array(values)
         else:
-            # List or NumPy array -> CPU processing
-            data = np.array(values)
+            # CuPy not available, force CPU
+            if isinstance(values, torch.Tensor):
+                data = values.detach().cpu().numpy()
+            else:
+                data = np.array(values)
 
         xp = cp if use_cupy else np
         
@@ -661,11 +476,10 @@ def compute_statistical_metrics(
         # Force conversion to simple numpy array
         if isinstance(values, torch.Tensor):
             data_np = values.detach().cpu().numpy()
-        elif isinstance(values, cp.ndarray):
+        elif _CUPY_AVAILABLE and isinstance(values, cp.ndarray):
             try:
                 data_np = values.get()
             except Exception:
-                # If .get() fails (rare), try numpy conversion directly
                 data_np = np.array(values.tolist())
         else:
             data_np = np.array(values)
@@ -695,20 +509,7 @@ def compute_metrics(
     targets: Optional[torch.Tensor] = None,
     metric_names: Optional[List[str]] = None,
 ) -> Dict[str, float]:
-    """
-    Compute multiple metrics from model outputs.
-
-    This is a convenience function that computes various metrics based on
-    what's available in the outputs dictionary.
-
-    Args:
-        outputs: Dictionary of model outputs (logits, values, rewards, etc.)
-        targets: Optional target labels
-        metric_names: List of metric names to compute (if None, computes all)
-
-    Returns:
-        Dictionary of computed metrics
-    """
+    """Compute multiple metrics from model outputs."""
     metrics = {}
 
     # Determine which metrics to compute

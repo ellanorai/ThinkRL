@@ -7,8 +7,6 @@ Helper functions for data processing, padding, masking, and batch preparation.
 
 import torch
 from typing import List, Dict, Any, Optional, Union
-# REPLACED: import numpy as np
-import cupy as cp
 
 class BatchEncoding(dict):
     """
