@@ -1,0 +1,47 @@
+# .github/workflows/tests_core.yml
+name: Tests (Core Dependencies Only)
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  tests_minimal:
+    name: Core Deps Only
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Create virtual environment
+        run: |
+          uv venv
+          uv pip install --upgrade setuptools wheel
+
+      - name: Install Core Dependencies
+        run: |
+          source .venv/bin/activate
+          # Installs ONLY core requirements + test tools. 
+          # Does NOT install [complete], [sota], or [distributed].
+          uv pip install ".[dev]" 
+
+      - name: Run Tests
+        run: |
+          source .venv/bin/activate
+          # This will fail if your core code imports optional libs (like wandb) 
+          # without checking if they are installed first.
+          make test

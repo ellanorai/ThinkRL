@@ -1,0 +1,60 @@
+# .github/workflows/tests_latest.yml
+name: Tests main with latest dependencies
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # Runs daily at midnight UTC
+  workflow_dispatch:       # Allows manual triggering
+
+env:
+  TQDM_DISABLE: 1
+  # CI_SLACK_CHANNEL: ${{ secrets.CI_PUSH_MAIN_CHANNEL }} # Uncomment if you configure Slack notifications
+
+jobs:
+  tests:
+    name: Tests main with latest dependencies
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - name: Git checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Make and Git
+        run: |
+          sudo apt-get update && sudo apt-get install -y make git curl
+
+      - name: Install uv
+        run: |
+          curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Create Python virtual environment
+        run: |
+          uv venv
+          uv pip install --upgrade setuptools wheel
+
+      - name: Install dependencies (Upstream Main)
+        run: |
+          source .venv/bin/activate
+          # Install thinkrl with dev dependencies
+          uv pip install ".[dev]"
+          
+          # Force install the latest development versions of key libraries
+          # This catches breaking changes in dependencies before they hit your users
+          uv pip install -U git+https://github.com/huggingface/accelerate.git
+          uv pip install -U git+https://github.com/huggingface/datasets.git
+          uv pip install -U git+https://github.com/huggingface/transformers.git
+          uv pip install -U git+https://github.com/huggingface/peft.git
+
+      - name: Test with pytest
+        run: |
+          source .venv/bin/activate
+          make test
+
+      # Optional: Add Slack notification here if you have the secrets configured
