@@ -38,7 +38,7 @@ ThinkRL will emerge as an open-source, modular platform for large-scale RLHF and
 
 ### 🌐 Model Compatibility
 - **GPT**: Autoregressive GPT-style models.
-- **LLaMA**: LLaMA, LLaMA-2, and Code Llama variants.
+- **LLaMA**: LLaMA-3 & 4, and Code Llama variants.
 - **Qwen**: Qwen-2.5 and future iterations.
 - **T5/BART**: Encoder-decoder architectures.
 - **Multimodal**: Vision-language models like CLIP and BLIP.

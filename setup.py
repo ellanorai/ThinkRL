@@ -23,7 +23,6 @@ def read_version():
     """Read version from thinkrl/__init__.py."""
     try:
         # Assuming thinkrl/__init__.py exists and contains __version__
-        # This part might need adjustment based on actual project structure
         version_file = os.path.join("thinkrl", "__init__.py")
         if os.path.exists(version_file):
              with open(version_file, "r", encoding="utf-8") as f:
@@ -32,7 +31,6 @@ def read_version():
                         return line.split("=")[1].strip().strip('"').strip("'")
         else:
              # Fallback if thinkrl/__init__.py doesn't exist yet
-             # Reading from tests/__init__.py as a temporary measure
              with open("tests/__init__.py", "r", encoding="utf-8") as f:
                 for line in f:
                     if line.startswith("__version__"):
@@ -125,8 +123,7 @@ REASONING_REQUIREMENTS = {
         "sympy>=1.12.0", # From requirements.txt
         "scipy>=1.10.0", # Already in core, but listed here for clarity
     ],
-     # Code reasoning requirements from original setup.py, not explicitly in requirements.txt
-     # but might be relevant to the project's scope
+     # Code reasoning requirements from original setup.py
     "code": [
         "tree-sitter>=0.20.0",
         "tree-sitter-python>=0.20.0",
@@ -209,7 +206,6 @@ EVAL_REQUIREMENTS = {
         "bert-score>=0.3.13", # From requirements.txt
         "nltk>=3.8.0", # Added from requirements.txt
         "scikit-learn>=1.3.0", # Added from requirements.txt
-        # 'bleurt>=0.0.2', # Present in original, not in requirements.txt
     ],
     "benchmarks": [ # Kept from original, potentially relevant
         "lm-eval>=0.4.0",
@@ -217,17 +213,27 @@ EVAL_REQUIREMENTS = {
     ],
 }
 
+# Inference and Serving (New for RLAIF/vLLM)
+INFERENCE_REQUIREMENTS = {
+    "inference": [
+        "vllm>=0.2.0",  # High-throughput inference for RLAIF gen
+        "ray",          # Distributed inference support
+    ],
+}
 
-# Convenience bundles - UPDATED
+
+# Convenience bundles
 CONVENIENCE_BUNDLES = {
     # State-of-the-art algorithms with GPU support
+    # Includes inference for RLAIF generation
     "sota": list(set(
         # CORE_REQUIREMENTS + # Core should be installed by default
         GPU_REQUIREMENTS["cuda"] +
         FRAMEWORK_REQUIREMENTS["transformers"] +
         FRAMEWORK_REQUIREMENTS["peft"] +
         REASONING_REQUIREMENTS["reasoning"] +
-        REASONING_REQUIREMENTS["math"]
+        REASONING_REQUIREMENTS["math"] +
+        INFERENCE_REQUIREMENTS["inference"]
     )),
 
     # Distributed training setup
@@ -258,7 +264,8 @@ CONVENIENCE_BUNDLES = {
         FRAMEWORK_REQUIREMENTS["transformers"] +
         FRAMEWORK_REQUIREMENTS["deepspeed"] +
         LOGGING_REQUIREMENTS["tensorboard"] +
-        UTILITIES_REQUIREMENTS["api"]
+        UTILITIES_REQUIREMENTS["api"] +
+        INFERENCE_REQUIREMENTS["inference"]
     )),
 
     # Complete development environment - includes almost everything from requirements.txt
@@ -271,10 +278,10 @@ CONVENIENCE_BUNDLES = {
         MODALITY_REQUIREMENTS["multimodal"] +
         REASONING_REQUIREMENTS["reasoning"] +
         REASONING_REQUIREMENTS["math"] +
-        REASONING_REQUIREMENTS["code"] + # Kept code reasoning
+        REASONING_REQUIREMENTS["code"] + 
         LOGGING_REQUIREMENTS["wandb"] +
         LOGGING_REQUIREMENTS["tensorboard"] +
-        LOGGING_REQUIREMENTS["mlflow"] + # Kept mlflow
+        LOGGING_REQUIREMENTS["mlflow"] + 
         UTILITIES_REQUIREMENTS["data_processing"] +
         UTILITIES_REQUIREMENTS["general_utils"] +
         UTILITIES_REQUIREMENTS["serialization"] +
@@ -282,20 +289,20 @@ CONVENIENCE_BUNDLES = {
         DEV_REQUIREMENTS["dev"] +
         DEV_REQUIREMENTS["format"] +
         DEV_REQUIREMENTS["quality"] +
-        # DEV_REQUIREMENTS["docs"] + # Docs usually not needed for runtime
         EVAL_REQUIREMENTS["eval"] +
-        EVAL_REQUIREMENTS["benchmarks"] # Kept benchmarks
+        EVAL_REQUIREMENTS["benchmarks"] +
+        INFERENCE_REQUIREMENTS["inference"] # Added vLLM support
     )),
 
-    # 'all' extra - made identical to 'complete' for simplicity, or could include docs too
+    # 'all' extra - made identical to 'complete' but includes legacy/compat versions
     "all": list(set(
         CORE_REQUIREMENTS +
         GPU_REQUIREMENTS["cuda"] +
-        GPU_REQUIREMENTS["cuda11"] + # Include cuda11 for 'all'
+        GPU_REQUIREMENTS["cuda11"] + 
         FRAMEWORK_REQUIREMENTS["transformers"] +
         FRAMEWORK_REQUIREMENTS["peft"] +
         FRAMEWORK_REQUIREMENTS["deepspeed"] +
-        FRAMEWORK_REQUIREMENTS["fsdp"] + # Include fsdp for 'all'
+        FRAMEWORK_REQUIREMENTS["fsdp"] + 
         MODALITY_REQUIREMENTS["multimodal"] +
         REASONING_REQUIREMENTS["reasoning"] +
         REASONING_REQUIREMENTS["math"] +
@@ -310,13 +317,14 @@ CONVENIENCE_BUNDLES = {
         DEV_REQUIREMENTS["dev"] +
         DEV_REQUIREMENTS["format"] +
         DEV_REQUIREMENTS["quality"] +
-        DEV_REQUIREMENTS["docs"] + # Include docs for 'all'
+        DEV_REQUIREMENTS["docs"] + 
         EVAL_REQUIREMENTS["eval"] +
-        EVAL_REQUIREMENTS["benchmarks"]
+        EVAL_REQUIREMENTS["benchmarks"] +
+        INFERENCE_REQUIREMENTS["inference"]
     )),
 }
 
-# Combine all extras - UPDATED
+# Combine all extras
 EXTRAS_REQUIRE = {
     **GPU_REQUIREMENTS,
     **FRAMEWORK_REQUIREMENTS,
@@ -326,12 +334,11 @@ EXTRAS_REQUIRE = {
     **UTILITIES_REQUIREMENTS,
     **DEV_REQUIREMENTS,
     **EVAL_REQUIREMENTS,
+    **INFERENCE_REQUIREMENTS,
     **CONVENIENCE_BUNDLES,
 }
 
-# --- Rest of the setup.py remains mostly the same ---
-
-# Console scripts for CLI tools (kept from original)
+# Console scripts for CLI tools
 CONSOLE_SCRIPTS = {
     # Core training commands
     "thinkrl": "thinkrl.scripts.train:main",
@@ -349,13 +356,16 @@ CONSOLE_SCRIPTS = {
     # Specialized training
     "thinkrl-multimodal": "thinkrl.scripts.multimodal_train:main",
     "thinkrl-distributed": "thinkrl.scripts.distributed_train:main",
+    
+    # RLAIF generation
+    "thinkrl-rlaif": "thinkrl.scripts.generate_rlaif_data:main",
 
     # Utilities
     "thinkrl-convert": "thinkrl.scripts.convert:main",
     "thinkrl-benchmark": "thinkrl.scripts.benchmark:main",
 }
 
-# Project classifiers (kept from original)
+# Project classifiers
 CLASSIFIERS = [
     # Development status
     "Development Status :: 4 - Beta",
@@ -375,7 +385,6 @@ CLASSIFIERS = [
     "Operating System :: Microsoft :: Windows",
 
     # Python versions
-
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
@@ -398,13 +407,15 @@ CLASSIFIERS = [
     "Environment :: GPU :: NVIDIA CUDA",
 ]
 
-# Keywords for PyPI search (kept from original)
+# Keywords for PyPI search
 KEYWORDS = [
     "machine-learning",
     "deep-learning",
     "reinforcement-learning",
     "rlhf",
+    "rlaif", # Added
     "human-feedback",
+    "ai-feedback", # Added
     "transformers",
     "large-language-models",
     "llm",
@@ -414,7 +425,9 @@ KEYWORDS = [
     "ppo",
     "dapo",
     "grpo",
-    "vapo", # Added VAPO based on provided files
+    "vapo",
+    "dpo", # Added
+    "vllm", # Added
     "chain-of-thought",
     "tree-of-thought",
     "reasoning",
@@ -425,17 +438,17 @@ KEYWORDS = [
     "distributed-training",
 ]
 
-# Project URLs (kept from original, corrected tutorials URL)
+# Project URLs
 PROJECT_URLS = {
     "Homepage": "https://github.com/Archit03/ThinkRL",
-    "Documentation": "https://thinkrl.readthedocs.io/", # Placeholder
+    "Documentation": "https://thinkrl.readthedocs.io/", 
     "Repository": "https://github.com/Archit03/ThinkRL",
     "Bug Reports": "https://github.com/Archit03/ThinkRL/issues",
     "Feature Requests": "https://github.com/Archit03/ThinkRL/discussions",
-    "Changelog": "https://github.com/Archit03/ThinkRL/blob/main/CHANGELOG.md", # Assume CHANGELOG exists
+    "Changelog": "https://github.com/Archit03/ThinkRL/blob/main/CHANGELOG.md", 
     "Company": "https://ellanorai.org",
-    "Examples": "https://github.com/Archit03/ThinkRL/tree/main/examples", # Assume examples dir exists
-    "Tutorials": "https://github.com/Archit03/ThinkRL/tree/main/docs/tutorials", # Assume tutorials dir exists
+    "Examples": "https://github.com/Archit03/ThinkRL/tree/main/examples", 
+    "Tutorials": "https://github.com/Archit03/ThinkRL/tree/main/docs/tutorials", 
 }
 
 # Main setup configuration
@@ -449,7 +462,7 @@ setup(
     maintainer_email="team@ellanorai.org",
 
     # Package description
-    description="Universal RLHF Training Library with state-of-the-art algorithms, reasoning, and multimodal support",
+    description="Universal RLHF/RLAIF Training Library with state-of-the-art algorithms, reasoning, and multimodal support",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
 
@@ -466,7 +479,7 @@ setup(
             "docs.*",
             "examples",
             "examples.*",
-            "scripts", # Exclude top-level scripts if they are not part of the package
+            "scripts", 
             "scripts.*",
         ]
     ),
@@ -474,18 +487,15 @@ setup(
     # Include additional files
     include_package_data=True,
     package_data={
-        # Adjust if configs/data are inside the thinkrl package
         "thinkrl": [
             "configs/*.yaml",
             "configs/*.json",
             "py.typed",
         ],
-        # If configs/data are top-level, might need different handling
-        # "": ["configs/*.yaml", "configs/*.json", "data/*.json"],
     },
 
     # Dependencies
-    python_requires=">=3.8,<4.0", # Kept original constraint
+    python_requires=">=3.8,<4.0", 
     install_requires=CORE_REQUIREMENTS,
     extras_require=EXTRAS_REQUIRE,
 
@@ -500,7 +510,7 @@ setup(
     # Package metadata
     classifiers=CLASSIFIERS,
     keywords=KEYWORDS,
-    license="Apache-2.0", # Based on LICENSE file
+    license="Apache-2.0", 
 
     # Package options
     zip_safe=False,
@@ -509,7 +519,7 @@ setup(
     # Additional metadata
     options={
         "bdist_wheel": {
-            "universal": False,  # Not universal due to platform-specific dependencies like cupy
+            "universal": False, 
         }
     },
 )
