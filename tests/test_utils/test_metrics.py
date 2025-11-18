@@ -6,6 +6,9 @@ Test Suite for ThinkRL Metrics Utilities
 import pytest
 import torch
 import numpy as np
+from unittest.mock import patch, MagicMock
+
+# Try importing cupy to check availability for tests
 try:
     import cupy as cp
     _CUPY_AVAILABLE = True
@@ -28,7 +31,9 @@ from thinkrl.utils.metrics import (
     compute_group_metrics,
     compute_ranking_metrics,
     compute_statistical_metrics,
+    compute_statistical_metrics_batch,  # New import
     compute_metrics,
+    _compute_moments_manual, # For direct testing
 )
 
 # Use numpy as fallback for data generation if cupy missing
@@ -202,27 +207,111 @@ class TestMetrics:
         avg_weighted = aggregate_metrics(metrics_list, weights)
         assert avg_weighted["loss"] == pytest.approx(0.475)
 
-    def test_compute_statistical_metrics(self):
-        # Using xp (numpy or cupy) for test data
-        values = xp.arange(1, 101, dtype=float)
+    def test_compute_statistical_metrics_basic(self):
+        """Test basic statistical metrics calculation with NumPy."""
+        values = np.arange(1, 101, dtype=float)
         stats = compute_statistical_metrics(values)
 
         assert "mean" in stats
-        assert "std" in stats
-        assert "min" in stats
-        assert "max" in stats
-        assert "median" in stats
-        assert "p25" in stats
-        assert "p75" in stats
-        assert "p99" in stats
-        
         assert stats["mean"] == pytest.approx(50.5)
         assert stats["min"] == 1.0
         assert stats["max"] == 100.0
         assert stats["median"] == pytest.approx(50.5)
+        assert stats["p25"] == pytest.approx(25.75)
+        assert stats["p75"] == pytest.approx(75.25)
+        assert stats["count"] == 100
+        assert stats["nan_count"] == 0
+
+    def test_compute_statistical_metrics_empty(self):
+        """Test handling of empty or None inputs."""
+        # None input
+        stats_none = compute_statistical_metrics(None)
+        assert stats_none["count"] == 0
+        assert stats_none["mean"] == 0.0
+
+        # Empty array
+        stats_empty = compute_statistical_metrics([])
+        assert stats_empty["count"] == 0
+        assert stats_empty["mean"] == 0.0
         
-        if "skewness" in stats:
-            assert stats["skewness"] == pytest.approx(0.0)
+        # Empty numpy array
+        stats_np_empty = compute_statistical_metrics(np.array([]))
+        assert stats_np_empty["count"] == 0
+
+    def test_compute_statistical_metrics_single_value(self):
+        """Test handling of scalar or single-element inputs."""
+        # Scalar float
+        stats_scalar = compute_statistical_metrics(5.0)
+        assert stats_scalar["mean"] == 5.0
+        assert stats_scalar["std"] == 0.0
+        
+        # Single element array
+        stats_single = compute_statistical_metrics([10.0])
+        assert stats_single["mean"] == 10.0
+        assert stats_single["std"] == 0.0
+        assert stats_single["p99"] == 10.0
+
+    def test_compute_statistical_metrics_nan_inf(self):
+        """Test robustness against NaN and Inf values."""
+        data = np.array([1.0, 2.0, np.nan, 4.0, np.inf])
+        stats = compute_statistical_metrics(data)
+        
+        assert stats["count"] == 5
+        assert stats["nan_count"] == 1
+        assert stats["inf_count"] == 1
+        # Statistics should be computed on valid data: [1.0, 2.0, 4.0]
+        assert stats["mean"] == pytest.approx(7.0 / 3.0)
+        assert stats["max"] == 4.0
+
+    def test_compute_statistical_metrics_tensor(self):
+        """Test handling of PyTorch tensors (CPU)."""
+        tensor = torch.tensor([1.0, 2.0, 3.0])
+        stats = compute_statistical_metrics(tensor)
+        
+        assert stats["mean"] == 2.0
+        assert stats["std"] == 1.0 # Sample std of [1,2,3] is 1.0
+
+    @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
+    def test_compute_statistical_metrics_gpu_tensor(self):
+        """Test handling of PyTorch tensors on GPU (integrates with CuPy if available)."""
+        tensor = torch.tensor([1.0, 2.0, 3.0], device="cuda")
+        
+        # This will internally try to use CuPy via DLPack
+        stats = compute_statistical_metrics(tensor)
+        
+        assert stats["mean"] == 2.0
+        assert stats["count"] == 3
+
+    def test_compute_statistical_metrics_batch(self):
+        """Test batch processing of multiple arrays."""
+        batch = [
+            np.array([1.0, 2.0, 3.0]),
+            np.array([4.0, 5.0, 6.0]),
+            [] # Empty one
+        ]
+        
+        results = compute_statistical_metrics_batch(batch)
+        
+        assert len(results) == 3
+        assert results[0]["mean"] == 2.0
+        assert results[1]["mean"] == 5.0
+        assert results[2]["count"] == 0
+
+    def test_manual_moments_computation(self):
+        """Test the manual skewness/kurtosis fallback."""
+        # Normal distribution (should be close to 0 skew, 0 excess kurtosis)
+        # We use a deterministic array for testing logic
+        data = np.array([-2, -1, 0, 1, 2], dtype=float)
+        
+        # Use helper directly
+        moments = _compute_moments_manual(data, np)
+        
+        assert moments["skewness"] == pytest.approx(0.0)
+        # Kurtosis for normal is 3, excess is 0. Manual calculation:
+        # std=sqrt(2.5). z=[-1.26, -0.63, 0, 0.63, 1.26]. mean(z^4) approx 2.12
+        # The formula calculates Fisher excess kurtosis. 
+        # For this symmetric, light-tailed distribution, it should be negative
+        assert moments["kurtosis"] < 0 
 
     def test_compute_group_metrics(self):
         rewards = torch.tensor([1.0, 2.0, 3.0, 10.0, 11.0, 20.0])
@@ -280,3 +369,17 @@ class TestMetrics:
         assert "accuracy" in metrics_subset
         assert "perplexity" not in metrics_subset
         assert "entropy" not in metrics_subset
+
+    def test_compute_metrics_integration(self):
+        """Test the high-level compute_metrics wrapper integrates statistical metrics."""
+        outputs = {
+            "rewards": torch.randn(10),
+            "values": torch.randn(10)
+        }
+        
+        metrics = compute_metrics(outputs, metric_names=["reward_stats", "value_stats"])
+        
+        assert "reward_mean" in metrics
+        assert "reward_std" in metrics
+        assert "value_p99" in metrics
+        assert "value_nan_count" in metrics

@@ -366,102 +366,298 @@ def compute_ranking_metrics(
     }
 
 
+# -----------------------------------------------------------------------------
+# Optimized Statistical Metrics (GPU-accelerated)
+# -----------------------------------------------------------------------------
+
 def compute_statistical_metrics(
-    values: Union[torch.Tensor, Any, np.ndarray, List[float]]
+    values: Union[torch.Tensor, np.ndarray, List[float], float, None]
 ) -> Dict[str, float]:
     """
-    Compute comprehensive statistical metrics.
-    Uses CuPy for GPU tensors/arrays and NumPy for CPU data to optimize performance.
+    Compute comprehensive statistical metrics with GPU acceleration when available.
+    
+    Intelligently uses CuPy for GPU tensors and NumPy for CPU data to optimize performance.
+    Handles edge cases gracefully including empty, NaN, and infinite values.
+    
+    Args:
+        values: Input data as tensor, array, list, scalar, or None
+        
+    Returns:
+        Dictionary containing statistical metrics (mean, std, min, max, median, percentiles, etc.)
+        Returns zeros for invalid/empty inputs.
     """
-    use_cupy = False
+    # Define default metrics to ensure consistent output
+    default_metrics = {
+        "mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0, "median": 0.0,
+        "p25": 0.0, "p75": 0.0, "p90": 0.0, "p95": 0.0, "p99": 0.0,
+        "skewness": 0.0, "kurtosis": 0.0, "count": 0, "nan_count": 0
+    }
+    
+    # Early return for invalid inputs
+    if values is None:
+        return default_metrics
+        
+    # Convert to numpy/cupy array with proper error handling
+    data, xp = _prepare_array(values)
+    
+    if data is None:
+        return default_metrics
+    
+    # Ensure at least 1D
+    if data.ndim == 0:
+        data = xp.reshape(data, (1,))
+    
+    # Flatten for statistics (most stats don't care about shape)
+    data = xp.ravel(data)
+    
+    # Check for empty array
+    if data.size == 0:
+        return default_metrics
+    
+    # Handle NaN and Inf values
+    metrics = {"count": int(data.size)}
+    
+    # Count and filter NaN/Inf
+    if xp == cp and _CUPY_AVAILABLE:
+        nan_mask = cp.isnan(data)
+        inf_mask = cp.isinf(data)
+        valid_mask = ~(nan_mask | inf_mask)
+        metrics["nan_count"] = int(cp.sum(nan_mask))
+        metrics["inf_count"] = int(cp.sum(inf_mask))
+        valid_data = data[valid_mask]
+    else:
+        nan_mask = np.isnan(data)
+        inf_mask = np.isinf(data)
+        valid_mask = ~(nan_mask | inf_mask)
+        metrics["nan_count"] = int(np.sum(nan_mask))
+        metrics["inf_count"] = int(np.sum(inf_mask))
+        valid_data = data[valid_mask]
+    
+    # If no valid data, return defaults with counts
+    if valid_data.size == 0:
+        return {**default_metrics, **metrics}
+    
+    # Compute basic statistics efficiently
+    try:
+        metrics.update(_compute_basic_stats(valid_data, xp))
+        metrics.update(_compute_percentiles(valid_data, xp))
+        metrics.update(_compute_higher_moments(valid_data, xp))
+    except Exception as e:
+        logger.debug(f"Error computing statistics: {e}")
+        # Return what we have so far
+        return {**default_metrics, **metrics}
+    
+    return metrics
+
+
+def _prepare_array(
+    values: Union[torch.Tensor, np.ndarray, List[float], float]
+) -> Tuple[Optional[Union[np.ndarray, 'cp.ndarray']], Any]:
+    """
+    Convert input to appropriate array type (CuPy for GPU, NumPy for CPU).
+    
+    Returns:
+        Tuple of (array, module) where module is either np or cp
+    """
+    try:
+        # Handle torch tensors
+        if isinstance(values, torch.Tensor):
+            if values.is_cuda and _CUPY_AVAILABLE:
+                # GPU tensor -> CuPy (zero-copy via DLPack)
+                try:
+                    data = cp.from_dlpack(torch.utils.dlpack.to_dlpack(values))
+                    return data, cp
+                except Exception as e:
+                    logger.debug(f"DLPack conversion failed: {e}, falling back to CPU")
+                    data = values.detach().cpu().numpy()
+                    return data, np
+            else:
+                # CPU tensor -> NumPy
+                data = values.detach().cpu().numpy()
+                return data, np
+        
+        # Handle CuPy arrays
+        if _CUPY_AVAILABLE and isinstance(values, cp.ndarray):
+            return values, cp
+        
+        # Handle NumPy arrays
+        if isinstance(values, np.ndarray):
+            return values, np
+        
+        # Convert lists and scalars to NumPy
+        try:
+            data = np.asarray(values, dtype=np.float64)
+            return data, np
+        except Exception as e:
+            logger.warning(f"Failed to convert input to array: {e}")
+            return None, np
+            
+    except Exception as e:
+        logger.warning(f"Array preparation failed: {e}")
+        return None, np
+
+
+def _compute_basic_stats(
+    data: Union[np.ndarray, 'cp.ndarray'], 
+    xp: Any
+) -> Dict[str, float]:
+    """Compute basic statistical measures."""
+    stats = {}
+    
+    # Use appropriate functions based on array library
+    if data.size == 1:
+        # Special case for single element
+        val = float(data.item() if hasattr(data, 'item') else data[0])
+        stats.update({
+            "mean": val,
+            "std": 0.0,
+            "min": val,
+            "max": val,
+            "median": val,
+            "variance": 0.0
+        })
+    else:
+        # Compute statistics in one pass where possible
+        stats["mean"] = float(xp.mean(data))
+        stats["std"] = float(xp.std(data, ddof=1))  # Use sample std
+        stats["variance"] = float(xp.var(data, ddof=1))
+        stats["min"] = float(xp.min(data))
+        stats["max"] = float(xp.max(data))
+        stats["median"] = float(xp.median(data))
+        
+        # Additional useful stats
+        stats["range"] = stats["max"] - stats["min"]
+        stats["cv"] = stats["std"] / abs(stats["mean"]) if stats["mean"] != 0 else 0.0
+    
+    return stats
+
+
+def _compute_percentiles(
+    data: Union[np.ndarray, 'cp.ndarray'], 
+    xp: Any
+) -> Dict[str, float]:
+    """Compute percentile statistics efficiently."""
+    percentiles = [25, 75, 90, 95, 99]
+    
+    # Compute all percentiles in one call for efficiency
+    if data.size == 1:
+        val = float(data.item() if hasattr(data, 'item') else data[0])
+        return {f"p{p}": val for p in percentiles}
     
     try:
-        # Check for CuPy availability and input type
-        if _CUPY_AVAILABLE:
-            if isinstance(values, torch.Tensor):
-                if values.is_cuda:
-                    data = cp.from_dlpack(torch.utils.dlpack.to_dlpack(values))
-                    use_cupy = True
-                else:
-                    data = values.detach().numpy()
-            elif isinstance(values, cp.ndarray):
-                data = values
-                use_cupy = True
-            else:
-                data = np.array(values)
+        if xp == cp and _CUPY_AVAILABLE:
+            # CuPy percentile computation
+            results = cp.percentile(data, percentiles)
+            return {f"p{p}": float(results[i]) for i, p in enumerate(percentiles)}
         else:
-            # Fallback to NumPy if CuPy is not available
-            if isinstance(values, torch.Tensor):
-                data = values.detach().cpu().numpy()
-            else:
-                data = np.array(values)
-
-        xp = cp if use_cupy else np
-        
-        if data.ndim == 0:
-            data = xp.expand_dims(data, 0)
-
-        metrics = {
-            "mean": float(xp.mean(data)),
-            "std": float(xp.std(data)),
-            "min": float(xp.min(data)),
-            "max": float(xp.max(data)),
-            "median": float(xp.median(data)),
-        }
-
-        for percentile in [25, 75, 90, 95, 99]:
-            metrics[f"p{percentile}"] = float(xp.percentile(data, percentile))
-
-        metrics["skewness"] = 0.0
-        metrics["kurtosis"] = 0.0
-
-        try:
-            if use_cupy and _CUPY_SCIPY_AVAILABLE:
-                skew = cupy_stats.skew(data, axis=None)
-                kurt = cupy_stats.kurtosis(data, axis=None)
-                if isinstance(skew, cp.ndarray): skew = skew.item()
-                if isinstance(kurt, cp.ndarray): kurt = kurt.item()
-                metrics["skewness"] = float(skew)
-                metrics["kurtosis"] = float(kurt)
-            elif not use_cupy and _SCIPY_AVAILABLE:
-                skew = scipy_stats.skew(data, axis=None)
-                kurt = scipy_stats.kurtosis(data, axis=None)
-                metrics["skewness"] = float(skew)
-                metrics["kurtosis"] = float(kurt)
-        except Exception as e:
-            logger.debug(f"Failed to compute skewness/kurtosis: {e}")
-
-        return metrics
-
+            # NumPy percentile computation  
+            results = np.percentile(data, percentiles)
+            return {f"p{p}": float(results[i]) for i, p in enumerate(percentiles)}
     except Exception as e:
-        logger.warning(f"Statistical computation failed: {e}. Falling back to pure NumPy.")
-        if isinstance(values, torch.Tensor):
-            data_np = values.detach().cpu().numpy()
-        elif _CUPY_AVAILABLE and isinstance(values, cp.ndarray):
-            try:
-                data_np = values.get()
-            except Exception:
-                data_np = np.array(values.tolist())
+        logger.debug(f"Percentile computation failed: {e}")
+        return {f"p{p}": 0.0 for p in percentiles}
+
+
+def _compute_higher_moments(
+    data: Union[np.ndarray, 'cp.ndarray'], 
+    xp: Any
+) -> Dict[str, float]:
+    """Compute skewness and kurtosis with appropriate libraries."""
+    moments = {"skewness": 0.0, "kurtosis": 0.0}
+    
+    # Need at least 3 elements for skewness, 4 for kurtosis
+    if data.size < 3:
+        return moments
+    
+    try:
+        if xp == cp and _CUPY_AVAILABLE and _CUPY_SCIPY_AVAILABLE:
+            # Use CuPy's scipy stats
+            from cupyx.scipy import stats as cupy_stats
+            
+            skew = cupy_stats.skew(data, axis=None, nan_policy='omit')
+            moments["skewness"] = float(skew.item() if hasattr(skew, 'item') else skew)
+            
+            if data.size >= 4:
+                kurt = cupy_stats.kurtosis(data, axis=None, nan_policy='omit')
+                moments["kurtosis"] = float(kurt.item() if hasattr(kurt, 'item') else kurt)
+                
+        elif xp == np and _SCIPY_AVAILABLE:
+            # Use SciPy stats
+            from scipy import stats as scipy_stats
+            
+            skew = scipy_stats.skew(data, axis=None, nan_policy='omit')
+            moments["skewness"] = float(skew)
+            
+            if data.size >= 4:
+                kurt = scipy_stats.kurtosis(data, axis=None, nan_policy='omit')
+                moments["kurtosis"] = float(kurt)
         else:
-            data_np = np.array(values)
+            # Manual computation as fallback
+            moments.update(_compute_moments_manual(data, xp))
+            
+    except Exception as e:
+        logger.debug(f"Higher moments computation failed: {e}")
+    
+    return moments
 
-        if data_np.ndim == 0:
-            data_np = np.expand_dims(data_np, 0)
 
-        metrics = {
-            "mean": float(np.mean(data_np)),
-            "std": float(np.std(data_np)),
-            "min": float(np.min(data_np)),
-            "max": float(np.max(data_np)),
-            "median": float(np.median(data_np)),
-        }
+def _compute_moments_manual(
+    data: Union[np.ndarray, 'cp.ndarray'], 
+    xp: Any
+) -> Dict[str, float]:
+    """Manually compute skewness and kurtosis without scipy."""
+    try:
+        mean = xp.mean(data)
+        std = xp.std(data, ddof=1)
         
-        for percentile in [25, 75, 90, 95, 99]:
-            metrics[f"p{percentile}"] = float(np.percentile(data_np, percentile))
-        metrics["skewness"] = 0.0
-        metrics["kurtosis"] = 0.0
+        if std == 0:
+            return {"skewness": 0.0, "kurtosis": 0.0}
         
-        return metrics
+        n = data.size
+        
+        # Standardized moments
+        z = (data - mean) / std
+        
+        # Skewness (third moment)
+        if n >= 3:
+            m3 = xp.mean(z**3)
+            # Fisher-Pearson coefficient with bias correction
+            skewness = float(m3 * xp.sqrt(n * (n - 1)) / (n - 2))
+        else:
+            skewness = 0.0
+        
+        # Kurtosis (fourth moment)
+        if n >= 4:
+            m4 = xp.mean(z**4)
+            # Excess kurtosis with bias correction
+            kurtosis = float((m4 - 3) * (n + 1) * n / ((n - 1) * (n - 2) * (n - 3)))
+        else:
+            kurtosis = 0.0
+        
+        return {"skewness": skewness, "kurtosis": kurtosis}
+        
+    except Exception as e:
+        logger.debug(f"Manual moments computation failed: {e}")
+        return {"skewness": 0.0, "kurtosis": 0.0}
+
+
+def compute_statistical_metrics_batch(
+    values_list: List[Union[torch.Tensor, np.ndarray, List[float]]]
+) -> List[Dict[str, float]]:
+    """
+    Compute statistics for multiple arrays efficiently.
+    
+    Useful for computing metrics across different groups or batches.
+    """
+    if not values_list:
+        return []
+    
+    # Process in parallel if using CuPy (GPU operations are async)
+    results = []
+    for values in values_list:
+        results.append(compute_statistical_metrics(values))
+    
+    return results
 
 
 def compute_metrics(
@@ -522,5 +718,6 @@ __all__ = [
     "compute_group_metrics",
     "compute_ranking_metrics",
     "compute_statistical_metrics",
+    "compute_statistical_metrics_batch",
     "compute_metrics",
 ]
