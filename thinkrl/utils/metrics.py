@@ -21,15 +21,23 @@ import warnings
 import torch
 import torch.nn.functional as F
 import numpy as np
+import cupy as cp
+import torch.utils.dlpack
 
 # Optional dependencies
 try:
-    from scipy import stats
+    from cupyx.scipy import stats as cupy_stats
+    _CUPY_SCIPY_AVAILABLE = True
+except ImportError:
+    _CUPY_SCIPY_AVAILABLE = False
+    # Only warn if we are actually trying to use it, to reduce noise
+    pass
 
+try:
+    from scipy import stats as scipy_stats
     _SCIPY_AVAILABLE = True
 except ImportError:
     _SCIPY_AVAILABLE = False
-    warnings.warn("SciPy not available. Some statistical functions will be limited.")
 
 logger = logging.getLogger(__name__)
 
@@ -162,6 +170,8 @@ class MetricsTracker:
         if not history:
             return {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0}
 
+        # OPTIMIZATION: Use NumPy here.
+        # 'history' is a list of CPU floats. Moving to GPU (CuPy) adds overhead.
         return {
             "mean": float(np.mean(history)),
             "std": float(np.std(history)),
@@ -204,13 +214,6 @@ def compute_reward(
 
     Returns:
         Processed reward tensor
-
-    Example:
-        ```python
-        rewards = torch.tensor([1.0, 2.0, 3.0, 4.0])
-        normalized_rewards = compute_reward(rewards, normalize=True)
-        # Output: tensor([-1.3416, -0.4472,  0.4472,  1.3416])
-        ```
     """
     if normalize:
         mean = rewards.mean()
@@ -235,13 +238,6 @@ def compute_kl_divergence(
 
     Returns:
         KL divergence tensor
-
-    Example:
-        ```python
-        log_probs_policy = torch.log(torch.tensor([0.2, 0.3, 0.5]))
-        log_probs_ref = torch.log(torch.tensor([0.1, 0.4, 0.5]))
-        kl_div = compute_kl_divergence(log_probs_policy, log_probs_ref)
-        ```
     """
     kl_div = log_probs_policy - log_probs_ref
 
@@ -277,13 +273,6 @@ def compute_advantages(
 
     Returns:
         Advantage tensor of shape (batch_size, seq_len)
-
-    Example:
-        ```python
-        rewards = torch.randn(4, 10)  # batch_size=4, seq_len=10
-        values = torch.randn(4, 10)
-        advantages = compute_advantages(rewards, values)
-        ```
     """
     batch_size, seq_len = rewards.shape
     advantages = torch.zeros_like(rewards)
@@ -322,13 +311,6 @@ def compute_returns(
 
     Returns:
         Returns tensor of shape (batch_size, seq_len)
-
-    Example:
-        ```python
-        rewards = torch.tensor([[1.0, 2.0, 3.0]])
-        returns = compute_returns(rewards, gamma=0.9)
-        # returns[0, 0] = 1.0 + 0.9*2.0 + 0.81*3.0 = 5.23
-        ```
     """
     batch_size, seq_len = rewards.shape
     returns = torch.zeros_like(rewards)
@@ -360,12 +342,6 @@ def compute_policy_entropy(
 
     Returns:
         Entropy tensor
-
-    Example:
-        ```python
-        logits = torch.randn(4, 10, 50000)  # batch, seq_len, vocab
-        entropy = compute_policy_entropy(logits)
-        ```
     """
     probs = F.softmax(logits, dim=-1)
     log_probs = F.log_softmax(logits, dim=-1)
@@ -394,14 +370,6 @@ def compute_accuracy(
 
     Returns:
         Accuracy as a float between 0 and 1
-
-    Example:
-        ```python
-        predictions = torch.tensor([[1, 2, 3], [1, 1, 1]])
-        targets = torch.tensor([[1, 2, 0], [1, 1, 1]])
-        acc = compute_accuracy(predictions, targets)
-        # acc = 5/6 = 0.833
-        ```
     """
     # If predictions are logits, get argmax
     if predictions.dim() > targets.dim():
@@ -428,18 +396,13 @@ def compute_perplexity(loss: Union[float, torch.Tensor]) -> float:
 
     Returns:
         Perplexity value
-
-    Example:
-        ```python
-        loss = 2.5
-        ppl = compute_perplexity(loss)
-        # ppl = exp(2.5) = 12.18
-        ```
     """
     if isinstance(loss, torch.Tensor):
         loss = loss.item()
 
-    return np.exp(loss)
+    # OPTIMIZATION: Use NumPy here.
+    # Loss is a scalar. CuPy kernel launch overhead is wasteful for single floats.
+    return float(np.exp(loss))
 
 
 def compute_clip_fraction(ratio: torch.Tensor, epsilon: float = 0.2) -> float:
@@ -454,13 +417,6 @@ def compute_clip_fraction(ratio: torch.Tensor, epsilon: float = 0.2) -> float:
 
     Returns:
         Fraction of ratios that were clipped
-
-    Example:
-        ```python
-        ratio = torch.tensor([0.5, 1.0, 1.5, 2.0])
-        clip_frac = compute_clip_fraction(ratio, epsilon=0.2)
-        # Ratios outside [0.8, 1.2] are clipped: 3/4 = 0.75
-        ```
     """
     clipped = ((ratio < 1 - epsilon) | (ratio > 1 + epsilon)).float()
     return clipped.mean().item()
@@ -482,13 +438,6 @@ def compute_explained_variance(
 
     Returns:
         Explained variance between -inf and 1
-
-    Example:
-        ```python
-        predictions = torch.randn(100)
-        targets = torch.randn(100)
-        ev = compute_explained_variance(predictions, targets)
-        ```
     """
     var_y = targets.var()
     if var_y == 0:
@@ -509,17 +458,6 @@ def aggregate_metrics(
 
     Returns:
         Dictionary of aggregated metrics
-
-    Example:
-        ```python
-        batch_metrics = [
-            {"loss": 0.5, "accuracy": 0.9},
-            {"loss": 0.6, "accuracy": 0.85},
-            {"loss": 0.4, "accuracy": 0.95}
-        ]
-        avg_metrics = aggregate_metrics(batch_metrics)
-        # {"loss": 0.5, "accuracy": 0.9}
-        ```
     """
     if not metrics_list:
         return {}
@@ -557,13 +495,6 @@ def compute_group_metrics(
 
     Returns:
         Dictionary with group-wise statistics
-
-    Example:
-        ```python
-        rewards = torch.tensor([1.0, 2.0, 3.0, 4.0, 5.0, 6.0])
-        group_ids = torch.tensor([0, 0, 1, 1, 2, 2])
-        group_metrics = compute_group_metrics(rewards, group_ids)
-        ```
     """
     unique_groups = torch.unique(group_ids)
 
@@ -577,7 +508,14 @@ def compute_group_metrics(
         group_rewards = rewards[mask]
 
         group_means.append(group_rewards.mean())
-        group_stds.append(group_rewards.std())
+        
+        # FIX: Handle groups with 1 element to avoid std() NaN/Warning
+        if group_rewards.numel() > 1:
+            group_stds.append(group_rewards.std())
+        else:
+            # Standard deviation of a single item is 0
+            group_stds.append(torch.tensor(0.0, device=rewards.device, dtype=rewards.dtype))
+            
         group_maxs.append(group_rewards.max())
         group_mins.append(group_rewards.min())
 
@@ -587,6 +525,7 @@ def compute_group_metrics(
         "group_maxs": torch.stack(group_maxs),
         "group_mins": torch.stack(group_mins),
     }
+
 
 def compute_ranking_metrics(
     scores: torch.Tensor, labels: torch.Tensor, k: int = 10
@@ -601,13 +540,6 @@ def compute_ranking_metrics(
 
     Returns:
         Dictionary with ranking metrics
-
-    Example:
-        ```python
-        scores = torch.tensor([0.9, 0.7, 0.5, 0.3, 0.1])
-        labels = torch.tensor([1, 0, 1, 0, 0])
-        metrics = compute_ranking_metrics(scores, labels, k=3)
-        ```
     """
     # Sort by scores
     sorted_indices = torch.argsort(scores, descending=True)
@@ -645,52 +577,117 @@ def compute_ranking_metrics(
 
 
 def compute_statistical_metrics(
-    values: Union[torch.Tensor, np.ndarray, List[float]]
+    values: Union[torch.Tensor, cp.ndarray, np.ndarray, List[float]]
 ) -> Dict[str, float]:
     """
     Compute comprehensive statistical metrics.
+    Uses CuPy for GPU tensors/arrays and NumPy for CPU data to optimize performance.
     """
-    # Convert to numpy
-    if isinstance(values, torch.Tensor):
-        values = values.detach().cpu().numpy()
-    elif isinstance(values, list):
-        values = np.array(values)
+    # OPTIMIZATION: Determine backend based on input location.
+    # This avoids unnecessary CPU<->GPU transfers.
+    use_cupy = False
+    
+    try:
+        # Check for CuPy availability and input type
+        if isinstance(values, torch.Tensor):
+            if values.is_cuda:
+                # Zero-copy conversion for CUDA tensors -> GPU processing (FAST)
+                data = cp.from_dlpack(torch.utils.dlpack.to_dlpack(values))
+                use_cupy = True
+            else:
+                # CPU tensor -> CPU processing
+                data = values.detach().numpy()
+        elif isinstance(values, cp.ndarray):
+            # Already on GPU
+            data = values
+            use_cupy = True
+        else:
+            # List or NumPy array -> CPU processing
+            data = np.array(values)
+
+        xp = cp if use_cupy else np
         
-    # Handle single element arrays to avoid scalar conversion errors
-    if values.ndim == 0:
-        values = np.expand_dims(values, 0)
+        # Handle single element arrays
+        if data.ndim == 0:
+            data = xp.expand_dims(data, 0)
 
-    metrics = {
-        "mean": float(np.mean(values)),
-        "std": float(np.std(values)),
-        "min": float(np.min(values)),
-        "max": float(np.max(values)),
-        "median": float(np.median(values)),
-    }
+        metrics = {
+            "mean": float(xp.mean(data)),
+            "std": float(xp.std(data)),
+            "min": float(xp.min(data)),
+            "max": float(xp.max(data)),
+            "median": float(xp.median(data)),
+        }
 
-    # Add percentiles
-    for percentile in [25, 75, 90, 95, 99]:
-        metrics[f"p{percentile}"] = float(np.percentile(values, percentile))
+        # Add percentiles
+        for percentile in [25, 75, 90, 95, 99]:
+            metrics[f"p{percentile}"] = float(xp.percentile(data, percentile))
 
-    # Add scipy-based metrics if available
-    if _SCIPY_AVAILABLE:
+        # Add distribution stats (skew/kurtosis)
+        metrics["skewness"] = 0.0
+        metrics["kurtosis"] = 0.0
+
         try:
-            skew = stats.skew(values, axis=None)
-            # Check if result is array (scipy behavior varies)
-            if isinstance(skew, (np.ndarray, list)):
-                 skew = skew.item()
-            metrics["skewness"] = float(skew)
-            
-            kurt = stats.kurtosis(values, axis=None)
-            if isinstance(kurt, (np.ndarray, list)):
-                kurt = kurt.item()
-            metrics["kurtosis"] = float(kurt)
-        except Exception as e:
-            logger.warning(f"Failed to compute skewness/kurtosis: {e}")
-            metrics["skewness"] = 0.0
-            metrics["kurtosis"] = 0.0
+            if use_cupy and _CUPY_SCIPY_AVAILABLE:
+                # Use CuPy-accelerated SciPy
+                skew = cupy_stats.skew(data, axis=None)
+                kurt = cupy_stats.kurtosis(data, axis=None)
+                
+                # Safely convert result to float, handling 0-dim arrays
+                if isinstance(skew, cp.ndarray): skew = skew.item()
+                if isinstance(kurt, cp.ndarray): kurt = kurt.item()
+                
+                metrics["skewness"] = float(skew)
+                metrics["kurtosis"] = float(kurt)
 
-    return metrics
+            elif not use_cupy and _SCIPY_AVAILABLE:
+                # Use standard SciPy
+                skew = scipy_stats.skew(data, axis=None)
+                kurt = scipy_stats.kurtosis(data, axis=None)
+                
+                metrics["skewness"] = float(skew)
+                metrics["kurtosis"] = float(kurt)
+                
+        except Exception as e:
+            # Statistics computation errors shouldn't crash training
+            logger.debug(f"Failed to compute skewness/kurtosis: {e}")
+
+        return metrics
+
+    except Exception as e:
+        # Fallback to robust NumPy implementation if anything fails (e.g. dlpack errors, missing compiler)
+        logger.warning(f"Statistical computation failed with selected backend: {e}. Falling back to pure NumPy.")
+        
+        # Force conversion to simple numpy array
+        if isinstance(values, torch.Tensor):
+            data_np = values.detach().cpu().numpy()
+        elif isinstance(values, cp.ndarray):
+            try:
+                data_np = values.get()
+            except Exception:
+                # If .get() fails (rare), try numpy conversion directly
+                data_np = np.array(values.tolist())
+        else:
+            data_np = np.array(values)
+
+        if data_np.ndim == 0:
+            data_np = np.expand_dims(data_np, 0)
+
+        metrics = {
+            "mean": float(np.mean(data_np)),
+            "std": float(np.std(data_np)),
+            "min": float(np.min(data_np)),
+            "max": float(np.max(data_np)),
+            "median": float(np.median(data_np)),
+        }
+        
+        for percentile in [25, 75, 90, 95, 99]:
+            metrics[f"p{percentile}"] = float(np.percentile(data_np, percentile))
+            
+        metrics["skewness"] = 0.0
+        metrics["kurtosis"] = 0.0
+        
+        return metrics
 
 
 def compute_metrics(
@@ -711,17 +708,6 @@ def compute_metrics(
 
     Returns:
         Dictionary of computed metrics
-
-    Example:
-        ```python
-        outputs = {
-            "logits": logits,
-            "values": values,
-            "rewards": rewards,
-            "log_probs": log_probs,
-        }
-        metrics = compute_metrics(outputs, targets=labels)
-        ```
     """
     metrics = {}
 

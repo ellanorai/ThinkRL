@@ -9,7 +9,8 @@ Tests for:
 
 import pytest
 import torch
-import numpy as np
+# REPLACED: import numpy as np
+import cupy as cp
 from unittest.mock import MagicMock, patch
 
 from thinkrl.utils.datasets import (

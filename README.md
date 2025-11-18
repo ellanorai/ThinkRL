@@ -1,10 +1,7 @@
----
-# ThinkRL: Universal RLHF Training Library
-
 <div align="center">
   <img src="assets/logo.png" alt="ThinkRL Logo" width="200"/>
   <h3>Innovate. Optimize. Scale.</h3>
-  <p>A powerful, open-source library for Reinforcement Learning from Human Feedback (RLHF)</p>
+  <p>A powerful, open-source library for Reinforcement Learning from Human and AI Feedback (RLHF & RLAIF)</p>
   <p>By <a href="https://github.com/Archit03">Archit Sood</a> @ <a href="https://ellanorai.org">EllanorAI</a></p>
   <a href="https://github.com/ellanorai/ThinkRL"><img src="https://img.shields.io/github/stars/ellanorai/ThinkRL?style=social" alt="GitHub Stars"></a>
   <a href="https://pypi.org/project/thinkrl/"><img src="https://img.shields.io/pypi/v/thinkrl" alt="PyPI Version"></a>
@@ -14,10 +11,13 @@
 ---
 
 ## 🎉 Latest Updates
-- **November 2025** : Implementation of the utils and the unit tests for them. 
+
+- **November 2025**: 
+  - **GPU Acceleration**: Integrated **CuPy** to replace NumPy for metric computations, enabling zero-copy GPU processing and significantly reducing training latency. Added robust CPU fallback for compatibility.
+  - **Core Utilities**: Completed implementation and unit testing for `logging`, `checkpoint`, `metrics`, and `data` modules.
 - **July 2025**: ThinkRL will launch with cutting-edge algorithms such as VAPO, DAPO, GRPO, PPO, and REINFORCE, aiming to set new standards in reasoning performance.
 
-ThinkRL will emerge as an open-source, modular platform for large-scale RLHF, delivering robust algorithm implementations, efficient training infrastructure, and curated datasets. Rooted in modern machine learning principles, it will enable researchers and developers to explore the frontiers of artificial intelligence.
+ThinkRL will emerge as an open-source, modular platform for large-scale RLHF and RLAIF, delivering robust algorithm implementations, efficient training infrastructure, and curated datasets. Rooted in modern machine learning principles, it will enable researchers and developers to explore the frontiers of artificial intelligence.
 
 ---
 

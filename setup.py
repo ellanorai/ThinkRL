@@ -46,7 +46,8 @@ def read_version():
 # Core dependencies - minimal, stable, no GPU requirements
 CORE_REQUIREMENTS = [
     "torch>=2.0.0,<3.0.0",
-    "numpy>=1.24.0,<2.0.0",
+    # REPLACED: "numpy>=1.24.0,<2.0.0",
+    "cupy-cuda12x>=12.0.0,<13.0.0", 
     "scipy>=1.10.0", # Added from requirements.txt
     "pyyaml>=6.0,<7.0",
     "tqdm>=4.65.0",

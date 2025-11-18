@@ -46,13 +46,6 @@ try:
 except ImportError:
     _SAFETENSORS_AVAILABLE = False
 
-try:
-    from accelerate import Accelerator
-
-    _ACCELERATE_AVAILABLE = True
-except ImportError:
-    _ACCELERATE_AVAILABLE = False
-
 
 logger = logging.getLogger(__name__)
 

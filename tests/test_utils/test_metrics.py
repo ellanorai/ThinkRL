@@ -24,7 +24,8 @@ Author: Archit Sood
 
 import pytest
 import torch
-import numpy as np
+# REPLACED: replaced numpy with cupy for GPU acceleration.
+import cupy as cp
 
 # Modules under test
 from thinkrl.utils.metrics import (
@@ -226,11 +227,13 @@ class TestMetrics:
         ppl = compute_perplexity(loss)
 
         assert ppl > 0
-        assert np.abs(ppl - np.exp(2.5)) < 1e-6
+        # UPDATED: Using cupy for verification
+        assert float(cp.abs(ppl - cp.exp(2.5))) < 1e-6
 
         loss_tensor = torch.tensor(1.5)
         ppl_tensor = compute_perplexity(loss_tensor)
-        assert np.abs(ppl_tensor - np.exp(1.5)) < 1e-6
+        # UPDATED: Using cupy for verification
+        assert float(cp.abs(ppl_tensor - cp.exp(1.5))) < 1e-6
 
     def test_compute_clip_fraction(self):
         """Test clip fraction computation."""
@@ -280,7 +283,8 @@ class TestMetrics:
 
     def test_compute_statistical_metrics(self):
         """Test statistical metrics computation."""
-        values = torch.arange(1, 101, dtype=torch.float32) # 1 to 100
+        # UPDATED: Using cupy array for test data
+        values = cp.arange(1, 101, dtype=cp.float32) # 1 to 100
         stats = compute_statistical_metrics(values)
 
         assert "mean" in stats
@@ -380,7 +384,8 @@ class TestMetrics:
         assert "clip_fraction" in metrics
         assert "explained_variance" in metrics
         
-        assert metrics["perplexity"] == pytest.approx(np.exp(1.2))
+        # UPDATED: Using cupy for verification
+        assert metrics["perplexity"] == pytest.approx(float(cp.exp(1.2)))
         
         # Test with specific metrics
         metrics_subset = compute_metrics(
