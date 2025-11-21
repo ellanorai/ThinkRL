@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import logging
 from collections import defaultdict
-from typing import Any
+from typing import TYPE_CHECKING, Any, TypeAlias
 
 import numpy as np
 import torch
@@ -30,9 +30,22 @@ try:
 except (ImportError, OSError):
     # ImportError: Package not installed
     # OSError: Shared library (libcuda.so) not found
-    cp = None
+    cp = None  # type: ignore[assignment]
     _CUPY_AVAILABLE = False
     _CUPY_SCIPY_AVAILABLE = False
+
+# Define type alias for CuPy arrays to use in type hints
+if TYPE_CHECKING:
+    # For type checkers: provide proper type based on CuPy availability
+    try:
+        import cupy
+        CupyArray: TypeAlias = cupy.ndarray
+    except ImportError:
+        # Fallback when CuPy not available during type checking
+        CupyArray: TypeAlias = np.ndarray
+else:
+    # At runtime: use np.ndarray as the type (duck typing handles compatibility)
+    CupyArray: TypeAlias = np.ndarray
 
 try:
     from scipy import stats as _scipy_stats  # noqa: F401
@@ -456,7 +469,7 @@ def compute_statistical_metrics(
 
 def _prepare_array(
     values: torch.Tensor | np.ndarray | list[float] | float
-) -> tuple[np.ndarray | 'cp.ndarray' | None, Any]:
+) -> tuple[np.ndarray | CupyArray | None, Any]:
     """
     Convert input to appropriate array type (CuPy for GPU, NumPy for CPU).
 
@@ -466,7 +479,7 @@ def _prepare_array(
     try:
         # Handle torch tensors
         if isinstance(values, torch.Tensor):
-            if values.is_cuda and _CUPY_AVAILABLE:
+            if values.is_cuda and _CUPY_AVAILABLE and cp is not None:
                 # GPU tensor -> CuPy (zero-copy via DLPack)
                 try:
                     data = cp.from_dlpack(torch.utils.dlpack.to_dlpack(values))
@@ -481,7 +494,7 @@ def _prepare_array(
                 return data, np
 
         # Handle CuPy arrays
-        if _CUPY_AVAILABLE and isinstance(values, cp.ndarray):
+        if _CUPY_AVAILABLE and cp is not None and isinstance(values, cp.ndarray):
             return values, cp
 
         # Handle NumPy arrays
@@ -502,7 +515,7 @@ def _prepare_array(
 
 
 def _compute_basic_stats(
-    data: np.ndarray | 'cp.ndarray',
+    data: np.ndarray | CupyArray,
     xp: Any
 ) -> dict[str, float]:
     """Compute basic statistical measures."""
@@ -537,7 +550,7 @@ def _compute_basic_stats(
 
 
 def _compute_percentiles(
-    data: np.ndarray | 'cp.ndarray',
+    data: np.ndarray | CupyArray,
     xp: Any
 ) -> dict[str, float]:
     """Compute percentile statistics efficiently."""
@@ -563,7 +576,7 @@ def _compute_percentiles(
 
 
 def _compute_higher_moments(
-    data: np.ndarray | 'cp.ndarray',
+    data: np.ndarray | CupyArray,
     xp: Any
 ) -> dict[str, float]:
     """Compute skewness and kurtosis with appropriate libraries."""
@@ -606,7 +619,7 @@ def _compute_higher_moments(
 
 
 def _compute_moments_manual(
-    data: np.ndarray | 'cp.ndarray',
+    data: np.ndarray | CupyArray,
     xp: Any
 ) -> dict[str, float]:
     """Manually compute skewness and kurtosis without scipy."""
@@ -725,4 +738,3 @@ __all__ = [
     "compute_statistical_metrics_batch",
     "compute_metrics",
 ]
-
