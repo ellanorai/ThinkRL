@@ -66,7 +66,7 @@ jobs:
           pip install ruff mypy bandit
           # Install minimal dependencies for type checking
           pip install torch --index-url https://download.pytorch.org/whl/cpu
-          pip install types-PyYAML types-requests numpy-stubs
+          pip install types-PyYAML types-requests
           pip install -e . --no-deps  # Install package without dependencies
 
       - name: Check code quality (Ruff)

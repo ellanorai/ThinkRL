@@ -5,6 +5,8 @@ ThinkRL Metrics Utilities
 Comprehensive metrics computation for RLHF training.
 """
 
+from __future__ import annotations
+
 import logging
 from collections import defaultdict
 from typing import Any
