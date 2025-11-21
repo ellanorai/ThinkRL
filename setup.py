@@ -247,7 +247,6 @@ CI_REQUIREMENTS = {
         "bandit>=1.7.0,<2.0.0",
         "pre-commit>=3.4.0",
         # Type stubs
-        "numpy-stubs>=0.0.1",
         "types-PyYAML>=6.0.12",
         "types-requests>=2.31.0",
     ],
