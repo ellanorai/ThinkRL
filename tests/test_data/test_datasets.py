@@ -19,11 +19,8 @@ import torch
 
 
 # Check availability for skip logic
-try:
-    import datasets
-    _DATASETS_AVAILABLE = True
-except ImportError:
-    _DATASETS_AVAILABLE = False
+import importlib.util
+_DATASETS_AVAILABLE = importlib.util.find_spec("datasets") is not None
 
 from thinkrl.data.datasets import PreferenceDataset, RLHFDataset
 

@@ -456,7 +456,7 @@ def compute_statistical_metrics(
 
 def _prepare_array(
     values: torch.Tensor | np.ndarray | list[float] | float
-) -> tuple[np.ndarray | 'cp.ndarray' | None, Any]:
+) -> tuple[np.ndarray | cp.ndarray | None, Any]:
     """
     Convert input to appropriate array type (CuPy for GPU, NumPy for CPU).
 
@@ -502,7 +502,7 @@ def _prepare_array(
 
 
 def _compute_basic_stats(
-    data: np.ndarray | 'cp.ndarray',
+    data: np.ndarray | cp.ndarray,
     xp: Any
 ) -> dict[str, float]:
     """Compute basic statistical measures."""
@@ -537,7 +537,7 @@ def _compute_basic_stats(
 
 
 def _compute_percentiles(
-    data: np.ndarray | 'cp.ndarray',
+    data: np.ndarray | cp.ndarray,
     xp: Any
 ) -> dict[str, float]:
     """Compute percentile statistics efficiently."""
@@ -563,7 +563,7 @@ def _compute_percentiles(
 
 
 def _compute_higher_moments(
-    data: np.ndarray | 'cp.ndarray',
+    data: np.ndarray | cp.ndarray,
     xp: Any
 ) -> dict[str, float]:
     """Compute skewness and kurtosis with appropriate libraries."""
@@ -606,7 +606,7 @@ def _compute_higher_moments(
 
 
 def _compute_moments_manual(
-    data: np.ndarray | 'cp.ndarray',
+    data: np.ndarray | cp.ndarray,
     xp: Any
 ) -> dict[str, float]:
     """Manually compute skewness and kurtosis without scipy."""

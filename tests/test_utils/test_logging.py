@@ -45,11 +45,11 @@ def temp_dir():
     try:
         shutil.rmtree(temp_dir_path)
     except PermissionError:
-        print(
-            f"Warning: Could not remove temp directory {temp_dir_path} due to PermissionError."
-        )
-    except OSError as e:
-        print(f"Warning: Error removing temp directory {temp_dir_path}: {e}")
+        # Could not remove temp directory due to PermissionError - ignore in tests
+        pass
+    except OSError:
+        # Error removing temp directory - ignore in tests
+        pass
 
 
 # ============================================================================

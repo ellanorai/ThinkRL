@@ -10,11 +10,8 @@ import pytest
 import torch
 
 
-try:
-    import cupy as cp
-    _CUPY_AVAILABLE = True
-except (ImportError, OSError):
-    _CUPY_AVAILABLE = False
+import importlib.util
+_CUPY_AVAILABLE = importlib.util.find_spec("cupy") is not None
 
 from unittest.mock import MagicMock, patch
 
