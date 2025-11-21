@@ -1,0 +1,26 @@
+# Testing & Coverage
+pytest>=7.4.0            # Core testing framework
+pytest-cov>=4.1.0        # Coverage reporting
+pytest-xdist>=3.3.0      # Parallel testing (crucial for slow RL runs)
+pytest-benchmark>=4.0.0  # Performance benchmarking (for VAPO/GRPO latency)
+pytest-mock>=3.11.0      # Mocking for distributed components
+
+# Code Formatting & Linting
+black>=23.9.0            # Uncompromising code formatter
+isort>=5.12.0            # Import sorting
+flake8>=6.1.0            # Standard linter
+flake8-docstrings>=1.7.0 # Enforce Google-style docstrings
+
+# Static Type Checking
+mypy>=1.5.0              # Static type checker
+numpy-stubs>=0.0.1       # Type stubs for numerical operations
+types-PyYAML>=6.0.12     # Stubs for config loading
+types-requests>=2.31.0   # Stubs for API interactions
+
+# Experiment Tracking
+wandb>=0.15.8            # For tracking RL training curves (Entropy/Reward)
+
+# Dev Utilities
+pre-commit>=3.4.0        # Manage git hooks
+ipykernel>=6.25.0        # For Jupyter notebooks
+tqdm>=4.66.0             # Progress bars

@@ -1,24 +1,55 @@
 [build-system]
-requires = ["setuptools>=45", "wheel", "setuptools_scm"]
+requires = ["setuptools>=68.0", "wheel"]
 build-backend = "setuptools.build_meta"
 
+# ------------------------------------------------------------------
+# Testing Configuration (Pytest)
+# ------------------------------------------------------------------
 [tool.pytest.ini_options]
+minversion = "7.4"
 testpaths = ["tests"]
-python_files = "test_*.py *_test.py"
-addopts = "-v --tb=short"
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+
+# Default options: verbose output, short tracebacks, strict markers
+addopts = """
+    --verbose
+    --tb=short
+    --strict-markers
+    --cov=thinkrl
+    --cov-report=term-missing
+    --cov-report=xml:coverage.xml
+"""
+
+# Custom markers to organize the test suite
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
-    "gpu: marks tests as requiring GPU",
+    "gpu: marks tests as requiring a CUDA device (deselect with '-m \"not gpu\"')",
+    "integration: end-to-end training or inference tests",
+    "unit: isolated unit tests",
+    "distributed: tests requiring multi-GPU setup"
 ]
 
+# Treat warnings as errors to ensure rigorous code quality
+filterwarnings = [
+    "error",
+    # Ignore known benign warnings from dependencies
+    "ignore::UserWarning:torch.utils.checkpoint:",
+    "ignore::FutureWarning:transformers.tokenization_utils_base:",
+    "ignore::UserWarning:cupy.cuda.memory:",
+]
+
+# ------------------------------------------------------------------
+# Code Formatting (Black)
+# ------------------------------------------------------------------
 [tool.black]
 line-length = 88
-target-version = ['py38', 'py39', 'py310', 'py311']
+target-version = ['py310', 'py311']
 include = '\.pyi?$'
-extend-exclude = '''
+exclude = '''
 /(
-    \.eggs
-  | \.git
+    \.git
   | \.hg
   | \.mypy_cache
   | \.tox
@@ -30,26 +61,69 @@ extend-exclude = '''
 )/
 '''
 
+# ------------------------------------------------------------------
+# Import Sorting (Isort)
+# ------------------------------------------------------------------
 [tool.isort]
 profile = "black"
 multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+ensure_newline_before_comments = true
 line_length = 88
 known_first_party = ["thinkrl"]
-known_third_party = ["torch", "numpy", "transformers", "cupy"]
+known_third_party = ["torch", "numpy", "transformers", "cupy", "wandb"]
 
+# ------------------------------------------------------------------
+# Static Type Checking (Mypy)
+# ------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 warn_return_any = true
 warn_unused_configs = true
 disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+strict_equality = true
+
+# Ignore missing imports for ML libraries that don't ship strict stubs yet
+[[tool.mypy.overrides]]
+module = [
+    "cupy.*",
+    "scipy.*",
+    "sklearn.*",
+    "safetensors.*",
+    "tqdm.*",
+    "transformers.*",
+    "peft.*",
+    "deepspeed.*",
+    "bitsandbytes.*",
+    "vllm.*",
+    "datasets.*",
+    "evaluate.*"
+]
 ignore_missing_imports = true
 
+# PyTorch specific settings
+[[tool.mypy.overrides]]
+module = "torch.*"
+implicit_reexport = true
+
+# ------------------------------------------------------------------
+# Coverage Configuration
+# ------------------------------------------------------------------
 [tool.coverage.run]
+branch = true
 source = ["thinkrl"]
 omit = [
     "*/tests/*",
-    "*/test_*",
-    "setup.py",
+    "*/setup.py",
+    "*/__init__.py",
 ]
 
 [tool.coverage.report]
@@ -57,11 +131,9 @@ exclude_lines = [
     "pragma: no cover",
     "def __repr__",
     "if self.debug:",
-    "if settings.DEBUG",
-    "raise AssertionError",
     "raise NotImplementedError",
-    "if 0:",
     "if __name__ == .__main__.:",
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
 ]
+ignore_errors = true

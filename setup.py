@@ -2,7 +2,7 @@
 ThinkRL: Universal RLHF Training Library
 ========================================
 
-A powerful, open-source library for Reinforcement Learning from Human Feedback (RLHF)
+A powerful, open-source library for Reinforcement Learning from Human and AI Feedback (RLHF/RLAIF)
 with state-of-the-art algorithms, reasoning capabilities, and multimodal support.
 """
 
@@ -44,9 +44,8 @@ def read_version():
 # Core dependencies - minimal, stable, no GPU requirements
 CORE_REQUIREMENTS = [
     "torch>=2.0.0,<3.0.0",
-    # REPLACED: "numpy>=1.24.0,<2.0.0",
     "cupy-cuda12x>=12.0.0,<13.0.0", 
-    "scipy>=1.10.0", # Added from requirements.txt
+    "scipy>=1.10.0",
     "pyyaml>=6.0,<7.0",
     "tqdm>=4.65.0",
     "accelerate>=0.21.0,<1.0.0",
@@ -57,7 +56,7 @@ CORE_REQUIREMENTS = [
 # GPU Acceleration
 GPU_REQUIREMENTS = {
     "cuda": [
-        "cupy-cuda12x>=12.0.0,<13.0.0", # From requirements.txt
+        "cupy-cuda12x>=12.0.0,<13.0.0",
     ],
     # Assuming cuda11 might still be relevant for some users
     "cuda11": [
@@ -72,17 +71,17 @@ FRAMEWORK_REQUIREMENTS = {
         "tokenizers>=0.15.0,<1.0.0",
         "datasets>=2.14.0,<3.0.0",
         "safetensors>=0.3.0",
-        "evaluate>=0.4.0", # Added from requirements.txt
-        "huggingface-hub>=0.16.0,<1.0.0", # Added from requirements.txt
+        "evaluate>=0.4.0",
+        "huggingface-hub>=0.16.0,<1.0.0",
     ],
     "peft": [
         "peft>=0.4.0,<1.0.0",
-        "bitsandbytes>=0.41.0", # From requirements.txt
+        "bitsandbytes>=0.41.0",
     ],
     "deepspeed": [
-        "deepspeed>=0.9.0,<1.0.0", # From requirements.txt
+        "deepspeed>=0.9.0,<1.0.0",
     ],
-    "fsdp": [ # Kept from original, might be relevant
+    "fsdp": [
         "torch>=2.0.0",
         "accelerate>=0.21.0",
     ],
@@ -91,16 +90,16 @@ FRAMEWORK_REQUIREMENTS = {
 # Multimodal Support
 MODALITY_REQUIREMENTS = {
     "vision": [
-        "pillow>=9.0.0,<11.0.0", # From requirements.txt
-        "torchvision>=0.15.0,<1.0.0", # From requirements.txt
-        "opencv-python>=4.5.0", # From requirements.txt
+        "pillow>=9.0.0,<11.0.0",
+        "torchvision>=0.15.0,<1.0.0",
+        "opencv-python>=4.5.0",
     ],
     "audio": [
-        "torchaudio>=2.0.0,<3.0.0", # From requirements.txt
-        "librosa>=0.10.0", # From requirements.txt
-        "soundfile>=0.12.0", # From requirements.txt
+        "torchaudio>=2.0.0,<3.0.0",
+        "librosa>=0.10.0",
+        "soundfile>=0.12.0",
     ],
-    "multimodal": [ # Combined vision and audio, plus transformers
+    "multimodal": [
         "transformers>=4.30.0,<5.0.0",
         "pillow>=9.0.0,<11.0.0",
         "torchvision>=0.15.0,<1.0.0",
@@ -113,17 +112,16 @@ MODALITY_REQUIREMENTS = {
 
 # Reasoning Capabilities
 REASONING_REQUIREMENTS = {
-    "reasoning": [ # General reasoning (CoT/ToT support)
-        "networkx>=3.1,<4.0", # From requirements.txt
-        "graphviz>=0.20.0", # From requirements.txt
-        "matplotlib>=3.5.0", # From requirements.txt
-        "seaborn>=0.12.0", # Added from requirements.txt
+    "reasoning": [
+        "networkx>=3.1,<4.0",
+        "graphviz>=0.20.0",
+        "matplotlib>=3.5.0",
+        "seaborn>=0.12.0",
     ],
-    "math": [ # Mathematical reasoning
-        "sympy>=1.12.0", # From requirements.txt
-        "scipy>=1.10.0", # Already in core, but listed here for clarity
+    "math": [
+        "sympy>=1.12.0",
+        "scipy>=1.10.0",
     ],
-     # Code reasoning requirements from original setup.py
     "code": [
         "tree-sitter>=0.20.0",
         "tree-sitter-python>=0.20.0",
@@ -133,13 +131,13 @@ REASONING_REQUIREMENTS = {
 # Logging and Monitoring
 LOGGING_REQUIREMENTS = {
     "wandb": [
-        "wandb>=0.15.0,<1.0.0", # From requirements.txt
+        "wandb>=0.15.0,<1.0.0",
     ],
     "tensorboard": [
-        "tensorboard>=2.13.0", # From requirements.txt
-        "tensorboardX>=2.6.0", # From requirements.txt
+        "tensorboard>=2.13.0",
+        "tensorboardX>=2.6.0",
     ],
-    "mlflow": [ # Kept from original
+    "mlflow": [
         "mlflow>=2.5.0,<3.0.0",
     ],
 }
@@ -147,24 +145,24 @@ LOGGING_REQUIREMENTS = {
 # Data Processing and Utilities
 UTILITIES_REQUIREMENTS = {
     "data_processing": [
-        "pandas>=2.0.0", # From requirements.txt
-        "pyarrow>=12.0.0", # From requirements.txt
-        "xxhash>=3.3.0", # From requirements.txt
-        "dill>=0.3.7", # From requirements.txt
-        "multiprocess>=0.70.0", # From requirements.txt
+        "pandas>=2.0.0",
+        "pyarrow>=12.0.0",
+        "xxhash>=3.3.0",
+        "dill>=0.3.7",
+        "multiprocess>=0.70.0",
     ],
     "general_utils": [
-        "jsonlines>=3.1.0", # From requirements.txt
-        "regex>=2023.0.0", # From requirements.txt
-        "filelock>=3.12.0", # From requirements.txt
-        "packaging>=23.0", # From requirements.txt
-        "psutil>=5.9.0", # From requirements.txt
+        "jsonlines>=3.1.0",
+        "regex>=2023.0.0",
+        "filelock>=3.12.0",
+        "packaging>=23.0",
+        "psutil>=5.9.0",
     ],
     "serialization": [
-        "sentencepiece>=0.1.99", # From requirements.txt
-        "protobuf>=3.20.0,<5.0.0", # From requirements.txt
+        "sentencepiece>=0.1.99",
+        "protobuf>=3.20.0,<5.0.0",
     ],
-     "api": [ # HTTP/API libs from requirements.txt
+     "api": [
         "requests>=2.31.0",
         "aiohttp>=3.8.0",
         "urllib3>=2.0.0",
@@ -173,24 +171,24 @@ UTILITIES_REQUIREMENTS = {
 
 # Development and Testing
 DEV_REQUIREMENTS = {
-    "dev": [ # Core testing tools from requirements.txt
+    "dev": [
         "pytest>=7.0.0,<8.0.0",
         "pytest-cov>=4.1.0,<5.0.0",
         "pytest-xdist>=3.3.0",
         "pytest-mock>=3.11.0",
     ],
-    "format": [ # Formatting/Linting tools from requirements.txt
+    "format": [
         "black>=23.9.0,<24.0.0",
         "isort>=5.12.0,<6.0.0",
         "flake8>=6.0.0,<7.0.0",
         "mypy>=1.5.0,<2.0.0",
     ],
-    "quality": [ # Quality/Security tools from requirements.txt
+    "quality": [
         "bandit>=1.7.0,<2.0.0",
         "safety>=2.3.0,<3.0.0",
         "pre-commit>=3.0.0,<4.0.0",
     ],
-    "docs": [ # Kept from original, potentially relevant
+    "docs": [
         "sphinx>=7.0.0,<8.0.0",
         "sphinx-rtd-theme>=1.3.0",
         "myst-parser>=2.0.0",
@@ -200,14 +198,14 @@ DEV_REQUIREMENTS = {
 
 # Benchmark and Evaluation
 EVAL_REQUIREMENTS = {
-    "eval": [ # Core evaluation tools
-        "evaluate>=0.4.0", # Already in transformers extra
-        "rouge-score>=0.1.2", # From requirements.txt
-        "bert-score>=0.3.13", # From requirements.txt
-        "nltk>=3.8.0", # Added from requirements.txt
-        "scikit-learn>=1.3.0", # Added from requirements.txt
+    "eval": [
+        "evaluate>=0.4.0",
+        "rouge-score>=0.1.2",
+        "bert-score>=0.3.13",
+        "nltk>=3.8.0",
+        "scikit-learn>=1.3.0",
     ],
-    "benchmarks": [ # Kept from original, potentially relevant
+    "benchmarks": [
         "lm-eval>=0.4.0",
         "human-eval>=1.0.0",
     ],
@@ -216,8 +214,8 @@ EVAL_REQUIREMENTS = {
 # Inference and Serving (New for RLAIF/vLLM)
 INFERENCE_REQUIREMENTS = {
     "inference": [
-        "vllm>=0.2.0",  # High-throughput inference for RLAIF gen
-        "ray",          # Distributed inference support
+        "vllm>=0.2.0",
+        "ray",
     ],
 }
 
@@ -413,9 +411,9 @@ KEYWORDS = [
     "deep-learning",
     "reinforcement-learning",
     "rlhf",
-    "rlaif", # Added
+    "rlaif",
     "human-feedback",
-    "ai-feedback", # Added
+    "ai-feedback",
     "transformers",
     "large-language-models",
     "llm",
@@ -426,8 +424,8 @@ KEYWORDS = [
     "dapo",
     "grpo",
     "vapo",
-    "dpo", # Added
-    "vllm", # Added
+    "dpo",
+    "vllm",
     "chain-of-thought",
     "tree-of-thought",
     "reasoning",

@@ -1,0 +1,19 @@
+# Core Documentation Generator
+sphinx>=7.2.0
+sphinx-rtd-theme>=1.3.0   # Professional ReadTheDocs theme
+
+# Markdown Support (essential for your .md files)
+myst-parser>=2.0.0
+
+# Mathematical Rendering
+# Critical for VAPO/DAPO/GRPO formulas (Eq 1-35 in the spec)
+sphinx-mathjax-offline>=0.0.2
+
+# API & Type Hinting
+sphinx-autodoc-typehints>=1.24.0  # Extract types from your signatures
+sphinx-copybutton>=0.5.2          # Copy code snippets easily
+sphinx-design>=0.5.0              # Badges and grids
+
+# Notebook Integration
+nbsphinx>=0.9.3           # Render example notebooks
+ipython>=8.15.0
