@@ -16,7 +16,7 @@ Author: Archit Sood @ EllanorAI
 import logging
 import warnings
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Union
+from typing import TYPE_CHECKING, Any
 
 
 # Optional dependencies
@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 # Tokenizer type alias - works both with and without transformers
 if TYPE_CHECKING:
-    TokenizerType = Union[PreTrainedTokenizer, PreTrainedTokenizerFast]
+    TokenizerType = PreTrainedTokenizer | PreTrainedTokenizerFast
 else:
     TokenizerType = Any
 

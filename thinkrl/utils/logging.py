@@ -347,7 +347,6 @@ def setup_logger(
     logger.addHandler(console_handler)
 
     # File handler (optional, only for rank 0 or non-distributed)
-    actual_log_path = None
     if log_file or log_dir:
         # Determine log file path
         if log_file:
