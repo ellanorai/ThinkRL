@@ -3,40 +3,42 @@
 # ------------------------------------------------------------------
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.4.0
+    rev: v4.5.0  # Updated version
     hooks:
       - id: trailing-whitespace
       - id: end-of-file-fixer
       - id: check-yaml
+        args: ['--unsafe']  # Allow custom YAML tags
       - id: check-added-large-files
         args: ['--maxkb=1000']
       - id: check-case-conflict
       - id: check-merge-conflict
+      - id: check-toml  # Added for pyproject.toml
+      - id: check-json  # Added for JSON configs
+      - id: mixed-line-ending
 
   - repo: https://github.com/psf/black
-    rev: 23.9.1
+    rev: 24.1.1  # Updated version
     hooks:
       - id: black
         language_version: python3
 
   - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
+    rev: 5.13.2  # Updated version
     hooks:
       - id: isort
         args: ["--profile", "black"]
 
   - repo: https://github.com/pycqa/flake8
-    rev: 6.1.0
+    rev: 7.0.0  # Updated version
     hooks:
       - id: flake8
         additional_dependencies: [flake8-docstrings]
-        args: ["--max-line-length=88", "--extend-ignore=E203"]
+        args: ["--max-line-length=88", "--extend-ignore=E203,W503"]
 
   # ------------------------------------------------------------------
   # Static Type Checking (Mypy) - LOCAL HOOK
   # ------------------------------------------------------------------
-  # Crucial for ThinkRL: Uses the local environment so it can see
-  # torch, cupy, and transformers without re-installing them.
   - repo: local
     hooks:
       - id: mypy
@@ -45,16 +47,32 @@ repos:
         language: system
         types: [python]
         require_serial: true
-        args: ["thinkrl"]  # Check only the package
+        args: ["thinkrl"]
         pass_filenames: false
 
   # ------------------------------------------------------------------
   # Security Checks
   # ------------------------------------------------------------------
-  - repo: https://github.com/bandit-framework/bandit
-    rev: 1.7.5
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.7.6  # Updated version
     hooks:
       - id: bandit
         args: ["-ll", "-ii"]
         files: .py$
         exclude: ^tests/
+
+  # ------------------------------------------------------------------
+  # Additional Useful Hooks
+  # ------------------------------------------------------------------
+  - repo: https://github.com/pre-commit/mirrors-prettier
+    rev: v3.1.0
+    hooks:
+      - id: prettier
+        types_or: [yaml, markdown, json]
+        exclude: ^(docs/|coverage\.xml)
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.2.6
+    hooks:
+      - id: codespell
+        args: ["--ignore-words-list=hist,nd,thinkrl"]
