@@ -14,6 +14,16 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo docker system prune -af
+          sudo apt-get clean
+          df -h
+
       - name: Set up Python 3.11
         uses: actions/setup-python@v5
         with:
@@ -27,8 +37,16 @@ jobs:
           ~/.cargo/bin/uv venv
           ~/.cargo/bin/uv pip install --upgrade setuptools wheel
 
-      - name: Install Core Dependencies
-        run: ~/.cargo/bin/uv pip install ".[dev]"
+      - name: Install Core Dependencies (CPU-only)
+        run: |
+          # Install CPU-only PyTorch to save space
+          ~/.cargo/bin/uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+          # Install core dependencies
+          ~/.cargo/bin/uv pip install cupy-cuda12x scipy pyyaml tqdm accelerate
+          # Install dev/test dependencies
+          ~/.cargo/bin/uv pip install pytest pytest-cov pytest-xdist pytest-mock
+          # Install package
+          ~/.cargo/bin/uv pip install -e .
 
       - name: Run Tests
         run: .venv/bin/pytest tests/ -v --tb=short

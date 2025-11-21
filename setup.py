@@ -219,6 +219,39 @@ INFERENCE_REQUIREMENTS = {
     ],
 }
 
+# CI/CD Requirements (NEW - lightweight for GitHub Actions)
+CI_REQUIREMENTS = {
+    "ci": [
+        # Core ML (CPU-only)
+        "torch>=2.0.0,<2.5.0",
+        "cupy-cuda12x>=12.0.0,<13.0.0",
+        "scipy>=1.10.0",
+        # HuggingFace essentials
+        "transformers>=4.35.0,<5.0.0",
+        "accelerate>=0.24.0,<1.0.0",
+        "tokenizers>=0.15.0,<1.0.0",
+        "datasets>=2.14.0,<3.0.0",
+        "safetensors>=0.4.0",
+        # Utilities
+        "pyyaml>=6.0,<7.0",
+        "tqdm>=4.65.0",
+        "packaging>=23.0",
+        # Testing
+        "pytest>=7.4.0,<8.0.0",
+        "pytest-cov>=4.1.0,<5.0.0",
+        "pytest-xdist>=3.3.0",
+        "pytest-mock>=3.11.0",
+        # Linting
+        "ruff>=0.1.0",
+        "mypy>=1.5.0,<2.0.0",
+        "bandit>=1.7.0,<2.0.0",
+        "pre-commit>=3.4.0",
+        # Type stubs
+        "numpy-stubs>=0.0.1",
+        "types-PyYAML>=6.0.12",
+        "types-requests>=2.31.0",
+    ],
+}
 
 # Convenience bundles
 CONVENIENCE_BUNDLES = {
@@ -333,6 +366,7 @@ EXTRAS_REQUIRE = {
     **DEV_REQUIREMENTS,
     **EVAL_REQUIREMENTS,
     **INFERENCE_REQUIREMENTS,
+    **CI_REQUIREMENTS,  # NEW: Added CI requirements
     **CONVENIENCE_BUNDLES,
 }
 
