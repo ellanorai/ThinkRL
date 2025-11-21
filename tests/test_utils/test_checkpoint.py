@@ -156,9 +156,8 @@ class TestStandaloneFunctions:
 
     def test_save_load_config_yaml(self, temp_dir):
         """Test saving and loading config as YAML."""
-        try:
-            import yaml
-        except ImportError:
+        import importlib.util
+        if importlib.util.find_spec("yaml") is None:
             pytest.skip("PyYAML not installed")
 
         config = {"lr": 0.01, "model": "gpt2"}

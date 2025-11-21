@@ -16,17 +16,9 @@ from thinkrl.data.processors import process_audio, process_image
 
 
 # Check actual availability in the module we are testing
-try:
-    from PIL import Image
-    _PIL_AVAILABLE = True
-except ImportError:
-    _PIL_AVAILABLE = False
-
-try:
-    import librosa
-    _AUDIO_AVAILABLE = True
-except ImportError:
-    _AUDIO_AVAILABLE = False
+import importlib.util
+_PIL_AVAILABLE = importlib.util.find_spec("PIL") is not None
+_AUDIO_AVAILABLE = importlib.util.find_spec("librosa") is not None
 
 
 # --- Image Processor Tests ---

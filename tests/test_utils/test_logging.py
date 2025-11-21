@@ -16,6 +16,7 @@ import logging
 import logging.handlers  # Import handlers for isinstance check
 import shutil
 import tempfile
+import warnings
 from pathlib import Path
 
 import pytest
@@ -45,11 +46,12 @@ def temp_dir():
     try:
         shutil.rmtree(temp_dir_path)
     except PermissionError:
-        print(
-            f"Warning: Could not remove temp directory {temp_dir_path} due to PermissionError."
+        warnings.warn(
+            f"Could not remove temp directory {temp_dir_path} due to PermissionError.",
+            stacklevel=2
         )
     except OSError as e:
-        print(f"Warning: Error removing temp directory {temp_dir_path}: {e}")
+        warnings.warn(f"Error removing temp directory {temp_dir_path}: {e}", stacklevel=2)
 
 
 # ============================================================================
