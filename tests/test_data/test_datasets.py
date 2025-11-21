@@ -8,13 +8,15 @@ Tests for:
 
 """
 
-import pytest
-import torch
-import tempfile
 import json
 import os
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
+
+import pytest
+import torch
+
 
 # Check availability for skip logic
 try:
@@ -23,7 +25,8 @@ try:
 except ImportError:
     _DATASETS_AVAILABLE = False
 
-from thinkrl.data.datasets import RLHFDataset, PreferenceDataset
+from thinkrl.data.datasets import PreferenceDataset, RLHFDataset
+
 
 # Mock Tokenizer
 class MockTokenizer:
@@ -33,7 +36,7 @@ class MockTokenizer:
         self.pad_token_id = pad_token_id
         self.eos_token = eos_token
         self.eos_token_id = eos_token_id
-    
+
     def __call__(
         self,
         text: str,
@@ -47,15 +50,15 @@ class MockTokenizer:
         # Simple whitespace tokenizer
         tokens = text.split()
         token_ids = [len(token) for token in tokens] # Use length as token ID
-        
+
         if truncation and max_length and len(token_ids) > max_length:
             if self.padding_side == 'right':
                 token_ids = token_ids[:max_length]
             else:
                 token_ids = token_ids[-max_length:]
-            
+
         attention_mask = [1] * len(token_ids)
-        
+
         if return_tensors == "pt":
             return {
                 "input_ids": torch.tensor([token_ids]),
@@ -78,7 +81,7 @@ def temp_jsonl_file():
     fd, path = tempfile.mkstemp(suffix=".jsonl")
     os.close(fd) # Close the file descriptor immediately
     path = Path(path)
-    
+
     data = [
         {"prompt": "this is prompt 1.", "chosen": "this is chosen 1.", "rejected": "this is rejected 1."},
         {"prompt": "this is prompt 2.", "chosen": "this is chosen 2.", "rejected": "this is rejected 2."},
@@ -87,7 +90,7 @@ def temp_jsonl_file():
         {"prompt": None, "chosen": "no prompt", "rejected": "no prompt"}, # Invalid
         {}, # Invalid
     ]
-    
+
     try:
         with open(path, 'w', encoding='utf-8') as f:
             for item in data:
@@ -115,13 +118,13 @@ class TestRLHFDataset:
         ]
         # Mock a Dataset object that supports filtering via list comprehension in __init__
         mock_load_dataset.return_value = hf_data
-        
+
         dataset = RLHFDataset(
             dataset_name_or_path="hf/dummy-dataset",
             tokenizer=mock_tokenizer,
             prompt_column="prompt",
         )
-        
+
         mock_load_dataset.assert_called_with("hf/dummy-dataset", split="train")
         assert len(dataset) == 2
         assert dataset.data[0]["prompt"] == "hf prompt 1."
@@ -145,12 +148,12 @@ class TestRLHFDataset:
             prompt_column="prompt",
             max_length=10,
         )
-        
+
         sample = dataset[0]
-        
+
         # "this is prompt 1." -> split ["this", "is", "prompt", "1."] -> lens [4, 2, 6, 2]
         expected_ids = torch.tensor([4, 2, 6, 2])
-        
+
         assert "input_ids" in sample
         assert "attention_mask" in sample
         assert "prompt_text" in sample
@@ -170,7 +173,7 @@ class TestRLHFDataset:
             prompt_column="prompt",
             preprocess_fn=add_prefix,
         )
-        
+
         sample = dataset[0]
         # "PREFIX: this is prompt 1." -> split ["PREFIX:", "this", "is", "prompt", "1."] -> lens [7, 4, 2, 6, 2]
         expected_ids = torch.tensor([7, 4, 2, 6, 2])
@@ -231,9 +234,9 @@ class TestPreferenceDataset:
             tokenizer=mock_tokenizer,
             max_length=20, # Ensure truncation
         )
-        
+
         sample = dataset[0]
-        
+
         # Input: "this is prompt 1.this is chosen 1.<EOS>"
         # The Dataset implementation joins with NO space: f"{prompt}{chosen}{eos}"
         # Prompt: "this is prompt 1."
@@ -241,19 +244,19 @@ class TestPreferenceDataset:
         # Full: "this is prompt 1.this is chosen 1.<EOS>"
         # Tokens (space split in MockTokenizer): "this", "is", "prompt", "1.this", "is", "chosen", "1.<EOS>"
         # IDs: [4, 2, 6, 6, 2, 6, 7]
-        
+
         expected_chosen_ids = torch.tensor([4, 2, 6, 6, 2, 6, 7])
-        
+
         # Rejected: "this is prompt 1.this is rejected 1.<EOS>"
         # Tokens: "this", "is", "prompt", "1.this", "is", "rejected", "1.<EOS>"
         # IDs: [4, 2, 6, 6, 2, 8, 7]
         expected_rejected_ids = torch.tensor([4, 2, 6, 6, 2, 8, 7])
-        
+
         assert "chosen_input_ids" in sample
         assert "chosen_attention_mask" in sample
         assert "rejected_input_ids" in sample
         assert "rejected_attention_mask" in sample
-        
+
         assert torch.allclose(sample["chosen_input_ids"], expected_chosen_ids)
         assert torch.allclose(sample["rejected_input_ids"], expected_rejected_ids)
         assert sample["chosen_attention_mask"].shape == expected_chosen_ids.shape

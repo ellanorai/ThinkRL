@@ -2,12 +2,14 @@
 Test Suite for ThinkRL Tokenizer Utilities
 ==========================================
 """
-import torch
-import pytest
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
+
+import pytest
+import torch
+
 
 # Check for optional dependencies
 try:
@@ -15,20 +17,21 @@ try:
         PreTrainedTokenizer,
         PreTrainedTokenizerFast,
     )
+
     from thinkrl.utils.tokenizer import (
-        get_tokenizer,
-        tokenize_text,
-        tokenize_batch,
+        add_special_tokens,
+        count_tokens,
         decode_tokens,
         get_special_tokens,
-        add_special_tokens,
-        tokenize_conversation,
-        prepare_input_for_generation,
-        count_tokens,
-        truncate_to_token_limit,
+        get_tokenizer,
         get_tokenizer_info,
-        save_tokenizer,
         load_tokenizer,
+        prepare_input_for_generation,
+        save_tokenizer,
+        tokenize_batch,
+        tokenize_conversation,
+        tokenize_text,
+        truncate_to_token_limit,
     )
     _TRANSFORMERS_AVAILABLE = True
 except ImportError:
@@ -74,7 +77,7 @@ class TestTokenizers:
         encoded = tokenize_text(
             text, gpt2_tokenizer, max_length=10, padding="max_length", truncation=True
         )
-        
+
         assert "input_ids" in encoded
         assert "attention_mask" in encoded
         assert encoded["input_ids"].shape == (1, 10)
@@ -91,16 +94,16 @@ class TestTokenizers:
     def test_tokenize_batch(self, gpt2_tokenizer):
         """Test efficient batch tokenization."""
         texts = ["Text 1", "Text 2", "A slightly longer text"] * 10
-        
+
         # Test with batch_size
         encoded = tokenize_batch(
-            texts, 
-            gpt2_tokenizer, 
-            max_length=10, 
-            padding="max_length", 
+            texts,
+            gpt2_tokenizer,
+            max_length=10,
+            padding="max_length",
             batch_size=8
         )
-        
+
         assert "input_ids" in encoded
         assert "attention_mask" in encoded
         assert encoded["input_ids"].shape == (30, 10)
@@ -117,7 +120,7 @@ class TestTokenizers:
         texts = ["Hello!", "How are you?"]
         batch_ids = [gpt2_tokenizer.encode(t) for t in texts]
         decoded_batch = decode_tokens(batch_ids, gpt2_tokenizer, skip_special_tokens=True)
-        
+
         assert isinstance(decoded_batch, list)
         assert len(decoded_batch) == 2
         assert decoded_batch[0] == "Hello!"
@@ -137,12 +140,12 @@ class TestTokenizers:
         """Test adding new special tokens."""
         tokenizer = get_tokenizer("gpt2")
         original_vocab_size = len(tokenizer)
-        
+
         num_added = add_special_tokens(
             tokenizer,
             {"additional_special_tokens": ["<|user|>", "<|assistant|>"]}
         )
-        
+
         assert num_added == 2
         assert len(tokenizer) == original_vocab_size + 2
         assert tokenizer.convert_tokens_to_ids("<|user|>") == original_vocab_size
@@ -165,7 +168,7 @@ class TestTokenizers:
             separator="\n",
             add_generation_prompt=False
         )
-        
+
         decoded = decode_tokens(encoded["input_ids"].squeeze(0), gpt2_tokenizer)
         assert decoded == "SYS: You are helpful.\nUSER: Hello!\nASSIST: Hi!"
 
@@ -178,7 +181,7 @@ class TestTokenizers:
             separator="\n",
             add_generation_prompt=True
         )
-        
+
         decoded_gen = decode_tokens(encoded_gen["input_ids"].squeeze(0), gpt2_tokenizer)
         assert decoded_gen.endswith("\nASSIST: ")
 
@@ -187,22 +190,22 @@ class TestTokenizers:
         mock_tokenizer = MagicMock()
         mock_tokenizer.chat_template = "fake_template"
         mock_tokenizer.apply_chat_template.return_value = "Template output"
-        
+
         with patch("thinkrl.utils.tokenizer.tokenize_text") as mock_tokenize_text:
             messages = [{"role": "user", "content": "Hello"}]
-            
+
             tokenize_conversation(
                 messages,
                 mock_tokenizer,
                 add_generation_prompt=True
             )
-            
+
             mock_tokenizer.apply_chat_template.assert_called_with(
                 messages,
                 tokenize=False,
                 add_generation_prompt=True
             )
-            
+
             mock_tokenize_text.assert_called_with(
                 "Template output",
                 mock_tokenizer
@@ -212,11 +215,11 @@ class TestTokenizers:
         """Test preparing inputs for model.generate()."""
         prompt = "Once upon a time"
         inputs = prepare_input_for_generation(
-            prompt, 
-            gpt2_tokenizer, 
+            prompt,
+            gpt2_tokenizer,
             device="cpu"
         )
-        
+
         assert "input_ids" in inputs
         assert "attention_mask" in inputs
         assert isinstance(inputs["input_ids"], torch.Tensor)
@@ -236,7 +239,7 @@ class TestTokenizers:
     def test_truncate_to_token_limit(self, gpt2_tokenizer):
         """Test truncating text based on token count."""
         long_text = "This is a very long text that will surely be truncated."
-        
+
         truncated_right = truncate_to_token_limit(
             long_text, gpt2_tokenizer, max_tokens=7
         )
@@ -250,12 +253,12 @@ class TestTokenizers:
     def test_get_tokenizer_info(self, gpt2_tokenizer):
         """Test getting tokenizer information."""
         info = get_tokenizer_info(gpt2_tokenizer)
-        
+
         assert "vocab_size" in info
         assert "model_max_length" in info
         assert "padding_side" in info
         assert "special_tokens" in info
-        
+
         assert info["vocab_size"] == 50257
         assert info["padding_side"] == "right"
         assert info["special_tokens"]["pad_token_id"] == 50256
@@ -264,16 +267,16 @@ class TestTokenizers:
         """Test saving and loading a modified tokenizer."""
         tokenizer_to_save = get_tokenizer("gpt2")
         add_special_tokens(tokenizer_to_save, {"additional_special_tokens": ["<|my_token|>"]})
-        
+
         assert tokenizer_to_save.convert_tokens_to_ids("<|my_token|>") == 50257
-        
+
         save_tokenizer(tokenizer_to_save, temp_dir)
-        
+
         assert (temp_dir / "tokenizer.json").exists()
         assert (temp_dir / "special_tokens_map.json").exists()
-        
+
         loaded_tokenizer = load_tokenizer(temp_dir)
-        
+
         assert isinstance(loaded_tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast))
         assert len(loaded_tokenizer) == len(tokenizer_to_save)
         assert loaded_tokenizer.convert_tokens_to_ids("<|my_token|>") == 50257

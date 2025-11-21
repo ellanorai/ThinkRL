@@ -14,13 +14,13 @@ Author: Archit Sood @ EllanorAI
 """
 
 import logging
-import sys
-import os
-from pathlib import Path
-from typing import Optional, Union, Dict, Any
-from datetime import datetime
-import warnings
 import logging.handlers  # Import handlers
+import os
+import sys
+import warnings
+from datetime import datetime
+from pathlib import Path
+from typing import Any
 
 
 # ANSI color codes for terminal output
@@ -80,8 +80,8 @@ class ColoredFormatter(logging.Formatter):
 
     def __init__(
         self,
-        fmt: Optional[str] = None,
-        datefmt: Optional[str] = None,
+        fmt: str | None = None,
+        datefmt: str | None = None,
         use_colors: bool = True,
     ):
         """
@@ -181,9 +181,9 @@ class ThinkRLLogger(logging.Logger):
             level: Logging level
         """
         super().__init__(name, level)
-        self._metrics_buffer: Dict[str, Any] = {}
+        self._metrics_buffer: dict[str, Any] = {}
 
-    def metric(self, name: str, value: Union[int, float], step: Optional[int] = None):
+    def metric(self, name: str, value: int | float, step: int | None = None):
         """
         Log a metric value.
 
@@ -200,7 +200,7 @@ class ThinkRLLogger(logging.Logger):
         # Store in buffer for batch logging
         self._metrics_buffer[name] = {"value": value, "step": step}
 
-    def checkpoint(self, path: str, metrics: Optional[Dict[str, Any]] = None):
+    def checkpoint(self, path: str, metrics: dict[str, Any] | None = None):
         """
         Log a model checkpoint.
 
@@ -226,7 +226,7 @@ class ThinkRLLogger(logging.Logger):
         percentage = 100 * current / total
         self.info(f"{prefix}: {current}/{total} ({percentage:.1f}%)")
 
-    def get_metrics_buffer(self) -> Dict[str, Any]:
+    def get_metrics_buffer(self) -> dict[str, Any]:
         """
         Get the buffered metrics.
 
@@ -242,16 +242,16 @@ class ThinkRLLogger(logging.Logger):
 
 def setup_logger(
     name: str = "thinkrl",
-    level: Union[int, str] = logging.INFO,
-    log_file: Optional[Union[str, Path]] = None,
-    log_dir: Optional[Union[str, Path]] = None,
-    format_string: Optional[str] = None,
-    date_format: Optional[str] = None,
+    level: int | str = logging.INFO,
+    log_file: str | Path | None = None,
+    log_dir: str | Path | None = None,
+    format_string: str | None = None,
+    date_format: str | None = None,
     use_colors: bool = True,
     file_mode: str = "a",
     max_bytes: int = 10 * 1024 * 1024,  # 10 MB
     backup_count: int = 5,
-    rank: Optional[int] = None,
+    rank: int | None = None,
 ) -> logging.Logger:
     """
     Set up a logger with console and optional file output.
@@ -396,7 +396,7 @@ def setup_logger(
 
 
 def get_logger(
-    name: str = "thinkrl", level: Optional[Union[int, str]] = None
+    name: str = "thinkrl", level: int | str | None = None
 ) -> logging.Logger:
     """
     Get an existing logger or create a new one with basic configuration if needed.
@@ -450,7 +450,7 @@ def get_logger(
 def configure_logging_for_distributed(
     rank: int,
     world_size: int,
-    log_dir: Optional[Path] = None,
+    log_dir: Path | None = None,
     level: int = logging.INFO,
     base_name: str = "thinkrl",
 ):
@@ -537,7 +537,7 @@ def disable_external_loggers(level: int = logging.WARNING):
 
 
 # Module-level logger
-_module_logger: Optional[logging.Logger] = None
+_module_logger: logging.Logger | None = None
 
 
 def get_module_logger() -> logging.Logger:

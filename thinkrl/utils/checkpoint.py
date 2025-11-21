@@ -14,20 +14,20 @@ Comprehensive checkpoint utilities for ThinkRL including:
 Author: Archit Sood @ EllanorAI
 """
 
-import os
 import json
+import logging
 import shutil
 import warnings
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union
 from datetime import datetime
-import logging
+from pathlib import Path
+from typing import Any
 
 # Core dependencies
 import torch
 import torch.nn as nn
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
+
 
 # Optional dependencies
 try:
@@ -39,8 +39,8 @@ except ImportError:
     warnings.warn("PyYAML not available. YAML config saving will be disabled.")
 
 try:
-    from safetensors.torch import save_file as safetensors_save
     from safetensors.torch import load_file as safetensors_load
+    from safetensors.torch import save_file as safetensors_save
 
     _SAFETENSORS_AVAILABLE = True
 except ImportError:
@@ -84,9 +84,9 @@ class CheckpointManager:
 
     def __init__(
         self,
-        checkpoint_dir: Union[str, Path],
+        checkpoint_dir: str | Path,
         max_checkpoints: int = 5,
-        metric_name: Optional[str] = None,
+        metric_name: str | None = None,
         mode: str = "min",
         save_optimizer: bool = True,
         save_scheduler: bool = True,
@@ -122,8 +122,8 @@ class CheckpointManager:
             self.use_safetensors = False
 
         # Track checkpoints
-        self.checkpoints: List[Dict[str, Any]] = []
-        self.best_checkpoint: Optional[Dict[str, Any]] = None
+        self.checkpoints: list[dict[str, Any]] = []
+        self.best_checkpoint: dict[str, Any] | None = None
 
         # Load existing checkpoint metadata
         self._load_metadata()
@@ -131,13 +131,13 @@ class CheckpointManager:
     def save_checkpoint(
         self,
         model: nn.Module,
-        optimizer: Optional[Optimizer] = None,
-        scheduler: Optional[_LRScheduler] = None,
-        epoch: Optional[int] = None,
-        step: Optional[int] = None,
-        metrics: Optional[Dict[str, float]] = None,
-        extra_data: Optional[Dict[str, Any]] = None,
-        checkpoint_name: Optional[str] = None,
+        optimizer: Optimizer | None = None,
+        scheduler: _LRScheduler | None = None,
+        epoch: int | None = None,
+        step: int | None = None,
+        metrics: dict[str, float] | None = None,
+        extra_data: dict[str, Any] | None = None,
+        checkpoint_name: str | None = None,
     ) -> Path:
         """
         Save a checkpoint with model, optimizer, and metadata.
@@ -230,13 +230,13 @@ class CheckpointManager:
 
     def load_checkpoint(
         self,
-        checkpoint_path: Union[str, Path],
+        checkpoint_path: str | Path,
         model: nn.Module,
-        optimizer: Optional[Optimizer] = None,
-        scheduler: Optional[_LRScheduler] = None,
-        device: Optional[torch.device] = None,
+        optimizer: Optimizer | None = None,
+        scheduler: _LRScheduler | None = None,
+        device: torch.device | None = None,
         strict: bool = True,
-    ) -> Dict[str, Any]:
+    ) -> dict[str, Any]:
         """
         Load a checkpoint into model, optimizer, and scheduler.
 
@@ -304,7 +304,7 @@ class CheckpointManager:
         metadata = {}
         metadata_path = checkpoint_dir / "metadata.json"
         if metadata_path.exists():
-            with open(metadata_path, "r") as f:
+            with open(metadata_path) as f:
                 metadata = json.load(f)
 
         logger.info(f"Checkpoint loaded: {checkpoint_path}")
@@ -313,10 +313,10 @@ class CheckpointManager:
     def load_best_checkpoint(
         self,
         model: nn.Module,
-        optimizer: Optional[Optimizer] = None,
-        scheduler: Optional[_LRScheduler] = None,
-        device: Optional[torch.device] = None,
-    ) -> Optional[Dict[str, Any]]:
+        optimizer: Optimizer | None = None,
+        scheduler: _LRScheduler | None = None,
+        device: torch.device | None = None,
+    ) -> dict[str, Any] | None:
         """
         Load the best checkpoint based on tracked metrics.
 
@@ -350,7 +350,7 @@ class CheckpointManager:
         return metadata
 
     def _update_best_checkpoint(
-        self, checkpoint_info: Dict[str, Any], metric_value: float
+        self, checkpoint_info: dict[str, Any], metric_value: float
     ):
         """Update the best checkpoint based on metric value."""
         if self.best_checkpoint is None:
@@ -447,7 +447,7 @@ class CheckpointManager:
             return
 
         try:
-            with open(metadata_file, "r") as f:
+            with open(metadata_file) as f:
                 metadata = json.load(f)
 
             # Restore checkpoints
@@ -481,14 +481,14 @@ class CheckpointManager:
 
 
 def save_checkpoint(
-    checkpoint_path: Union[str, Path],
+    checkpoint_path: str | Path,
     model: nn.Module,
-    optimizer: Optional[Optimizer] = None,
-    scheduler: Optional[_LRScheduler] = None,
-    epoch: Optional[int] = None,
-    step: Optional[int] = None,
-    metrics: Optional[Dict[str, float]] = None,
-    config: Optional[Dict[str, Any]] = None,
+    optimizer: Optimizer | None = None,
+    scheduler: _LRScheduler | None = None,
+    epoch: int | None = None,
+    step: int | None = None,
+    metrics: dict[str, float] | None = None,
+    config: dict[str, Any] | None = None,
     use_safetensors: bool = False,
     **kwargs,
 ) -> Path:
@@ -574,13 +574,13 @@ def save_checkpoint(
 
 
 def load_checkpoint(
-    checkpoint_path: Union[str, Path],
+    checkpoint_path: str | Path,
     model: nn.Module,
-    optimizer: Optional[Optimizer] = None,
-    scheduler: Optional[_LRScheduler] = None,
-    device: Optional[torch.device] = None,
+    optimizer: Optimizer | None = None,
+    scheduler: _LRScheduler | None = None,
+    device: torch.device | None = None,
     strict: bool = True,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Load a checkpoint from disk.
 
@@ -622,7 +622,7 @@ def load_checkpoint(
         # Load metadata
         metadata_path = checkpoint_path.with_suffix(".metadata.json")
         if metadata_path.exists():
-            with open(metadata_path, "r") as f:
+            with open(metadata_path) as f:
                 checkpoint = json.load(f)
             checkpoint["model_state_dict"] = state_dict
         else:
@@ -651,7 +651,7 @@ def load_checkpoint(
     return checkpoint
 
 
-def save_config(config: Dict[str, Any], save_path: Union[str, Path]):
+def save_config(config: dict[str, Any], save_path: str | Path):
     """
     Save configuration to JSON or YAML file.
 
@@ -682,7 +682,7 @@ def save_config(config: Dict[str, Any], save_path: Union[str, Path]):
     logger.info(f"Saved config to: {save_path}")
 
 
-def load_config(config_path: Union[str, Path]) -> Dict[str, Any]:
+def load_config(config_path: str | Path) -> dict[str, Any]:
     """
     Load configuration from JSON or YAML file.
 
@@ -704,10 +704,10 @@ def load_config(config_path: Union[str, Path]) -> Dict[str, Any]:
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
     if config_path.suffix in [".yaml", ".yml"] and _YAML_AVAILABLE:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config = yaml.safe_load(f)
     else:
-        with open(config_path, "r") as f:
+        with open(config_path) as f:
             config = json.load(f)
 
     logger.info(f"Loaded config from: {config_path}")

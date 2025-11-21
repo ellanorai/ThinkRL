@@ -12,21 +12,23 @@ Tests for:
 Author: Archit Sood
 """
 
-import pytest
-import tempfile
-import shutil
-from pathlib import Path
 import logging
 import logging.handlers  # Import handlers for isinstance check
+import shutil
+import tempfile
+from pathlib import Path
+
+import pytest
 
 # Modules under test
 from thinkrl.utils.logging import (
-    setup_logger,
-    get_logger,
-    configure_logging_for_distributed,
     ColoredFormatter,
     ThinkRLLogger,
+    configure_logging_for_distributed,
+    get_logger,
+    setup_logger,
 )
+
 
 # ============================================================================
 # Fixtures
@@ -87,7 +89,7 @@ class TestLogging:
         assert logger is not None
         assert isinstance(logger, logging.Logger) # get_logger returns base logger if not setup
         assert logger.name == "thinkrl.test_get_new"
-        
+
         # Test getting an already configured logger
         setup_logger("thinkrl.test_get_setup")
         logger2 = get_logger("thinkrl.test_get_setup")
@@ -109,7 +111,7 @@ class TestLogging:
         )
 
         formatted = formatter.format(record)
-        
+
         # Check if color codes are present (if terminal supports it)
         if formatter.use_colors:
             assert "\033[" in formatted
@@ -210,33 +212,33 @@ class TestLogging:
     def test_thinkrl_logger_methods(self, temp_dir):
         """Test the custom methods of ThinkRLLogger."""
         logger = setup_logger("thinkrl.custom", log_dir=temp_dir)
-        
+
         assert isinstance(logger, ThinkRLLogger)
-        
+
         # Test metric logging
         logger.metric("loss", 0.5, step=10)
         logger.metric("accuracy", 0.9, step=10)
-        
+
         buffer = logger.get_metrics_buffer()
         assert "loss" in buffer
         assert buffer["loss"]["value"] == 0.5
         assert buffer["loss"]["step"] == 10
         assert buffer["accuracy"]["value"] == 0.9
-        
+
         logger.clear_metrics_buffer()
         assert not logger.get_metrics_buffer()
-        
+
         # Test checkpoint logging
         logger.checkpoint("/path/to/model.pt", metrics={"loss": 0.5})
-        
+
         # Test progress logging
         logger.progress(50, 100, prefix="Epoch 1")
-        
+
         # Check if logs are in the file
         log_file = list(temp_dir.glob("thinkrl.custom_*.log"))[0]
-        with open(log_file, 'r') as f:
+        with open(log_file) as f:
             content = f.read()
-            
+
         assert "Metric: loss=0.5 (step=10)" in content
         assert "Checkpoint saved: /path/to/model.pt (loss=0.5000)" in content
         assert "Epoch 1: 50/100 (50.0%)" in content
@@ -244,14 +246,14 @@ class TestLogging:
     def test_setup_logger_rank_nonzero(self, temp_dir):
         """Test that non-zero ranks get a NullHandler."""
         logger = setup_logger("thinkrl.rank5", log_dir=temp_dir, rank=5)
-        
+
         assert len(logger.handlers) == 1
         assert isinstance(logger.handlers[0], logging.NullHandler)
         assert logger.propagate is False
-        
+
         # Try logging, should produce no output
         logger.info("This should not be logged")
-        
+
         # No log file should be created
         log_files = list(temp_dir.glob("thinkrl.rank5_*.log"))
         assert len(log_files) == 0

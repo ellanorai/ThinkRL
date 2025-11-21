@@ -6,7 +6,8 @@ Processors for multimodal data (Image, Audio).
 """
 
 import logging
-from typing import Optional, Any, Union
+from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +27,9 @@ except ImportError:
 
 
 def process_image(
-    image_path: str, 
-    transform: Optional[Any] = None
-) -> Optional[Any]:
+    image_path: str,
+    transform: Any | None = None
+) -> Any | None:
     """
     Load and process an image file.
     """
@@ -47,10 +48,10 @@ def process_image(
 
 
 def process_audio(
-    audio_path: str, 
-    sr: int = 16000, 
-    transform: Optional[Any] = None
-) -> Optional[Any]:
+    audio_path: str,
+    sr: int = 16000,
+    transform: Any | None = None
+) -> Any | None:
     """
     Load and process an audio file.
     """
@@ -61,15 +62,15 @@ def process_audio(
     try:
         # Load audio
         audio, orig_sr = librosa.load(audio_path, sr=None)
-        
+
         # Resample if needed
         if orig_sr != sr:
             audio = librosa.resample(audio, orig_sr=orig_sr, target_sr=sr)
-            
+
         if transform:
             # Transform usually expects tensor or specific format
             audio = transform(audio, sampling_rate=sr, return_tensors="pt")
-            
+
         return audio
     except Exception as e:
         logger.error(f"Error processing audio {audio_path}: {e}")

@@ -14,10 +14,10 @@ Author: Archit Sood @ EllanorAI
 """
 
 import logging
-import os
-from pathlib import Path
-from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
 import warnings
+from pathlib import Path
+from typing import TYPE_CHECKING, Any, Union
+
 
 # Optional dependencies
 try:
@@ -71,7 +71,7 @@ class TokenizerConfig:
         use_fast: bool = True,
         padding_side: str = "right",
         truncation_side: str = "right",
-        max_length: Optional[int] = None,
+        max_length: int | None = None,
         add_special_tokens: bool = True,
         return_attention_mask: bool = True,
         return_token_type_ids: bool = False,
@@ -89,7 +89,7 @@ class TokenizerConfig:
         self.trust_remote_code = trust_remote_code
         self.extra_kwargs = kwargs
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
         return {
             "model_name_or_path": self.model_name_or_path,
@@ -110,7 +110,7 @@ def get_tokenizer(
     use_fast: bool = True,
     padding_side: str = "right",
     truncation_side: str = "right",
-    cache_dir: Optional[str] = None,
+    cache_dir: str | None = None,
     trust_remote_code: bool = False,
     **kwargs,
 ) -> TokenizerType:
@@ -190,17 +190,17 @@ def get_tokenizer(
 
 
 def tokenize_text(
-    text: Union[str, List[str]],
+    text: str | list[str],
     tokenizer: TokenizerType,
-    max_length: Optional[int] = None,
-    padding: Union[bool, str] = False,
+    max_length: int | None = None,
+    padding: bool | str = False,
     truncation: bool = True,
     add_special_tokens: bool = True,
-    return_tensors: Optional[str] = "pt",
+    return_tensors: str | None = "pt",
     return_attention_mask: bool = True,
     return_token_type_ids: bool = False,
     **kwargs,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Tokenize text using a tokenizer.
 
@@ -255,16 +255,16 @@ def tokenize_text(
 
 
 def tokenize_batch(
-    texts: List[str],
+    texts: list[str],
     tokenizer: TokenizerType,
-    max_length: Optional[int] = None,
-    padding: Union[bool, str] = True,
+    max_length: int | None = None,
+    padding: bool | str = True,
     truncation: bool = True,
     add_special_tokens: bool = True,
     return_tensors: str = "pt",
-    batch_size: Optional[int] = None,
+    batch_size: int | None = None,
     **kwargs,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Tokenize a batch of texts efficiently.
 
@@ -340,12 +340,12 @@ def tokenize_batch(
 
 
 def decode_tokens(
-    token_ids: Union[List[int], List[List[int]]],
+    token_ids: list[int] | list[list[int]],
     tokenizer: TokenizerType,
     skip_special_tokens: bool = True,
     clean_up_tokenization_spaces: bool = True,
     **kwargs,
-) -> Union[str, List[str]]:
+) -> str | list[str]:
     """
     Decode token IDs back to text.
 
@@ -389,7 +389,7 @@ def decode_tokens(
         )
 
 
-def get_special_tokens(tokenizer: TokenizerType) -> Dict[str, Any]:
+def get_special_tokens(tokenizer: TokenizerType) -> dict[str, Any]:
     """
     Get special tokens from tokenizer.
 
@@ -427,7 +427,7 @@ def get_special_tokens(tokenizer: TokenizerType) -> Dict[str, Any]:
 
 def add_special_tokens(
     tokenizer: TokenizerType,
-    special_tokens_dict: Dict[str, str],
+    special_tokens_dict: dict[str, str],
     resize_embeddings: bool = True,
 ) -> int:
     """
@@ -471,7 +471,7 @@ def add_special_tokens(
 
 
 def tokenize_conversation(
-    messages: List[Dict[str, str]],
+    messages: list[dict[str, str]],
     tokenizer: TokenizerType,
     system_prefix: str = "",
     user_prefix: str = "User: ",
@@ -479,7 +479,7 @@ def tokenize_conversation(
     separator: str = "\n",
     add_generation_prompt: bool = False,
     **kwargs,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Tokenize a conversation in chat format.
 
@@ -561,7 +561,7 @@ def prepare_input_for_generation(
     max_length: int = 512,
     device: str = "cpu",
     **kwargs,
-) -> Dict[str, Any]:
+) -> dict[str, Any]:
     """
     Prepare input for text generation.
 
@@ -590,7 +590,6 @@ def prepare_input_for_generation(
         outputs = model.generate(**inputs, max_new_tokens=50)
         ```
     """
-    import torch
 
     encoded = tokenize_text(
         prompt,
@@ -609,10 +608,10 @@ def prepare_input_for_generation(
 
 
 def count_tokens(
-    text: Union[str, List[str]],
+    text: str | list[str],
     tokenizer: TokenizerType,
     add_special_tokens: bool = True,
-) -> Union[int, List[int]]:
+) -> int | list[int]:
     """
     Count number of tokens in text(s).
 
@@ -697,7 +696,7 @@ def truncate_to_token_limit(
     return truncated_text
 
 
-def get_tokenizer_info(tokenizer: TokenizerType) -> Dict[str, Any]:
+def get_tokenizer_info(tokenizer: TokenizerType) -> dict[str, Any]:
     """
     Get comprehensive information about a tokenizer.
 
@@ -734,8 +733,8 @@ def get_tokenizer_info(tokenizer: TokenizerType) -> Dict[str, Any]:
 
 
 def save_tokenizer(
-    tokenizer: TokenizerType, save_directory: Union[str, Path], **kwargs
-) -> Tuple[str, ...]:
+    tokenizer: TokenizerType, save_directory: str | Path, **kwargs
+) -> tuple[str, ...]:
     """
     Save tokenizer to directory.
 
@@ -767,7 +766,7 @@ def save_tokenizer(
     return saved_files
 
 
-def load_tokenizer(load_directory: Union[str, Path], **kwargs) -> TokenizerType:
+def load_tokenizer(load_directory: str | Path, **kwargs) -> TokenizerType:
     """
     Load tokenizer from directory.
 

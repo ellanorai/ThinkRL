@@ -48,25 +48,19 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
+          pip install ruff mypy bandit
           pip install -e ".[dev]"
 
-      - name: Check formatting (Black)
-        run: black --check thinkrl tests
-
-      - name: Check import sorting (isort)
-        run: isort --check-only thinkrl tests
-
-      - name: Lint with flake8
+      - name: Check code quality (Ruff)
         run: |
-          flake8 thinkrl tests \
-            --max-line-length=88 \
-            --extend-ignore=E203 \
-            --statistics \
-            --count
+          # Check for linting errors (replaces flake8/isort)
+          ruff check thinkrl tests
+          # Check formatting (replaces black --check)
+          ruff format --check thinkrl tests
 
       - name: Type checking (mypy)
         run: mypy thinkrl
-        continue-on-error: true  # Don't fail build on mypy errors initially
+        continue-on-error: true
 
       - name: Security check (bandit)
         run: bandit -r thinkrl -ll -ii

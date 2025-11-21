@@ -12,9 +12,11 @@ Author: Archit Sood @ EllanorAI
 """
 
 import logging
-from typing import Any, Callable, Dict, List, Optional, Union
-import torch
+from collections.abc import Callable
+from typing import Any
+
 from torch.utils.data import Dataset
+
 
 # --- Fix: Make datasets optional ---
 try:
@@ -33,16 +35,16 @@ class BaseRLHFDataset(Dataset):
     def __init__(
         self,
         tokenizer: Any,
-        dataset_name_or_path: Optional[str],
+        dataset_name_or_path: str | None,
         max_length: int = 512,
         split: str = "train",
-        preprocess_fn: Optional[Callable] = None,
+        preprocess_fn: Callable | None = None,
         **kwargs
     ):
         self.tokenizer = tokenizer
         self.max_length = max_length
         self.preprocess_fn = preprocess_fn
-        
+
         if dataset_name_or_path:
             # Check availability before usage
             if not _DATASETS_AVAILABLE:
@@ -50,7 +52,7 @@ class BaseRLHFDataset(Dataset):
                     "The 'datasets' library is required to load datasets from path/name. "
                     "Please install it via `pip install datasets` or `pip install thinkrl[sota]`."
                 )
-            
+
             # Load dataset
             if isinstance(dataset_name_or_path, str):
                 if dataset_name_or_path.endswith((".json", ".jsonl")):
@@ -67,7 +69,7 @@ class BaseRLHFDataset(Dataset):
              return len(self.data)
         return len(self.dataset)
 
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
+    def __getitem__(self, idx: int) -> dict[str, Any]:
         raise NotImplementedError
 
 
@@ -82,10 +84,10 @@ class RLHFDataset(BaseRLHFDataset):
         dataset_name_or_path: str,
         tokenizer: Any,
         prompt_column: str = "prompt",
-        response_column: Optional[str] = None,
+        response_column: str | None = None,
         max_length: int = 512,
         split: str = "train",
-        preprocess_fn: Optional[Callable] = None,
+        preprocess_fn: Callable | None = None,
         **kwargs
     ):
         super().__init__(
@@ -98,7 +100,7 @@ class RLHFDataset(BaseRLHFDataset):
         )
         self.prompt_column = prompt_column
         self.response_column = response_column
-        
+
         # Filter and load data into memory to handle invalid rows efficiently
         self.data = []
         for item in self.dataset:
@@ -108,23 +110,23 @@ class RLHFDataset(BaseRLHFDataset):
                     item = self.preprocess_fn(item)
                 except Exception:
                     continue # Skip if preprocessing fails
-            
+
             prompt = item.get(self.prompt_column)
             if not prompt or not isinstance(prompt, str) or not prompt.strip():
                 continue
-            
+
             # Basic cleaning
             item[self.prompt_column] = prompt.strip()
             self.data.append(item)
-            
+
         logger.info(f"Loaded {len(self.data)} valid samples from {dataset_name_or_path}")
 
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
+    def __getitem__(self, idx: int) -> dict[str, Any]:
         sample = self.data[idx]
 
         # Extract text
         prompt = sample.get(self.prompt_column)
-        
+
         # Add response if available (SFT mode)
         text = prompt
         if self.response_column and self.response_column in sample:
@@ -174,14 +176,14 @@ class PreferenceDataset(BaseRLHFDataset):
         self.prompt_column = prompt_column
         self.chosen_column = chosen_column
         self.rejected_column = rejected_column
-        
+
         # Filter data
         self.data = []
         for item in self.dataset:
             prompt = item.get(self.prompt_column)
             chosen = item.get(self.chosen_column)
             rejected = item.get(self.rejected_column)
-            
+
             if not prompt or not isinstance(prompt, str) or not prompt.strip():
                 continue
             if not chosen or not isinstance(chosen, str) or not chosen.strip():
@@ -196,9 +198,9 @@ class PreferenceDataset(BaseRLHFDataset):
 
         logger.info(f"Loaded {len(self.data)} valid preference pairs from {dataset_name_or_path}")
 
-    def __getitem__(self, idx: int) -> Dict[str, Any]:
+    def __getitem__(self, idx: int) -> dict[str, Any]:
         sample = self.data[idx]
-        
+
         prompt = sample.get(self.prompt_column)
         chosen = sample.get(self.chosen_column)
         rejected = sample.get(self.rejected_column)

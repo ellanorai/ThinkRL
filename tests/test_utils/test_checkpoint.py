@@ -3,21 +3,23 @@ Test Suite for ThinkRL Checkpoint Utilities
 ===========================================
 """
 
-import pytest
-import torch.nn as nn
-import torch.optim as optim
-import tempfile
 import shutil
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
+import pytest
+import torch.nn as nn
+import torch.optim as optim
+
 from thinkrl.utils.checkpoint import (
     CheckpointManager,
-    save_checkpoint,
     load_checkpoint,
-    save_config,
     load_config,
+    save_checkpoint,
+    save_config,
 )
+
 
 # Fixtures
 @pytest.fixture
@@ -54,9 +56,9 @@ class TestCheckpointManager:
     def test_save_and_cleanup(self, temp_dir, simple_model, simple_optimizer):
         """Test saving checkpoints and automatic cleanup."""
         manager = CheckpointManager(
-            checkpoint_dir=temp_dir, 
-            max_checkpoints=2, 
-            metric_name="loss", 
+            checkpoint_dir=temp_dir,
+            max_checkpoints=2,
+            metric_name="loss",
             mode="min"
         )
 
@@ -73,7 +75,7 @@ class TestCheckpointManager:
 
         checkpoints = list(temp_dir.glob("ckpt_*"))
         assert len(checkpoints) == 2
-        
+
         ckpt_names = [p.name for p in checkpoints]
         assert "ckpt_1" in ckpt_names
         assert "ckpt_2" in ckpt_names
@@ -91,7 +93,7 @@ class TestCheckpointManager:
         manager.save_checkpoint(simple_model, epoch=3, metrics={"acc": 0.85}, checkpoint_name="ckpt_3")
 
         nn.init.constant_(simple_model.weight, 0.0)
-        
+
         metadata = manager.load_best_checkpoint(simple_model)
         assert metadata["metrics"]["acc"] == 0.9
         assert metadata["epoch"] == 2
@@ -103,9 +105,9 @@ class TestCheckpointManager:
             save_optimizer=False,
             save_scheduler=False
         )
-        
+
         manager.save_checkpoint(simple_model, optimizer=simple_optimizer, checkpoint_name="ckpt_no_opt")
-        
+
         ckpt_path = temp_dir / "ckpt_no_opt"
         assert (ckpt_path / "model.pt").exists()
         assert not (ckpt_path / "optimizer.pt").exists()
@@ -116,7 +118,7 @@ class TestCheckpointManager:
         with patch('thinkrl.utils.checkpoint._SAFETENSORS_AVAILABLE', False):
             manager = CheckpointManager(temp_dir, use_safetensors=True)
             manager.save_checkpoint(simple_model, checkpoint_name="ckpt_fallback")
-            
+
             # Should have saved as .pt
             assert (temp_dir / "ckpt_fallback" / "model.pt").exists()
             assert not (temp_dir / "ckpt_fallback" / "model.safetensors").exists()
@@ -128,16 +130,16 @@ class TestStandaloneFunctions:
     def test_save_load_checkpoint(self, temp_dir, simple_model):
         """Test basic save and load."""
         path = temp_dir / "test.pt"
-        
+
         save_checkpoint(
             path,
             simple_model,
             epoch=10,
             metrics={"loss": 0.1}
         )
-        
+
         assert path.exists()
-        
+
         loaded_metadata = load_checkpoint(path, simple_model)
         assert loaded_metadata["epoch"] == 10
         assert loaded_metadata["metrics"]["loss"] == 0.1
@@ -146,10 +148,10 @@ class TestStandaloneFunctions:
         """Test saving and loading config as JSON."""
         config = {"lr": 0.01, "batch_size": 32}
         path = temp_dir / "config.json"
-        
+
         save_config(config, path)
         loaded = load_config(path)
-        
+
         assert loaded == config
 
     def test_save_load_config_yaml(self, temp_dir):
@@ -161,8 +163,8 @@ class TestStandaloneFunctions:
 
         config = {"lr": 0.01, "model": "gpt2"}
         path = temp_dir / "config.yaml"
-        
+
         save_config(config, path)
         loaded = load_config(path)
-        
+
         assert loaded == config

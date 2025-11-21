@@ -6,10 +6,7 @@ pytest-benchmark>=4.0.0  # Performance benchmarking (for VAPO/GRPO latency)
 pytest-mock>=3.11.0      # Mocking for distributed components
 
 # Code Formatting & Linting
-black>=23.9.0            # Uncompromising code formatter
-isort>=5.12.0            # Import sorting
-flake8>=6.1.0            # Standard linter
-flake8-docstrings>=1.7.0 # Enforce Google-style docstrings
+ruff>=0.1.0  # Replaces black, isort, flake8
 
 # Static Type Checking
 mypy>=1.5.0              # Static type checker

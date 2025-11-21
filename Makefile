@@ -24,22 +24,21 @@ clean: ## Clean build artifacts
 	find . -type f -name "*.pyc" -delete
 
 # ------------------------------------------------------------------
-# Quality Control
+# Quality Control (Powered by Ruff)
 # ------------------------------------------------------------------
-format: ## Auto-format code
-	black thinkrl tests
-	isort thinkrl tests
+format: ## Auto-format code using Ruff (replaces black/isort)
+	ruff check --fix thinkrl tests
+	ruff format thinkrl tests
 
 format-check: ## Check code formatting without modifying
-	black --check thinkrl tests
-	isort --check-only thinkrl tests
+	ruff format --check thinkrl tests
 
-lint: ## Run all linters
-	@echo "Running flake8..."
-	flake8 thinkrl tests --max-line-length=88 --extend-ignore=E203,W503 --statistics
-	@echo "Running mypy..."
+lint: ## Run static analysis (Ruff + Mypy + Bandit)
+	@echo "Running Ruff (Linter)..."
+	ruff check thinkrl tests
+	@echo "Running mypy (Type Checker)..."
 	mypy thinkrl || true
-	@echo "Running bandit..."
+	@echo "Running bandit (Security)..."
 	bandit -r thinkrl -ll -ii
 
 check: format-check lint ## Run full strict quality suite
@@ -89,16 +88,3 @@ help: ## Show this help message
 	@echo "ThinkRL Development Commands:"
 	@echo ""
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[36m%-20s\033[0m %s\n", $$1, $$2}'
-```
-
-## Branch Protection Rules (GitHub Settings)
-
-Add these required status checks in GitHub Settings > Branches > Branch protection rules for `main`:
-```
-Required status checks:
-- pre-commit / Pre-commit Checks
-- lint / Code Quality Checks
-- test / test (3.9)
-- test / test (3.10)
-- test / test (3.11)
-- compatibility / compatibility (3.11)

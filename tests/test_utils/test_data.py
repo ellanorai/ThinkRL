@@ -8,33 +8,35 @@ Tests for:
 
 import pytest
 import torch
+
+
 try:
     import cupy as cp
     _CUPY_AVAILABLE = True
 except (ImportError, OSError):
-    import numpy as cp
     _CUPY_AVAILABLE = False
 
 from unittest.mock import MagicMock, patch
 
 from thinkrl.utils.datasets import (
     BatchEncoding,
-    pad_sequences,
-    create_attention_mask,
-    create_position_ids,
-    create_causal_mask,
     collate_batch,
-    create_dataloader,
-    preprocess_text,
-    truncate_sequence,
-    create_labels_for_clm,
-    mask_padding_in_loss,
-    split_batch,
     compute_sequence_lengths,
-    shuffle_batch,
-    to_device,
+    create_attention_mask,
+    create_causal_mask,
+    create_dataloader,
+    create_labels_for_clm,
+    create_position_ids,
+    mask_padding_in_loss,
+    pad_sequences,
     prepare_batch_for_training,
+    preprocess_text,
+    shuffle_batch,
+    split_batch,
+    to_device,
+    truncate_sequence,
 )
+
 
 @pytest.fixture
 def sample_batch_tensors():
@@ -66,7 +68,7 @@ class TestBatchEncoding:
         be = BatchEncoding(data)
         device = torch.device("cpu")
         be_moved = be.to(device)
-        
+
         assert be_moved is be
         assert isinstance(be["input_ids"], torch.Tensor)
         assert be["meta"] == "metadata"
@@ -139,7 +141,7 @@ def test_collate_batch():
     ]
     mock_tokenizer = MagicMock()
     mock_tokenizer.pad_token_id = 99
-    
+
     collated_var = collate_batch(batch_var, tokenizer=mock_tokenizer)
     expected = torch.tensor([
         [1, 2, 3],
@@ -157,7 +159,7 @@ def test_collate_batch():
     batch_2d = [{"img": torch.randn(3, 3)}, {"img": torch.randn(3, 3)}]
     collated_2d = collate_batch(batch_2d)
     assert collated_2d["img"].shape == (2, 3, 3)
-    
+
     batch_mismatch = [{"img": torch.randn(3, 3)}, {"img": torch.randn(2, 2)}]
     collated_mismatch = collate_batch(batch_mismatch)
     assert isinstance(collated_mismatch["img"], list)
@@ -192,7 +194,7 @@ def test_mask_padding_in_loss():
     labels = torch.tensor([1, 2, 3, 0])
     mask = torch.tensor([1, 1, 1, 0])
     masked_labels = mask_padding_in_loss(labels, mask, ignore_index=-100)
-    
+
     expected = torch.tensor([1, 2, 3, -100])
     assert torch.equal(masked_labels, expected)
 
@@ -203,7 +205,7 @@ def test_split_batch():
         ]),
         "labels": [1, 2, 3, 4]
     }
-    
+
     micro_batches = split_batch(batch, 2)
     assert len(micro_batches) == 2
     assert torch.equal(micro_batches[0]["input_ids"], torch.tensor([[1, 1], [2, 2]]))
@@ -228,14 +230,14 @@ def test_shuffle_batch():
         "b": ["x", "y", "z"],
         "c": "constant"
     }
-    
+
     torch.manual_seed(42)
     shuffled = shuffle_batch(batch)
-    
+
     assert len(shuffled["a"]) == 3
     assert len(shuffled["b"]) == 3
     assert shuffled["c"] == "constant"
-    
+
     assert shuffle_batch({}) == {}
 
 def test_to_device_recursive():
@@ -246,10 +248,10 @@ def test_to_device_recursive():
         },
         "list": [1, 2]
     }
-    
+
     device = torch.device("cpu")
     moved = to_device(batch, device)
-    
+
     assert isinstance(moved["tensor"], torch.Tensor)
     assert isinstance(moved["nested"]["tensor"], torch.Tensor)
     assert moved["list"] == [1, 2]

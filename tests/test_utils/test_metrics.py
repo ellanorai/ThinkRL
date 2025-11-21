@@ -3,10 +3,11 @@ Test Suite for ThinkRL Metrics Utilities
 ========================================
 """
 
+
+import numpy as np
 import pytest
 import torch
-import numpy as np
-from unittest.mock import patch, MagicMock
+
 
 # Try importing cupy to check availability for tests
 try:
@@ -18,23 +19,24 @@ except (ImportError, OSError):
 
 from thinkrl.utils.metrics import (
     MetricsTracker,
-    compute_reward,
-    compute_kl_divergence,
-    compute_advantages,
-    compute_returns,
-    compute_policy_entropy,
+    _compute_moments_manual,  # For direct testing
+    aggregate_metrics,
     compute_accuracy,
-    compute_perplexity,
+    compute_advantages,
     compute_clip_fraction,
     compute_explained_variance,
-    aggregate_metrics,
     compute_group_metrics,
+    compute_kl_divergence,
+    compute_metrics,
+    compute_perplexity,
+    compute_policy_entropy,
     compute_ranking_metrics,
+    compute_returns,
+    compute_reward,
     compute_statistical_metrics,
     compute_statistical_metrics_batch,  # New import
-    compute_metrics,
-    _compute_moments_manual, # For direct testing
 )
+
 
 # Use numpy as fallback for data generation if cupy missing
 xp = cp if _CUPY_AVAILABLE else np
@@ -137,7 +139,7 @@ class TestMetrics:
         entropy = compute_policy_entropy(logits, reduction="mean")
         assert isinstance(entropy, torch.Tensor)
         assert entropy >= 0
-        
+
         entropy_none = compute_policy_entropy(logits, reduction="none")
         assert entropy_none.shape == (4, 10)
 
@@ -155,7 +157,7 @@ class TestMetrics:
         predictions_logits[1, 0, 1] = 2.0
         predictions_logits[1, 1, 1] = 2.0
         predictions_logits[1, 2, 1] = 2.0
-        
+
         accuracy_logits = compute_accuracy(predictions_logits, targets)
         assert accuracy_logits == pytest.approx(5 / 6)
 
@@ -189,7 +191,7 @@ class TestMetrics:
 
         ev_perfect = compute_explained_variance(targets, targets)
         assert ev_perfect == pytest.approx(1.0)
-        
+
         ev_zero_var = compute_explained_variance(predictions, torch.ones(100))
         assert ev_zero_var == 0.0
 
@@ -233,7 +235,7 @@ class TestMetrics:
         stats_empty = compute_statistical_metrics([])
         assert stats_empty["count"] == 0
         assert stats_empty["mean"] == 0.0
-        
+
         # Empty numpy array
         stats_np_empty = compute_statistical_metrics(np.array([]))
         assert stats_np_empty["count"] == 0
@@ -244,7 +246,7 @@ class TestMetrics:
         stats_scalar = compute_statistical_metrics(5.0)
         assert stats_scalar["mean"] == 5.0
         assert stats_scalar["std"] == 0.0
-        
+
         # Single element array
         stats_single = compute_statistical_metrics([10.0])
         assert stats_single["mean"] == 10.0
@@ -255,7 +257,7 @@ class TestMetrics:
         """Test robustness against NaN and Inf values."""
         data = np.array([1.0, 2.0, np.nan, 4.0, np.inf])
         stats = compute_statistical_metrics(data)
-        
+
         assert stats["count"] == 5
         assert stats["nan_count"] == 1
         assert stats["inf_count"] == 1
@@ -267,7 +269,7 @@ class TestMetrics:
         """Test handling of PyTorch tensors (CPU)."""
         tensor = torch.tensor([1.0, 2.0, 3.0])
         stats = compute_statistical_metrics(tensor)
-        
+
         assert stats["mean"] == 2.0
         assert stats["std"] == 1.0 # Sample std of [1,2,3] is 1.0
 
@@ -275,10 +277,10 @@ class TestMetrics:
     def test_compute_statistical_metrics_gpu_tensor(self):
         """Test handling of PyTorch tensors on GPU (integrates with CuPy if available)."""
         tensor = torch.tensor([1.0, 2.0, 3.0], device="cuda")
-        
+
         # This will internally try to use CuPy via DLPack
         stats = compute_statistical_metrics(tensor)
-        
+
         assert stats["mean"] == 2.0
         assert stats["count"] == 3
 
@@ -289,9 +291,9 @@ class TestMetrics:
             np.array([4.0, 5.0, 6.0]),
             [] # Empty one
         ]
-        
+
         results = compute_statistical_metrics_batch(batch)
-        
+
         assert len(results) == 3
         assert results[0]["mean"] == 2.0
         assert results[1]["mean"] == 5.0
@@ -302,23 +304,23 @@ class TestMetrics:
         # Normal distribution (should be close to 0 skew, 0 excess kurtosis)
         # We use a deterministic array for testing logic
         data = np.array([-2, -1, 0, 1, 2], dtype=float)
-        
+
         # Use helper directly
         moments = _compute_moments_manual(data, np)
-        
+
         assert moments["skewness"] == pytest.approx(0.0)
         # Kurtosis for normal is 3, excess is 0. Manual calculation:
         # std=sqrt(2.5). z=[-1.26, -0.63, 0, 0.63, 1.26]. mean(z^4) approx 2.12
-        # The formula calculates Fisher excess kurtosis. 
+        # The formula calculates Fisher excess kurtosis.
         # For this symmetric, light-tailed distribution, it should be negative
-        assert moments["kurtosis"] < 0 
+        assert moments["kurtosis"] < 0
 
     def test_compute_group_metrics(self):
         rewards = torch.tensor([1.0, 2.0, 3.0, 10.0, 11.0, 20.0])
         group_ids = torch.tensor([0, 0, 0, 1, 1, 2])
-        
+
         group_metrics = compute_group_metrics(rewards, group_ids)
-        
+
         assert torch.allclose(group_metrics["group_means"], torch.tensor([2.0, 10.5, 20.0]))
         assert torch.allclose(group_metrics["group_maxs"], torch.tensor([3.0, 11.0, 20.0]))
         assert torch.allclose(group_metrics["group_mins"], torch.tensor([1.0, 10.0, 20.0]))
@@ -326,9 +328,9 @@ class TestMetrics:
     def test_compute_ranking_metrics(self):
         scores = torch.tensor([0.9, 0.7, 0.5, 0.3, 0.1])
         labels = torch.tensor([1,   0,   1,   0,   0])
-        
+
         metrics = compute_ranking_metrics(scores, labels, k=3)
-        
+
         assert metrics["precision@3"] == pytest.approx(2 / 3)
         assert metrics["recall@3"] == pytest.approx(2 / 2)
         assert metrics["mrr"] == pytest.approx(1.0 / 1.0)
@@ -337,10 +339,10 @@ class TestMetrics:
     def test_compute_metrics_convenience_fn(self):
         logits = torch.randn(2, 4, 10)
         targets = torch.randint(0, 10, (2, 4))
-        
+
         targets[0, 0] = 5
         logits[0, 0, 5] = 10.0
-        
+
         outputs = {
             "logits": logits,
             "values": torch.randn(2, 4),
@@ -351,21 +353,21 @@ class TestMetrics:
             "returns": torch.randn(2, 4),
             "loss": torch.tensor(1.2)
         }
-        
+
         metrics = compute_metrics(outputs, targets, metric_names=["all"])
-        
+
         assert "accuracy" in metrics
         assert "perplexity" in metrics
         assert "entropy" in metrics
         assert "reward_mean" in metrics
-        
+
         # Use xp (numpy/cupy) for assertion
         assert metrics["perplexity"] == pytest.approx(float(xp.exp(1.2)))
-        
+
         metrics_subset = compute_metrics(
             outputs, targets, metric_names=["accuracy", "loss"]
         )
-        
+
         assert "accuracy" in metrics_subset
         assert "perplexity" not in metrics_subset
         assert "entropy" not in metrics_subset
@@ -376,9 +378,9 @@ class TestMetrics:
             "rewards": torch.randn(10),
             "values": torch.randn(10)
         }
-        
+
         metrics = compute_metrics(outputs, metric_names=["reward_stats", "value_stats"])
-        
+
         assert "reward_mean" in metrics
         assert "reward_std" in metrics
         assert "value_p99" in metrics
