@@ -7,7 +7,7 @@ Comprehensive metrics computation for RLHF training.
 
 import logging
 from collections import defaultdict
-from typing import Any, Union
+from typing import Any
 
 import numpy as np
 import torch
@@ -19,8 +19,9 @@ import torch.utils.dlpack
 try:
     import cupy as cp
     try:
-        from cupyx.scipy import stats as cupy_stats
+        from cupyx.scipy import stats as _cupy_stats  # noqa: F401
         _CUPY_SCIPY_AVAILABLE = True
+        del _cupy_stats  # Imported locally where needed
     except ImportError:
         _CUPY_SCIPY_AVAILABLE = False
     _CUPY_AVAILABLE = True
@@ -32,8 +33,9 @@ except (ImportError, OSError):
     _CUPY_SCIPY_AVAILABLE = False
 
 try:
-    from scipy import stats as scipy_stats
+    from scipy import stats as _scipy_stats  # noqa: F401
     _SCIPY_AVAILABLE = True
+    del _scipy_stats  # Imported locally where needed
 except ImportError:
     _SCIPY_AVAILABLE = False
 
@@ -78,9 +80,9 @@ class MetricsTracker:
             if name not in self.metrics or not self.metrics[name]:
                 return 0.0
 
-            values, counts = zip(*self.metrics[name])
+            values, counts = zip(*self.metrics[name], strict=True)
             total_count = sum(counts)
-            weighted_sum = sum(v * c for v, c in zip(values, counts))
+            weighted_sum = sum(v * c for v, c in zip(values, counts, strict=True))
             return weighted_sum / total_count if total_count > 0 else 0.0
 
         # Return all averages
@@ -288,7 +290,7 @@ def aggregate_metrics(
 
     for key in all_keys:
         values = [metrics.get(key, 0.0) for metrics in metrics_list]
-        aggregated[key] = sum(v * w for v, w in zip(values, weights))
+        aggregated[key] = sum(v * w for v, w in zip(values, weights, strict=True))
 
     return aggregated
 
@@ -375,13 +377,13 @@ def compute_statistical_metrics(
 ) -> dict[str, float]:
     """
     Compute comprehensive statistical metrics with GPU acceleration when available.
-    
+
     Intelligently uses CuPy for GPU tensors and NumPy for CPU data to optimize performance.
     Handles edge cases gracefully including empty, NaN, and infinite values.
-    
+
     Args:
         values: Input data as tensor, array, list, scalar, or None
-        
+
     Returns:
         Dictionary containing statistical metrics (mean, std, min, max, median, percentiles, etc.)
         Returns zeros for invalid/empty inputs.
@@ -452,10 +454,10 @@ def compute_statistical_metrics(
 
 def _prepare_array(
     values: torch.Tensor | np.ndarray | list[float] | float
-) -> tuple[Union[np.ndarray, 'cp.ndarray'] | None, Any]:
+) -> tuple[np.ndarray | 'cp.ndarray' | None, Any]:
     """
     Convert input to appropriate array type (CuPy for GPU, NumPy for CPU).
-    
+
     Returns:
         Tuple of (array, module) where module is either np or cp
     """
@@ -498,7 +500,7 @@ def _prepare_array(
 
 
 def _compute_basic_stats(
-    data: Union[np.ndarray, 'cp.ndarray'],
+    data: np.ndarray | 'cp.ndarray',
     xp: Any
 ) -> dict[str, float]:
     """Compute basic statistical measures."""
@@ -533,7 +535,7 @@ def _compute_basic_stats(
 
 
 def _compute_percentiles(
-    data: Union[np.ndarray, 'cp.ndarray'],
+    data: np.ndarray | 'cp.ndarray',
     xp: Any
 ) -> dict[str, float]:
     """Compute percentile statistics efficiently."""
@@ -559,7 +561,7 @@ def _compute_percentiles(
 
 
 def _compute_higher_moments(
-    data: Union[np.ndarray, 'cp.ndarray'],
+    data: np.ndarray | 'cp.ndarray',
     xp: Any
 ) -> dict[str, float]:
     """Compute skewness and kurtosis with appropriate libraries."""
@@ -602,7 +604,7 @@ def _compute_higher_moments(
 
 
 def _compute_moments_manual(
-    data: Union[np.ndarray, 'cp.ndarray'],
+    data: np.ndarray | 'cp.ndarray',
     xp: Any
 ) -> dict[str, float]:
     """Manually compute skewness and kurtosis without scipy."""
@@ -646,7 +648,7 @@ def compute_statistical_metrics_batch(
 ) -> list[dict[str, float]]:
     """
     Compute statistics for multiple arrays efficiently.
-    
+
     Useful for computing metrics across different groups or batches.
     """
     if not values_list:
@@ -721,3 +723,4 @@ __all__ = [
     "compute_statistical_metrics_batch",
     "compute_metrics",
 ]
+

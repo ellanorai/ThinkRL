@@ -20,7 +20,6 @@ except ImportError:
 
 try:
     import librosa
-    import soundfile as sf
     _AUDIO_AVAILABLE = True
 except ImportError:
     _AUDIO_AVAILABLE = False
