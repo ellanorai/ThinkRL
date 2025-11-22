@@ -7,8 +7,8 @@ Comprehensive metrics computation for RLHF training.
 
 from __future__ import annotations
 
-import logging
 from collections import defaultdict
+import logging
 from typing import TYPE_CHECKING, Any, TypeAlias
 
 import numpy as np
@@ -20,8 +20,10 @@ import torch.utils.dlpack
 # Handle CuPy import failure gracefully (e.g., no GPU/CUDA)
 try:
     import cupy as cp
+
     try:
         from cupyx.scipy import stats as _cupy_stats  # noqa: F401
+
         _CUPY_SCIPY_AVAILABLE = True
         del _cupy_stats  # Imported locally where needed
     except ImportError:
@@ -39,6 +41,7 @@ if TYPE_CHECKING:
     # For type checkers: provide proper type based on CuPy availability
     try:
         import cupy
+
         CupyArray: TypeAlias = cupy.ndarray
     except ImportError:
         # Fallback when CuPy not available during type checking
@@ -49,12 +52,14 @@ else:
 
 try:
     from scipy import stats as _scipy_stats  # noqa: F401
+
     _SCIPY_AVAILABLE = True
     del _scipy_stats  # Imported locally where needed
 except ImportError:
     _SCIPY_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
+
 
 class MetricsTracker:
     """
@@ -331,7 +336,9 @@ def compute_group_metrics(
         if group_rewards.numel() > 1:
             group_stds.append(group_rewards.std())
         else:
-            group_stds.append(torch.tensor(0.0, device=rewards.device, dtype=rewards.dtype))
+            group_stds.append(
+                torch.tensor(0.0, device=rewards.device, dtype=rewards.dtype)
+            )
 
         group_maxs.append(group_rewards.max())
         group_mins.append(group_rewards.min())
@@ -387,8 +394,9 @@ def compute_ranking_metrics(
 # Optimized Statistical Metrics (GPU-accelerated)
 # -----------------------------------------------------------------------------
 
+
 def compute_statistical_metrics(
-    values: torch.Tensor | np.ndarray | list[float] | float | None
+    values: torch.Tensor | np.ndarray | list[float] | float | None,
 ) -> dict[str, float]:
     """
     Compute comprehensive statistical metrics with GPU acceleration when available.
@@ -405,9 +413,20 @@ def compute_statistical_metrics(
     """
     # Define default metrics to ensure consistent output
     default_metrics = {
-        "mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0, "median": 0.0,
-        "p25": 0.0, "p75": 0.0, "p90": 0.0, "p95": 0.0, "p99": 0.0,
-        "skewness": 0.0, "kurtosis": 0.0, "count": 0, "nan_count": 0
+        "mean": 0.0,
+        "std": 0.0,
+        "min": 0.0,
+        "max": 0.0,
+        "median": 0.0,
+        "p25": 0.0,
+        "p75": 0.0,
+        "p90": 0.0,
+        "p95": 0.0,
+        "p99": 0.0,
+        "skewness": 0.0,
+        "kurtosis": 0.0,
+        "count": 0,
+        "nan_count": 0,
     }
 
     # Early return for invalid inputs
@@ -468,7 +487,7 @@ def compute_statistical_metrics(
 
 
 def _prepare_array(
-    values: torch.Tensor | np.ndarray | list[float] | float
+    values: torch.Tensor | np.ndarray | list[float] | float,
 ) -> tuple[np.ndarray | CupyArray | None, Any]:
     """
     Convert input to appropriate array type (CuPy for GPU, NumPy for CPU).
@@ -514,25 +533,24 @@ def _prepare_array(
         return None, np
 
 
-def _compute_basic_stats(
-    data: np.ndarray | CupyArray,
-    xp: Any
-) -> dict[str, float]:
+def _compute_basic_stats(data: np.ndarray | CupyArray, xp: Any) -> dict[str, float]:
     """Compute basic statistical measures."""
     stats = {}
 
     # Use appropriate functions based on array library
     if data.size == 1:
         # Special case for single element
-        val = float(data.item() if hasattr(data, 'item') else data[0])
-        stats.update({
-            "mean": val,
-            "std": 0.0,
-            "min": val,
-            "max": val,
-            "median": val,
-            "variance": 0.0
-        })
+        val = float(data.item() if hasattr(data, "item") else data[0])
+        stats.update(
+            {
+                "mean": val,
+                "std": 0.0,
+                "min": val,
+                "max": val,
+                "median": val,
+                "variance": 0.0,
+            }
+        )
     else:
         # Compute statistics in one pass where possible
         stats["mean"] = float(xp.mean(data))
@@ -549,16 +567,13 @@ def _compute_basic_stats(
     return stats
 
 
-def _compute_percentiles(
-    data: np.ndarray | CupyArray,
-    xp: Any
-) -> dict[str, float]:
+def _compute_percentiles(data: np.ndarray | CupyArray, xp: Any) -> dict[str, float]:
     """Compute percentile statistics efficiently."""
     percentiles = [25, 75, 90, 95, 99]
 
     # Compute all percentiles in one call for efficiency
     if data.size == 1:
-        val = float(data.item() if hasattr(data, 'item') else data[0])
+        val = float(data.item() if hasattr(data, "item") else data[0])
         return {f"p{p}": val for p in percentiles}
 
     try:
@@ -575,10 +590,7 @@ def _compute_percentiles(
         return {f"p{p}": 0.0 for p in percentiles}
 
 
-def _compute_higher_moments(
-    data: np.ndarray | CupyArray,
-    xp: Any
-) -> dict[str, float]:
+def _compute_higher_moments(data: np.ndarray | CupyArray, xp: Any) -> dict[str, float]:
     """Compute skewness and kurtosis with appropriate libraries."""
     moments = {"skewness": 0.0, "kurtosis": 0.0}
 
@@ -591,22 +603,24 @@ def _compute_higher_moments(
             # Use CuPy's scipy stats
             from cupyx.scipy import stats as cupy_stats
 
-            skew = cupy_stats.skew(data, axis=None, nan_policy='omit')
-            moments["skewness"] = float(skew.item() if hasattr(skew, 'item') else skew)
+            skew = cupy_stats.skew(data, axis=None, nan_policy="omit")
+            moments["skewness"] = float(skew.item() if hasattr(skew, "item") else skew)
 
             if data.size >= 4:
-                kurt = cupy_stats.kurtosis(data, axis=None, nan_policy='omit')
-                moments["kurtosis"] = float(kurt.item() if hasattr(kurt, 'item') else kurt)
+                kurt = cupy_stats.kurtosis(data, axis=None, nan_policy="omit")
+                moments["kurtosis"] = float(
+                    kurt.item() if hasattr(kurt, "item") else kurt
+                )
 
         elif xp == np and _SCIPY_AVAILABLE:
             # Use SciPy stats
             from scipy import stats as scipy_stats
 
-            skew = scipy_stats.skew(data, axis=None, nan_policy='omit')
+            skew = scipy_stats.skew(data, axis=None, nan_policy="omit")
             moments["skewness"] = float(skew)
 
             if data.size >= 4:
-                kurt = scipy_stats.kurtosis(data, axis=None, nan_policy='omit')
+                kurt = scipy_stats.kurtosis(data, axis=None, nan_policy="omit")
                 moments["kurtosis"] = float(kurt)
         else:
             # Manual computation as fallback
@@ -618,10 +632,7 @@ def _compute_higher_moments(
     return moments
 
 
-def _compute_moments_manual(
-    data: np.ndarray | CupyArray,
-    xp: Any
-) -> dict[str, float]:
+def _compute_moments_manual(data: np.ndarray | CupyArray, xp: Any) -> dict[str, float]:
     """Manually compute skewness and kurtosis without scipy."""
     try:
         mean = xp.mean(data)
@@ -659,7 +670,7 @@ def _compute_moments_manual(
 
 
 def compute_statistical_metrics_batch(
-    values_list: list[torch.Tensor | np.ndarray | list[float]]
+    values_list: list[torch.Tensor | np.ndarray | list[float]],
 ) -> list[dict[str, float]]:
     """
     Compute statistics for multiple arrays efficiently.
@@ -690,7 +701,11 @@ def compute_metrics(
 
     compute_all = "all" in metric_names
 
-    if (compute_all or "accuracy" in metric_names) and "logits" in outputs and targets is not None:
+    if (
+        (compute_all or "accuracy" in metric_names)
+        and "logits" in outputs
+        and targets is not None
+    ):
         metrics["accuracy"] = compute_accuracy(outputs["logits"], targets)
 
     if (compute_all or "perplexity" in metric_names) and "loss" in outputs:
@@ -707,14 +722,26 @@ def compute_metrics(
         value_stats = compute_statistical_metrics(outputs["values"])
         metrics.update({f"value_{k}": v for k, v in value_stats.items()})
 
-    if (compute_all or "kl_div" in metric_names) and "log_probs" in outputs and "ref_log_probs" in outputs:
-        metrics["kl_div"] = compute_kl_divergence(outputs["log_probs"], outputs["ref_log_probs"]).item()
+    if (
+        (compute_all or "kl_div" in metric_names)
+        and "log_probs" in outputs
+        and "ref_log_probs" in outputs
+    ):
+        metrics["kl_div"] = compute_kl_divergence(
+            outputs["log_probs"], outputs["ref_log_probs"]
+        ).item()
 
     if (compute_all or "clip_fraction" in metric_names) and "ratio" in outputs:
         metrics["clip_fraction"] = compute_clip_fraction(outputs["ratio"])
 
-    if (compute_all or "explained_variance" in metric_names) and "values" in outputs and "returns" in outputs:
-        metrics["explained_variance"] = compute_explained_variance(outputs["values"], outputs["returns"])
+    if (
+        (compute_all or "explained_variance" in metric_names)
+        and "values" in outputs
+        and "returns" in outputs
+    ):
+        metrics["explained_variance"] = compute_explained_variance(
+            outputs["values"], outputs["returns"]
+        )
 
     return metrics
 

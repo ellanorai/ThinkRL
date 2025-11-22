@@ -14,21 +14,20 @@ logger = logging.getLogger(__name__)
 # Optional dependencies
 try:
     from PIL import Image
+
     _PIL_AVAILABLE = True
 except ImportError:
     _PIL_AVAILABLE = False
 
 try:
     import librosa
+
     _AUDIO_AVAILABLE = True
 except ImportError:
     _AUDIO_AVAILABLE = False
 
 
-def process_image(
-    image_path: str,
-    transform: Any | None = None
-) -> Any | None:
+def process_image(image_path: str, transform: Any | None = None) -> Any | None:
     """
     Load and process an image file.
     """
@@ -47,9 +46,7 @@ def process_image(
 
 
 def process_audio(
-    audio_path: str,
-    sr: int = 16000,
-    transform: Any | None = None
+    audio_path: str, sr: int = 16000, transform: Any | None = None
 ) -> Any | None:
     """
     Load and process an audio file.

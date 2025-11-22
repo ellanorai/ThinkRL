@@ -3,7 +3,6 @@ Test Suite for ThinkRL Metrics Utilities
 ========================================
 """
 
-
 import numpy as np
 import pytest
 import torch
@@ -12,6 +11,7 @@ import torch
 # Try importing cupy to check availability for tests
 try:
     import cupy as cp
+
     _CUPY_AVAILABLE = True
 except (ImportError, OSError):
     cp = None
@@ -40,6 +40,7 @@ from thinkrl.utils.metrics import (
 
 # Use numpy as fallback for data generation if cupy missing
 xp = cp if _CUPY_AVAILABLE else np
+
 
 class TestMetrics:
     """Test metrics utilities."""
@@ -93,15 +94,21 @@ class TestMetrics:
         log_probs_policy = torch.log(torch.tensor([0.2, 0.3, 0.5]))
         log_probs_ref = torch.log(torch.tensor([0.1, 0.4, 0.5]))
 
-        kl_div_mean = compute_kl_divergence(log_probs_policy, log_probs_ref, reduction="mean")
+        kl_div_mean = compute_kl_divergence(
+            log_probs_policy, log_probs_ref, reduction="mean"
+        )
         assert isinstance(kl_div_mean, torch.Tensor)
         assert kl_div_mean.dim() == 0
 
-        kl_div_sum = compute_kl_divergence(log_probs_policy, log_probs_ref, reduction="sum")
+        kl_div_sum = compute_kl_divergence(
+            log_probs_policy, log_probs_ref, reduction="sum"
+        )
         assert kl_div_sum.dim() == 0
         assert kl_div_sum == pytest.approx(kl_div_mean * 3)
 
-        kl_div_none = compute_kl_divergence(log_probs_policy, log_probs_ref, reduction="none")
+        kl_div_none = compute_kl_divergence(
+            log_probs_policy, log_probs_ref, reduction="none"
+        )
         assert kl_div_none.dim() == 1
         assert kl_div_none.shape == (3,)
 
@@ -163,7 +170,9 @@ class TestMetrics:
 
         targets_with_ignore = torch.tensor([[1, 2, 0], [1, -100, 1]])
         predictions_ignore = torch.tensor([[1, 2, 3], [1, 1, 1]])
-        accuracy_ignore = compute_accuracy(predictions_ignore, targets_with_ignore, ignore_index=-100)
+        accuracy_ignore = compute_accuracy(
+            predictions_ignore, targets_with_ignore, ignore_index=-100
+        )
         assert accuracy_ignore == pytest.approx(4 / 5)
 
     def test_compute_perplexity(self):
@@ -271,7 +280,7 @@ class TestMetrics:
         stats = compute_statistical_metrics(tensor)
 
         assert stats["mean"] == 2.0
-        assert stats["std"] == 1.0 # Sample std of [1,2,3] is 1.0
+        assert stats["std"] == 1.0  # Sample std of [1,2,3] is 1.0
 
     @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA not available")
     def test_compute_statistical_metrics_gpu_tensor(self):
@@ -289,7 +298,7 @@ class TestMetrics:
         batch = [
             np.array([1.0, 2.0, 3.0]),
             np.array([4.0, 5.0, 6.0]),
-            [] # Empty one
+            [],  # Empty one
         ]
 
         results = compute_statistical_metrics_batch(batch)
@@ -321,20 +330,26 @@ class TestMetrics:
 
         group_metrics = compute_group_metrics(rewards, group_ids)
 
-        assert torch.allclose(group_metrics["group_means"], torch.tensor([2.0, 10.5, 20.0]))
-        assert torch.allclose(group_metrics["group_maxs"], torch.tensor([3.0, 11.0, 20.0]))
-        assert torch.allclose(group_metrics["group_mins"], torch.tensor([1.0, 10.0, 20.0]))
+        assert torch.allclose(
+            group_metrics["group_means"], torch.tensor([2.0, 10.5, 20.0])
+        )
+        assert torch.allclose(
+            group_metrics["group_maxs"], torch.tensor([3.0, 11.0, 20.0])
+        )
+        assert torch.allclose(
+            group_metrics["group_mins"], torch.tensor([1.0, 10.0, 20.0])
+        )
 
     def test_compute_ranking_metrics(self):
         scores = torch.tensor([0.9, 0.7, 0.5, 0.3, 0.1])
-        labels = torch.tensor([1,   0,   1,   0,   0])
+        labels = torch.tensor([1, 0, 1, 0, 0])
 
         metrics = compute_ranking_metrics(scores, labels, k=3)
 
         assert metrics["precision@3"] == pytest.approx(2 / 3)
         assert metrics["recall@3"] == pytest.approx(2 / 2)
         assert metrics["mrr"] == pytest.approx(1.0 / 1.0)
-        assert metrics["average_precision"] == pytest.approx( (1.0 + 2/3) / 2 )
+        assert metrics["average_precision"] == pytest.approx((1.0 + 2 / 3) / 2)
 
     def test_compute_metrics_convenience_fn(self):
         logits = torch.randn(2, 4, 10)
@@ -351,7 +366,7 @@ class TestMetrics:
             "ref_log_probs": torch.log_softmax(torch.randn(2, 4, 10), dim=-1),
             "ratio": torch.rand(2, 4) * 2,
             "returns": torch.randn(2, 4),
-            "loss": torch.tensor(1.2)
+            "loss": torch.tensor(1.2),
         }
 
         metrics = compute_metrics(outputs, targets, metric_names=["all"])
@@ -374,10 +389,7 @@ class TestMetrics:
 
     def test_compute_metrics_integration(self):
         """Test the high-level compute_metrics wrapper integrates statistical metrics."""
-        outputs = {
-            "rewards": torch.randn(10),
-            "values": torch.randn(10)
-        }
+        outputs = {"rewards": torch.randn(10), "values": torch.randn(10)}
 
         metrics = compute_metrics(outputs, metric_names=["reward_stats", "value_stats"])
 

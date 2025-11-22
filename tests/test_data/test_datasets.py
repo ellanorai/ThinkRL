@@ -10,8 +10,8 @@ Tests for:
 
 import json
 import os
-import tempfile
 from pathlib import Path
+import tempfile
 from unittest.mock import patch
 
 import pytest
@@ -21,6 +21,7 @@ import torch
 # Check availability for skip logic
 try:
     import datasets
+
     _DATASETS_AVAILABLE = True
 except ImportError:
     _DATASETS_AVAILABLE = False
@@ -31,7 +32,10 @@ from thinkrl.data.datasets import PreferenceDataset, RLHFDataset
 # Mock Tokenizer
 class MockTokenizer:
     """A mock tokenizer for testing."""
-    def __init__(self, padding_side="right", pad_token_id=0, eos_token="<EOS>", eos_token_id=1):
+
+    def __init__(
+        self, padding_side="right", pad_token_id=0, eos_token="<EOS>", eos_token_id=1
+    ):
         self.padding_side = padding_side
         self.pad_token_id = pad_token_id
         self.eos_token = eos_token
@@ -44,15 +48,15 @@ class MockTokenizer:
         padding: bool = False,
         truncation: bool = False,
         return_tensors: str = None,
-        **kwargs
+        **kwargs,
     ):
         """Mock tokenization."""
         # Simple whitespace tokenizer
         tokens = text.split()
-        token_ids = [len(token) for token in tokens] # Use length as token ID
+        token_ids = [len(token) for token in tokens]  # Use length as token ID
 
         if truncation and max_length and len(token_ids) > max_length:
-            if self.padding_side == 'right':
+            if self.padding_side == "right":
                 token_ids = token_ids[:max_length]
             else:
                 token_ids = token_ids[-max_length:]
@@ -69,30 +73,48 @@ class MockTokenizer:
     def decode(self, token_ids, **kwargs):
         return " ".join([str(tid) for tid in token_ids])
 
+
 @pytest.fixture
 def mock_tokenizer():
     """Provides a mock tokenizer instance."""
     return MockTokenizer(padding_side="right")
+
 
 @pytest.fixture
 def temp_jsonl_file():
     """Creates a temporary JSONL file with dummy data."""
     # Use delete=False to manage closure manually for Windows compatibility
     fd, path = tempfile.mkstemp(suffix=".jsonl")
-    os.close(fd) # Close the file descriptor immediately
+    os.close(fd)  # Close the file descriptor immediately
     path = Path(path)
 
     data = [
-        {"prompt": "this is prompt 1.", "chosen": "this is chosen 1.", "rejected": "this is rejected 1."},
-        {"prompt": "this is prompt 2.", "chosen": "this is chosen 2.", "rejected": "this is rejected 2."},
-        {"prompt": "this is prompt 3.", "chosen": "this is chosen 3.", "rejected": "this is rejected 3."},
-        {"prompt": "  needs stripping.  ", "chosen": " chosen ", "rejected": " rejected "},
-        {"prompt": None, "chosen": "no prompt", "rejected": "no prompt"}, # Invalid
-        {}, # Invalid
+        {
+            "prompt": "this is prompt 1.",
+            "chosen": "this is chosen 1.",
+            "rejected": "this is rejected 1.",
+        },
+        {
+            "prompt": "this is prompt 2.",
+            "chosen": "this is chosen 2.",
+            "rejected": "this is rejected 2.",
+        },
+        {
+            "prompt": "this is prompt 3.",
+            "chosen": "this is chosen 3.",
+            "rejected": "this is rejected 3.",
+        },
+        {
+            "prompt": "  needs stripping.  ",
+            "chosen": " chosen ",
+            "rejected": " rejected ",
+        },
+        {"prompt": None, "chosen": "no prompt", "rejected": "no prompt"},  # Invalid
+        {},  # Invalid
     ]
 
     try:
-        with open(path, 'w', encoding='utf-8') as f:
+        with open(path, "w", encoding="utf-8") as f:
             for item in data:
                 f.write(json.dumps(item) + "\n")
         yield path
@@ -101,20 +123,21 @@ def temp_jsonl_file():
             try:
                 path.unlink()
             except PermissionError:
-                pass # Ignore if still locked on Windows in edge cases
+                pass  # Ignore if still locked on Windows in edge cases
+
 
 @pytest.mark.skipif(not _DATASETS_AVAILABLE, reason="datasets library not installed")
 class TestRLHFDataset:
     """Tests for the RLHFDataset class."""
 
-    @patch('thinkrl.data.datasets.load_dataset')
+    @patch("thinkrl.data.datasets.load_dataset")
     def test_init_from_hf(self, mock_load_dataset, mock_tokenizer):
         """Test loading data from HuggingFace datasets."""
         # Note: We expect 2 valid rows
         hf_data = [
             {"prompt": "hf prompt 1."},
             {"prompt": "hf prompt 2."},
-            {"prompt": None}, # Invalid
+            {"prompt": None},  # Invalid
         ]
         # Mock a Dataset object that supports filtering via list comprehension in __init__
         mock_load_dataset.return_value = hf_data
@@ -136,9 +159,11 @@ class TestRLHFDataset:
             tokenizer=mock_tokenizer,
             prompt_column="prompt",
         )
-        assert len(dataset) == 4 # 3 valid, 1 needs stripping
+        assert len(dataset) == 4  # 3 valid, 1 needs stripping
         assert dataset.data[0]["prompt"] == "this is prompt 1."
-        assert dataset.data[3]["prompt"] == "needs stripping." # Stripped and preprocessed
+        assert (
+            dataset.data[3]["prompt"] == "needs stripping."
+        )  # Stripped and preprocessed
 
     def test_getitem(self, temp_jsonl_file, mock_tokenizer):
         """Test the __getitem__ method for tokenization."""
@@ -163,6 +188,7 @@ class TestRLHFDataset:
 
     def test_preprocess_fn(self, temp_jsonl_file, mock_tokenizer):
         """Test that the preprocessing function is applied."""
+
         def add_prefix(sample):
             sample["prompt"] = "PREFIX: " + sample["prompt"]
             return sample
@@ -192,17 +218,18 @@ class TestRLHFDataset:
         with pytest.raises(IndexError):
             _ = dataset[-5]
 
+
 @pytest.mark.skipif(not _DATASETS_AVAILABLE, reason="datasets library not installed")
 class TestPreferenceDataset:
     """Tests for the PreferenceDataset class."""
 
-    @patch('thinkrl.data.datasets.load_dataset')
+    @patch("thinkrl.data.datasets.load_dataset")
     def test_init_from_hf(self, mock_load_dataset, mock_tokenizer):
         """Test loading preference pairs from HuggingFace."""
         hf_data = [
             {"prompt": "hf prompt 1.", "chosen": "good", "rejected": "bad"},
             {"prompt": "hf prompt 2.", "chosen": "better", "rejected": "worse"},
-            {"prompt": "hf prompt 3.", "chosen": "best", "rejected": None}, # Invalid
+            {"prompt": "hf prompt 3.", "chosen": "best", "rejected": None},  # Invalid
         ]
         mock_load_dataset.return_value = hf_data
 
@@ -221,18 +248,18 @@ class TestPreferenceDataset:
             dataset_name_or_path=str(temp_jsonl_file),
             tokenizer=mock_tokenizer,
         )
-        assert len(dataset) == 4 # 3 valid, 1 needs stripping
+        assert len(dataset) == 4  # 3 valid, 1 needs stripping
         assert dataset.data[0]["prompt"] == "this is prompt 1."
         assert dataset.data[0]["chosen"] == "this is chosen 1."
         assert dataset.data[0]["rejected"] == "this is rejected 1."
-        assert dataset.data[3]["chosen"] == "chosen" # Stripped
+        assert dataset.data[3]["chosen"] == "chosen"  # Stripped
 
     def test_getitem_tokenization(self, temp_jsonl_file, mock_tokenizer):
         """Test tokenization of chosen and rejected pairs."""
         dataset = PreferenceDataset(
             dataset_name_or_path=str(temp_jsonl_file),
             tokenizer=mock_tokenizer,
-            max_length=20, # Ensure truncation
+            max_length=20,  # Ensure truncation
         )
 
         sample = dataset[0]

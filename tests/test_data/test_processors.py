@@ -18,12 +18,14 @@ from thinkrl.data.processors import process_audio, process_image
 # Check actual availability in the module we are testing
 try:
     from PIL import Image
+
     _PIL_AVAILABLE = True
 except ImportError:
     _PIL_AVAILABLE = False
 
 try:
     import librosa
+
     _AUDIO_AVAILABLE = True
 except ImportError:
     _AUDIO_AVAILABLE = False
@@ -31,8 +33,8 @@ except ImportError:
 
 # --- Image Processor Tests ---
 
-class TestProcessImage:
 
+class TestProcessImage:
     @pytest.mark.skipif(not _PIL_AVAILABLE, reason="Pillow not installed")
     @patch("thinkrl.data.processors._PIL_AVAILABLE", True)
     @patch("thinkrl.data.processors.Image")
@@ -99,8 +101,8 @@ class TestProcessImage:
 
 # --- Audio Processor Tests ---
 
-class TestProcessAudio:
 
+class TestProcessAudio:
     @pytest.mark.skipif(not _AUDIO_AVAILABLE, reason="Librosa not installed")
     @patch("thinkrl.data.processors._AUDIO_AVAILABLE", True)
     @patch("thinkrl.data.processors.librosa")
@@ -157,7 +159,10 @@ class TestProcessAudio:
 
                 assert result is None
                 mock_logger.warning.assert_called_once()
-                assert "librosa/soundfile not installed" in mock_logger.warning.call_args[0][0]
+                assert (
+                    "librosa/soundfile not installed"
+                    in mock_logger.warning.call_args[0][0]
+                )
 
     @pytest.mark.skipif(not _AUDIO_AVAILABLE, reason="Librosa not installed")
     @patch("thinkrl.data.processors._AUDIO_AVAILABLE", True)

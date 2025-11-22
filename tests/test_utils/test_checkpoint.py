@@ -3,9 +3,9 @@ Test Suite for ThinkRL Checkpoint Utilities
 ===========================================
 """
 
+from pathlib import Path
 import shutil
 import tempfile
-from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -32,17 +32,21 @@ def temp_dir():
     except Exception:
         pass
 
+
 @pytest.fixture
 def simple_model():
     """Create a simple model."""
     return nn.Linear(10, 1)
+
 
 @pytest.fixture
 def simple_optimizer(simple_model):
     """Create a simple optimizer."""
     return optim.SGD(simple_model.parameters(), lr=0.01)
 
+
 # Tests
+
 
 class TestCheckpointManager:
     """Tests for CheckpointManager."""
@@ -56,10 +60,7 @@ class TestCheckpointManager:
     def test_save_and_cleanup(self, temp_dir, simple_model, simple_optimizer):
         """Test saving checkpoints and automatic cleanup."""
         manager = CheckpointManager(
-            checkpoint_dir=temp_dir,
-            max_checkpoints=2,
-            metric_name="loss",
-            mode="min"
+            checkpoint_dir=temp_dir, max_checkpoints=2, metric_name="loss", mode="min"
         )
 
         # Save 3 checkpoints
@@ -68,9 +69,9 @@ class TestCheckpointManager:
                 model=simple_model,
                 optimizer=simple_optimizer,
                 epoch=i,
-                step=i*10,
+                step=i * 10,
                 metrics={"loss": loss},
-                checkpoint_name=f"ckpt_{i}"
+                checkpoint_name=f"ckpt_{i}",
             )
 
         checkpoints = list(temp_dir.glob("ckpt_*"))
@@ -86,11 +87,19 @@ class TestCheckpointManager:
 
     def test_load_best(self, temp_dir, simple_model, simple_optimizer):
         """Test loading the best checkpoint."""
-        manager = CheckpointManager(checkpoint_dir=temp_dir, metric_name="acc", mode="max")
+        manager = CheckpointManager(
+            checkpoint_dir=temp_dir, metric_name="acc", mode="max"
+        )
 
-        manager.save_checkpoint(simple_model, epoch=1, metrics={"acc": 0.8}, checkpoint_name="ckpt_1")
-        manager.save_checkpoint(simple_model, epoch=2, metrics={"acc": 0.9}, checkpoint_name="ckpt_2") # Best
-        manager.save_checkpoint(simple_model, epoch=3, metrics={"acc": 0.85}, checkpoint_name="ckpt_3")
+        manager.save_checkpoint(
+            simple_model, epoch=1, metrics={"acc": 0.8}, checkpoint_name="ckpt_1"
+        )
+        manager.save_checkpoint(
+            simple_model, epoch=2, metrics={"acc": 0.9}, checkpoint_name="ckpt_2"
+        )  # Best
+        manager.save_checkpoint(
+            simple_model, epoch=3, metrics={"acc": 0.85}, checkpoint_name="ckpt_3"
+        )
 
         nn.init.constant_(simple_model.weight, 0.0)
 
@@ -101,12 +110,12 @@ class TestCheckpointManager:
     def test_save_options(self, temp_dir, simple_model, simple_optimizer):
         """Test saving with options disabled."""
         manager = CheckpointManager(
-            checkpoint_dir=temp_dir,
-            save_optimizer=False,
-            save_scheduler=False
+            checkpoint_dir=temp_dir, save_optimizer=False, save_scheduler=False
         )
 
-        manager.save_checkpoint(simple_model, optimizer=simple_optimizer, checkpoint_name="ckpt_no_opt")
+        manager.save_checkpoint(
+            simple_model, optimizer=simple_optimizer, checkpoint_name="ckpt_no_opt"
+        )
 
         ckpt_path = temp_dir / "ckpt_no_opt"
         assert (ckpt_path / "model.pt").exists()
@@ -115,7 +124,7 @@ class TestCheckpointManager:
     def test_safetensors_fallback(self, temp_dir, simple_model):
         """Test fallback if safetensors is not available or used."""
         # Mock unavailability if installed
-        with patch('thinkrl.utils.checkpoint._SAFETENSORS_AVAILABLE', False):
+        with patch("thinkrl.utils.checkpoint._SAFETENSORS_AVAILABLE", False):
             manager = CheckpointManager(temp_dir, use_safetensors=True)
             manager.save_checkpoint(simple_model, checkpoint_name="ckpt_fallback")
 
@@ -131,12 +140,7 @@ class TestStandaloneFunctions:
         """Test basic save and load."""
         path = temp_dir / "test.pt"
 
-        save_checkpoint(
-            path,
-            simple_model,
-            epoch=10,
-            metrics={"loss": 0.1}
-        )
+        save_checkpoint(path, simple_model, epoch=10, metrics={"loss": 0.1})
 
         assert path.exists()
 

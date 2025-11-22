@@ -11,8 +11,8 @@ Includes support for:
 Author: Archit Sood @ EllanorAI
 """
 
-import logging
 from collections.abc import Callable
+import logging
 from typing import Any
 
 from torch.utils.data import Dataset
@@ -21,6 +21,7 @@ from torch.utils.data import Dataset
 # --- Fix: Make datasets optional ---
 try:
     from datasets import load_dataset
+
     _DATASETS_AVAILABLE = True
 except ImportError:
     load_dataset = None
@@ -28,6 +29,7 @@ except ImportError:
 # -----------------------------------
 
 logger = logging.getLogger(__name__)
+
 
 class BaseRLHFDataset(Dataset):
     """Base class for RLHF datasets."""
@@ -39,7 +41,7 @@ class BaseRLHFDataset(Dataset):
         max_length: int = 512,
         split: str = "train",
         preprocess_fn: Callable | None = None,
-        **kwargs
+        **kwargs,
     ):
         self.tokenizer = tokenizer
         self.max_length = max_length
@@ -56,7 +58,9 @@ class BaseRLHFDataset(Dataset):
             # Load dataset
             if isinstance(dataset_name_or_path, str):
                 if dataset_name_or_path.endswith((".json", ".jsonl")):
-                    self.dataset = load_dataset("json", data_files=dataset_name_or_path, split=split)
+                    self.dataset = load_dataset(
+                        "json", data_files=dataset_name_or_path, split=split
+                    )
                 else:
                     self.dataset = load_dataset(dataset_name_or_path, split=split)
             else:
@@ -65,8 +69,8 @@ class BaseRLHFDataset(Dataset):
             self.dataset = []
 
     def __len__(self) -> int:
-        if hasattr(self, 'data') and self.data:
-             return len(self.data)
+        if hasattr(self, "data") and self.data:
+            return len(self.data)
         return len(self.dataset)
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
@@ -88,7 +92,7 @@ class RLHFDataset(BaseRLHFDataset):
         max_length: int = 512,
         split: str = "train",
         preprocess_fn: Callable | None = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             tokenizer=tokenizer,
@@ -96,7 +100,7 @@ class RLHFDataset(BaseRLHFDataset):
             max_length=max_length,
             split=split,
             preprocess_fn=preprocess_fn,
-            **kwargs
+            **kwargs,
         )
         self.prompt_column = prompt_column
         self.response_column = response_column
@@ -109,7 +113,7 @@ class RLHFDataset(BaseRLHFDataset):
                 try:
                     item = self.preprocess_fn(item)
                 except Exception:
-                    continue # Skip if preprocessing fails
+                    continue  # Skip if preprocessing fails
 
             prompt = item.get(self.prompt_column)
             if not prompt or not isinstance(prompt, str) or not prompt.strip():
@@ -119,7 +123,9 @@ class RLHFDataset(BaseRLHFDataset):
             item[self.prompt_column] = prompt.strip()
             self.data.append(item)
 
-        logger.info(f"Loaded {len(self.data)} valid samples from {dataset_name_or_path}")
+        logger.info(
+            f"Loaded {len(self.data)} valid samples from {dataset_name_or_path}"
+        )
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         sample = self.data[idx]
@@ -137,9 +143,9 @@ class RLHFDataset(BaseRLHFDataset):
         encodings = self.tokenizer(
             text,
             max_length=self.max_length,
-            padding=False, # Padding handled by collator
+            padding=False,  # Padding handled by collator
             truncation=True,
-            return_tensors="pt"
+            return_tensors="pt",
         )
 
         return {
@@ -164,14 +170,14 @@ class PreferenceDataset(BaseRLHFDataset):
         rejected_column: str = "rejected",
         max_length: int = 512,
         split: str = "train",
-        **kwargs
+        **kwargs,
     ):
         super().__init__(
             tokenizer=tokenizer,
             dataset_name_or_path=dataset_name_or_path,
             max_length=max_length,
             split=split,
-            **kwargs
+            **kwargs,
         )
         self.prompt_column = prompt_column
         self.chosen_column = chosen_column
@@ -196,7 +202,9 @@ class PreferenceDataset(BaseRLHFDataset):
             item[self.rejected_column] = rejected.strip()
             self.data.append(item)
 
-        logger.info(f"Loaded {len(self.data)} valid preference pairs from {dataset_name_or_path}")
+        logger.info(
+            f"Loaded {len(self.data)} valid preference pairs from {dataset_name_or_path}"
+        )
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         sample = self.data[idx]
@@ -214,7 +222,7 @@ class PreferenceDataset(BaseRLHFDataset):
                 max_length=self.max_length,
                 padding=False,
                 truncation=True,
-                return_tensors="pt"
+                return_tensors="pt",
             )
 
         chosen_enc = tokenize_pair(prompt, chosen)
@@ -225,5 +233,5 @@ class PreferenceDataset(BaseRLHFDataset):
             "chosen_attention_mask": chosen_enc["attention_mask"].squeeze(0),
             "rejected_input_ids": rejected_enc["input_ids"].squeeze(0),
             "rejected_attention_mask": rejected_enc["attention_mask"].squeeze(0),
-            "prompt": prompt
+            "prompt": prompt,
         }

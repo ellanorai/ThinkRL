@@ -13,14 +13,14 @@ Comprehensive logging system for ThinkRL with support for:
 Author: Archit Sood @ EllanorAI
 """
 
+from datetime import datetime
 import logging
 import logging.handlers  # Import handlers
 import os
-import sys
-import warnings
-from datetime import datetime
 from pathlib import Path
+import sys
 from typing import Any
+import warnings
 
 
 # ANSI color codes for terminal output
@@ -394,9 +394,7 @@ def setup_logger(
     return logger
 
 
-def get_logger(
-    name: str = "thinkrl", level: int | str | None = None
-) -> logging.Logger:
+def get_logger(name: str = "thinkrl", level: int | str | None = None) -> logging.Logger:
     """
     Get an existing logger or create a new one with basic configuration if needed.
 

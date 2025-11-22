@@ -2,9 +2,10 @@
 Test Suite for ThinkRL Tokenizer Utilities
 ==========================================
 """
+
+from pathlib import Path
 import shutil
 import tempfile
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -33,6 +34,7 @@ try:
         tokenize_text,
         truncate_to_token_limit,
     )
+
     _TRANSFORMERS_AVAILABLE = True
 except ImportError:
     _TRANSFORMERS_AVAILABLE = False
@@ -42,6 +44,7 @@ pytestmark = pytest.mark.skipif(
     not _TRANSFORMERS_AVAILABLE, reason="transformers not installed"
 )
 
+
 @pytest.fixture(scope="module")
 def gpt2_tokenizer():
     """Provides a real GPT-2 tokenizer for testing."""
@@ -49,12 +52,14 @@ def gpt2_tokenizer():
         return None
     return get_tokenizer("gpt2", padding_side="right")
 
+
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for saving/loading."""
     d = tempfile.mkdtemp()
     yield Path(d)
     shutil.rmtree(d)
+
 
 class TestTokenizers:
     """Test tokenizer utilities (requires transformers)."""
@@ -97,11 +102,7 @@ class TestTokenizers:
 
         # Test with batch_size
         encoded = tokenize_batch(
-            texts,
-            gpt2_tokenizer,
-            max_length=10,
-            padding="max_length",
-            batch_size=8
+            texts, gpt2_tokenizer, max_length=10, padding="max_length", batch_size=8
         )
 
         assert "input_ids" in encoded
@@ -114,12 +115,16 @@ class TestTokenizers:
         text = "Hello, world!"
         token_ids = gpt2_tokenizer.encode(text)
 
-        decoded_text = decode_tokens(token_ids, gpt2_tokenizer, skip_special_tokens=True)
+        decoded_text = decode_tokens(
+            token_ids, gpt2_tokenizer, skip_special_tokens=True
+        )
         assert decoded_text == text
 
         texts = ["Hello!", "How are you?"]
         batch_ids = [gpt2_tokenizer.encode(t) for t in texts]
-        decoded_batch = decode_tokens(batch_ids, gpt2_tokenizer, skip_special_tokens=True)
+        decoded_batch = decode_tokens(
+            batch_ids, gpt2_tokenizer, skip_special_tokens=True
+        )
 
         assert isinstance(decoded_batch, list)
         assert len(decoded_batch) == 2
@@ -142,14 +147,15 @@ class TestTokenizers:
         original_vocab_size = len(tokenizer)
 
         num_added = add_special_tokens(
-            tokenizer,
-            {"additional_special_tokens": ["<|user|>", "<|assistant|>"]}
+            tokenizer, {"additional_special_tokens": ["<|user|>", "<|assistant|>"]}
         )
 
         assert num_added == 2
         assert len(tokenizer) == original_vocab_size + 2
         assert tokenizer.convert_tokens_to_ids("<|user|>") == original_vocab_size
-        assert tokenizer.convert_tokens_to_ids("<|assistant|>") == original_vocab_size + 1
+        assert (
+            tokenizer.convert_tokens_to_ids("<|assistant|>") == original_vocab_size + 1
+        )
 
     def test_tokenize_conversation_manual(self, gpt2_tokenizer):
         """Test conversation tokenization using manual formatting."""
@@ -166,7 +172,7 @@ class TestTokenizers:
             user_prefix="USER: ",
             assistant_prefix="ASSIST: ",
             separator="\n",
-            add_generation_prompt=False
+            add_generation_prompt=False,
         )
 
         decoded = decode_tokens(encoded["input_ids"].squeeze(0), gpt2_tokenizer)
@@ -179,7 +185,7 @@ class TestTokenizers:
             user_prefix="USER: ",
             assistant_prefix="ASSIST: ",
             separator="\n",
-            add_generation_prompt=True
+            add_generation_prompt=True,
         )
 
         decoded_gen = decode_tokens(encoded_gen["input_ids"].squeeze(0), gpt2_tokenizer)
@@ -194,31 +200,18 @@ class TestTokenizers:
         with patch("thinkrl.utils.tokenizer.tokenize_text") as mock_tokenize_text:
             messages = [{"role": "user", "content": "Hello"}]
 
-            tokenize_conversation(
-                messages,
-                mock_tokenizer,
-                add_generation_prompt=True
-            )
+            tokenize_conversation(messages, mock_tokenizer, add_generation_prompt=True)
 
             mock_tokenizer.apply_chat_template.assert_called_with(
-                messages,
-                tokenize=False,
-                add_generation_prompt=True
+                messages, tokenize=False, add_generation_prompt=True
             )
 
-            mock_tokenize_text.assert_called_with(
-                "Template output",
-                mock_tokenizer
-            )
+            mock_tokenize_text.assert_called_with("Template output", mock_tokenizer)
 
     def test_prepare_input_for_generation(self, gpt2_tokenizer):
         """Test preparing inputs for model.generate()."""
         prompt = "Once upon a time"
-        inputs = prepare_input_for_generation(
-            prompt,
-            gpt2_tokenizer,
-            device="cpu"
-        )
+        inputs = prepare_input_for_generation(prompt, gpt2_tokenizer, device="cpu")
 
         assert "input_ids" in inputs
         assert "attention_mask" in inputs
@@ -266,7 +259,9 @@ class TestTokenizers:
     def test_save_and_load_tokenizer(self, temp_dir):
         """Test saving and loading a modified tokenizer."""
         tokenizer_to_save = get_tokenizer("gpt2")
-        add_special_tokens(tokenizer_to_save, {"additional_special_tokens": ["<|my_token|>"]})
+        add_special_tokens(
+            tokenizer_to_save, {"additional_special_tokens": ["<|my_token|>"]}
+        )
 
         assert tokenizer_to_save.convert_tokens_to_ids("<|my_token|>") == 50257
 
@@ -277,7 +272,9 @@ class TestTokenizers:
 
         loaded_tokenizer = load_tokenizer(temp_dir)
 
-        assert isinstance(loaded_tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast))
+        assert isinstance(
+            loaded_tokenizer, (PreTrainedTokenizer, PreTrainedTokenizerFast)
+        )
         assert len(loaded_tokenizer) == len(tokenizer_to_save)
         assert loaded_tokenizer.convert_tokens_to_ids("<|my_token|>") == 50257
         assert loaded_tokenizer.pad_token_id == 50256

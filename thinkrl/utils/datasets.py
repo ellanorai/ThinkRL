@@ -12,7 +12,10 @@ import torch
 
 class BatchEncoding(dict):
     """Holds the output of the tokenizer."""
-    def __init__(self, data: dict[str, Any], encoding: Any = None, tensor_type: str = "pt"):
+
+    def __init__(
+        self, data: dict[str, Any], encoding: Any = None, tensor_type: str = "pt"
+    ):
         super().__init__(data)
         self.encoding = encoding
         self.tensor_type = tensor_type
@@ -24,10 +27,9 @@ class BatchEncoding(dict):
                 self[k] = v.to(device)
         return self
 
+
 def pad_sequences(
-    sequences: list[torch.Tensor],
-    padding_value: int = 0,
-    padding_side: str = "right"
+    sequences: list[torch.Tensor], padding_value: int = 0, padding_side: str = "right"
 ) -> torch.Tensor:
     """Pad a list of sequences to the same length."""
     from torch.nn.utils.rnn import pad_sequence
@@ -43,24 +45,28 @@ def pad_sequences(
 
     return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
 
-def create_attention_mask(input_ids: torch.Tensor, padding_value: int = 0) -> torch.Tensor:
+
+def create_attention_mask(
+    input_ids: torch.Tensor, padding_value: int = 0
+) -> torch.Tensor:
     """Create attention mask from input_ids."""
     return (input_ids != padding_value).long()
+
 
 def create_position_ids(attention_mask: torch.Tensor) -> torch.Tensor:
     """Create position IDs from attention mask."""
     # Cumulative sum to get positions, masked by attention_mask
     return torch.cumsum(attention_mask, dim=1) * attention_mask
 
+
 def create_causal_mask(seq_len: int, device: torch.device = None) -> torch.Tensor:
     """Create a causal (lower triangular) mask for auto-regressive attention."""
     mask = torch.tril(torch.ones((seq_len, seq_len), device=device))
     return mask.view(1, 1, seq_len, seq_len)
 
+
 def collate_batch(
-    batch: list[dict[str, Any]],
-    tokenizer: Any = None,
-    device: torch.device = None
+    batch: list[dict[str, Any]], tokenizer: Any = None, device: torch.device = None
 ) -> dict[str, torch.Tensor]:
     """Collate a list of samples into a batch."""
     if not batch:
@@ -71,7 +77,11 @@ def collate_batch(
 
     # Determine padding value
     pad_token_id = 0
-    if tokenizer is not None and hasattr(tokenizer, "pad_token_id") and tokenizer.pad_token_id is not None:
+    if (
+        tokenizer is not None
+        and hasattr(tokenizer, "pad_token_id")
+        and tokenizer.pad_token_id is not None
+    ):
         pad_token_id = tokenizer.pad_token_id
 
     for key in keys:
@@ -85,35 +95,36 @@ def collate_batch(
             else:
                 # Pad sequences
                 if items[0].dim() == 1:
-                     collated[key] = pad_sequences(items, padding_value=pad_token_id)
+                    collated[key] = pad_sequences(items, padding_value=pad_token_id)
                 else:
-                     # Fallback: stack if possible or list
-                     try:
-                         collated[key] = torch.stack(items)
-                     except Exception:
+                    # Fallback: stack if possible or list
+                    try:
+                        collated[key] = torch.stack(items)
+                    except Exception:
                         collated[key] = items
         elif isinstance(items[0], (int, float)):
-             collated[key] = torch.tensor(items)
+            collated[key] = torch.tensor(items)
         else:
-             collated[key] = items
+            collated[key] = items
 
     if device:
         collated = to_device(collated, device)
 
     return collated
 
+
 def create_dataloader(
-    dataset,
-    batch_size: int,
-    shuffle: bool = True,
-    collate_fn=None,
-    **kwargs
+    dataset, batch_size: int, shuffle: bool = True, collate_fn=None, **kwargs
 ):
     """Create a PyTorch DataLoader."""
     from torch.utils.data import DataLoader
+
     if collate_fn is None:
         collate_fn = collate_batch
-    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn, **kwargs)
+    return DataLoader(
+        dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn, **kwargs
+    )
+
 
 def preprocess_text(text: str) -> str:
     """Basic text preprocessing."""
@@ -121,10 +132,9 @@ def preprocess_text(text: str) -> str:
         return str(text)
     return text.strip()
 
+
 def truncate_sequence(
-    sequence: list | torch.Tensor,
-    max_length: int,
-    side: str = "right"
+    sequence: list | torch.Tensor, max_length: int, side: str = "right"
 ) -> list | torch.Tensor:
     """Truncate a sequence to max_length."""
     if len(sequence) <= max_length:
@@ -132,22 +142,25 @@ def truncate_sequence(
 
     if side == "right":
         return sequence[:max_length]
-    else: # left
+    else:  # left
         return sequence[-max_length:]
 
-def create_labels_for_clm(input_ids: torch.Tensor, ignore_index: int = -100) -> torch.Tensor:
+
+def create_labels_for_clm(
+    input_ids: torch.Tensor, ignore_index: int = -100
+) -> torch.Tensor:
     """Create labels for Causal Language Modeling (usually same as input_ids)."""
     return input_ids.clone()
 
+
 def mask_padding_in_loss(
-    labels: torch.Tensor,
-    attention_mask: torch.Tensor,
-    ignore_index: int = -100
+    labels: torch.Tensor, attention_mask: torch.Tensor, ignore_index: int = -100
 ) -> torch.Tensor:
     """Mask padding tokens in labels so they don't contribute to loss."""
     labels = labels.clone()
     labels[attention_mask == 0] = ignore_index
     return labels
+
 
 def split_batch(batch: dict[str, Any], micro_batch_size: int) -> list[dict[str, Any]]:
     """Split a large batch into smaller micro-batches."""
@@ -173,9 +186,11 @@ def split_batch(batch: dict[str, Any], micro_batch_size: int) -> list[dict[str, 
 
     return micro_batches
 
+
 def compute_sequence_lengths(attention_mask: torch.Tensor) -> torch.Tensor:
     """Compute sequence lengths from attention mask."""
     return attention_mask.sum(dim=1)
+
 
 def shuffle_batch(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
     """Shuffle items within a batch."""
@@ -197,8 +212,9 @@ def shuffle_batch(batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         elif isinstance(v, list) and len(v) == batch_size:
             shuffled[k] = [v[i] for i in indices]
         else:
-             shuffled[k] = v
+            shuffled[k] = v
     return shuffled
+
 
 def to_device(batch: dict[str, Any], device: str | torch.device) -> dict[str, Any]:
     """Move all tensors in batch to device."""
@@ -207,11 +223,14 @@ def to_device(batch: dict[str, Any], device: str | torch.device) -> dict[str, An
         if isinstance(v, torch.Tensor):
             new_batch[k] = v.to(device)
         elif isinstance(v, dict):
-             new_batch[k] = to_device(v, device)
+            new_batch[k] = to_device(v, device)
         else:
             new_batch[k] = v
     return new_batch
 
-def prepare_batch_for_training(batch: dict[str, Any], device: str | torch.device) -> dict[str, Any]:
+
+def prepare_batch_for_training(
+    batch: dict[str, Any], device: str | torch.device
+) -> dict[str, Any]:
     """Prepare batch for training (move to device, etc.)."""
     return to_device(batch, device)

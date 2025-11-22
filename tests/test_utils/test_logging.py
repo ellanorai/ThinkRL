@@ -14,9 +14,9 @@ Author: Archit Sood
 
 import logging
 import logging.handlers  # Import handlers for isinstance check
+from pathlib import Path
 import shutil
 import tempfile
-from pathlib import Path
 
 import pytest
 
@@ -33,6 +33,7 @@ from thinkrl.utils.logging import (
 # ============================================================================
 # Fixtures
 # ============================================================================
+
 
 @pytest.fixture
 def temp_dir():
@@ -56,6 +57,7 @@ def temp_dir():
 # Logging Tests
 # ============================================================================
 
+
 class TestLogging:
     """Test logging utilities."""
 
@@ -67,7 +69,7 @@ class TestLogging:
         assert logger is not None
         assert logger.name == logger_name
         assert logger.level == logging.INFO
-        assert isinstance(logger, ThinkRLLogger) # Check for custom class
+        assert isinstance(logger, ThinkRLLogger)  # Check for custom class
 
         # Test logging
         logger.info("Test message")
@@ -87,14 +89,15 @@ class TestLogging:
         # This will create a basic logger since one isn't set up
         logger = get_logger("thinkrl.test_get_new")
         assert logger is not None
-        assert isinstance(logger, logging.Logger) # get_logger returns base logger if not setup
+        assert isinstance(
+            logger, logging.Logger
+        )  # get_logger returns base logger if not setup
         assert logger.name == "thinkrl.test_get_new"
 
         # Test getting an already configured logger
         setup_logger("thinkrl.test_get_setup")
         logger2 = get_logger("thinkrl.test_get_setup")
         assert isinstance(logger2, ThinkRLLogger)
-
 
     def test_colored_formatter(self):
         """Test colored formatter."""
@@ -161,9 +164,9 @@ class TestLogging:
         assert logger_rank1_file is not None
         assert logger_rank1_file.name == logger_name_rank1  # Check name
         # Assert ONLY FileHandler (or RotatingFileHandler) exists
-        assert (
-            len(logger_rank1_file.handlers) == 1
-        ), "Rank 1 with log_dir should have exactly one handler"
+        assert len(logger_rank1_file.handlers) == 1, (
+            "Rank 1 with log_dir should have exactly one handler"
+        )
         assert isinstance(
             logger_rank1_file.handlers[0],
             (logging.FileHandler, logging.handlers.RotatingFileHandler),
@@ -172,9 +175,9 @@ class TestLogging:
         logger_rank1_file.info("Rank 1 message to file")
         # Check that the file was actually created using the correct name pattern
         rank1_log_files = list(temp_dir.glob(f"{logger_name_rank1}_*.log"))
-        assert (
-            len(rank1_log_files) == 1
-        ), f"Log file matching {logger_name_rank1}_*.log for rank 1 should exist"
+        assert len(rank1_log_files) == 1, (
+            f"Log file matching {logger_name_rank1}_*.log for rank 1 should exist"
+        )
 
         # --- FIX: Clear handlers for rank 1 logger BEFORE reconfiguring ---
         # Get the logger instance directly
@@ -198,12 +201,12 @@ class TestLogging:
         )  # Should be the same logger instance
 
         # Assert NullHandler is present and ONLY handler
-        assert (
-            len(logger_rank1_null.handlers) == 1
-        ), "Rank 1 without log_dir should have exactly one handler"
-        assert isinstance(
-            logger_rank1_null.handlers[0], logging.NullHandler
-        ), "Rank 1 without log_dir should have NullHandler"
+        assert len(logger_rank1_null.handlers) == 1, (
+            "Rank 1 without log_dir should have exactly one handler"
+        )
+        assert isinstance(logger_rank1_null.handlers[0], logging.NullHandler), (
+            "Rank 1 without log_dir should have NullHandler"
+        )
 
         logger_rank1_null.info(
             "This rank 1 message should NOT appear anywhere"
