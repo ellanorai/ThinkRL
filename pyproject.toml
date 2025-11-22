@@ -19,6 +19,7 @@ ignore = [
     "C901",  # function complexity (too strict for ML code)
     "E501",  # Line too long (let ruff format handle this)
     "E741",  # Ambiguous variable name (common in ML: l, O, I)
+    "UP038", # Use X | Y in isinstance - disabled for readability
 ]
 
 [tool.ruff.lint.per-file-ignores]
