@@ -1,0 +1,52 @@
+name: "Issue Auto Labeler"
+
+on:
+  issues:
+    types: [opened, edited]
+
+jobs:
+  triage:
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Label Issue based on keywords
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const title = issue.title.toLowerCase();
+            const body = (issue.body || "").toLowerCase();
+            const labelsToAdd = new Set();
+
+            // Keywords for 'bug'
+            if (title.includes("bug") || title.includes("error") || title.includes("fail") || body.includes("reproduce")) {
+              labelsToAdd.add("bug");
+            }
+
+            // Keywords for 'enhancement' / 'feature'
+            if (title.includes("feature") || title.includes("request") || title.includes("add") || body.includes("feature request")) {
+              labelsToAdd.add("enhancement");
+            }
+
+            // Keywords for 'documentation'
+            if (title.includes("doc") || title.includes("typo") || body.includes("documentation")) {
+              labelsToAdd.add("documentation");
+            }
+            
+            // Keywords for 'question'
+            if (title.includes("?") || title.includes("how to") || title.includes("question")) {
+              labelsToAdd.add("question");
+            }
+
+            if (labelsToAdd.size > 0) {
+              await github.rest.issues.addLabels({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                labels: Array.from(labelsToAdd)
+              });
+              console.log(`Added labels: ${Array.from(labelsToAdd).join(', ')}`);
+            } else {
+              console.log("No matching keywords found.");
+            }

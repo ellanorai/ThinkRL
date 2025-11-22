@@ -1,0 +1,61 @@
+name: Slow Tests
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 0 * * *" # Run daily at midnight
+  push:
+    branches: [ main ]
+    paths:
+      - "thinkrl/**"
+      - "tests/**"
+      - ".github/workflows/slow-tests.yml"
+
+jobs:
+  run_slow_tests:
+    name: Run Slow Tests (CPU)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet
+          sudo rm -rf /opt/ghc
+          sudo rm -rf /usr/local/share/boost
+          sudo rm -rf "$AGENT_TOOLSDIRECTORY"
+          sudo docker system prune -af
+          sudo apt-get clean
+          df -h
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Create virtual environment
+        run: |
+          uv venv
+          uv pip install --upgrade setuptools wheel
+
+      - name: Install dependencies
+        run: |
+          source .venv/bin/activate
+          # Install CPU-only PyTorch to save space/time on GitHub runners
+          uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+          # Install package with dev dependencies
+          uv pip install ".[dev]"
+
+      - name: Run slow tests
+        run: |
+          source .venv/bin/activate
+          # This runs tests marked with @pytest.mark.slow or matching "slow" keyword
+          # which are explicitly excluded in your main tests.yml
+          pytest tests/ -v -k "slow" --tb=short
+        env:
+          CUDA_VISIBLE_DEVICES: "" 
+          PYTHONPATH: ${{ github.workspace }}
