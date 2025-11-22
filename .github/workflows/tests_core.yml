@@ -30,23 +30,23 @@ jobs:
           python-version: '3.11'
 
       - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+        uses: astral-sh/setup-uv@v3
 
       - name: Create virtual environment
         run: |
-          ~/.cargo/bin/uv venv
-          ~/.cargo/bin/uv pip install --upgrade setuptools wheel
+          uv venv
+          uv pip install --upgrade setuptools wheel
 
       - name: Install Core Dependencies (CPU-only)
         run: |
-          # Install CPU-only PyTorch to save space
-          ~/.cargo/bin/uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
+          # Just use 'uv', remove '~/.cargo/bin/' prefix
+          uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
           # Install core dependencies
-          ~/.cargo/bin/uv pip install cupy-cuda12x scipy pyyaml tqdm accelerate
+          uv pip install cupy-cuda12x scipy pyyaml tqdm accelerate
           # Install dev/test dependencies
-          ~/.cargo/bin/uv pip install pytest pytest-cov pytest-xdist pytest-mock
+          uv pip install pytest pytest-cov pytest-xdist pytest-mock
           # Install package
-          ~/.cargo/bin/uv pip install -e .
+          uv pip install -e .
 
       - name: Run Tests
         run: .venv/bin/pytest tests/ -v --tb=short
