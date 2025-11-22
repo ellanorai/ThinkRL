@@ -142,11 +142,13 @@ class TestLogging:
         assert any(
             isinstance(h, logging.StreamHandler) for h in logger_rank0.handlers
         ), "Rank 0 should have a StreamHandler"
+        
+        # UP038: Combined check using | operator for cleaner type checking
         assert any(
-            isinstance(h, logging.FileHandler)
-            or isinstance(h, logging.handlers.RotatingFileHandler)
+            isinstance(h, logging.FileHandler | logging.handlers.RotatingFileHandler)
             for h in logger_rank0.handlers
         ), "Rank 0 should have a FileHandler"
+        
         logger_rank0.info("Rank 0 message")
         # Check rank 0 log file exists
         rank0_log_files = list(temp_dir.glob(f"{logger_name_rank0}_*.log"))
@@ -167,9 +169,11 @@ class TestLogging:
         assert len(logger_rank1_file.handlers) == 1, (
             "Rank 1 with log_dir should have exactly one handler"
         )
+        
+        # UP038 Fix: Using | instead of tuple (,)
         assert isinstance(
             logger_rank1_file.handlers[0],
-            (logging.FileHandler, logging.handlers.RotatingFileHandler),
+            logging.FileHandler | logging.handlers.RotatingFileHandler,
         )
 
         logger_rank1_file.info("Rank 1 message to file")
