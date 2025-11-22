@@ -273,7 +273,7 @@ class TestTokenizers:
         loaded_tokenizer = load_tokenizer(temp_dir)
 
         assert isinstance(
-            loaded_tokenizer,  PreTrainedTokenizer | PreTrainedTokenizerFast
+            loaded_tokenizer, PreTrainedTokenizer | PreTrainedTokenizerFast
         )
         assert len(loaded_tokenizer) == len(tokenizer_to_save)
         assert loaded_tokenizer.convert_tokens_to_ids("<|my_token|>") == 50257
