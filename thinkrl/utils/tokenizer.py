@@ -371,7 +371,7 @@ def decode_tokens(
         ```
     """
     # Check if batch or single sequence
-    if isinstance(token_ids[0], (list, tuple)):
+    if isinstance(token_ids[0], list | tuple):
         # Batch decoding
         return tokenizer.batch_decode(
             token_ids,

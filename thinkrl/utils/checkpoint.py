@@ -276,7 +276,7 @@ class CheckpointManager:
             state_dict = torch.load(model_path, map_location=device)
 
         # Handle DataParallel/DistributedDataParallel wrapped models
-        if isinstance(model, (nn.DataParallel, nn.parallel.DistributedDataParallel)):
+        if isinstance(model, nn.DataParallel | nn.parallel.DistributedDataParallel):
             model = model.module
 
         model.load_state_dict(state_dict, strict=strict)
@@ -422,13 +422,15 @@ class CheckpointManager:
                 }
                 for ckpt in self.checkpoints
             ],
-            "best_checkpoint": {
-                "path": str(self.best_checkpoint["path"]),
-                "name": self.best_checkpoint["name"],
-                "metrics": self.best_checkpoint["metrics"],
-            }
-            if self.best_checkpoint
-            else None,
+            "best_checkpoint": (
+                {
+                    "path": str(self.best_checkpoint["path"]),
+                    "name": self.best_checkpoint["name"],
+                    "metrics": self.best_checkpoint["metrics"],
+                }
+                if self.best_checkpoint
+                else None
+            ),
             "config": {
                 "max_checkpoints": self.max_checkpoints,
                 "metric_name": self.metric_name,
@@ -537,7 +539,7 @@ def save_checkpoint(
     }
 
     # Add model state
-    if isinstance(model, (nn.DataParallel, nn.parallel.DistributedDataParallel)):
+    if isinstance(model, nn.DataParallel | nn.parallel.DistributedDataParallel):
         checkpoint["model_state_dict"] = model.module.state_dict()
     else:
         checkpoint["model_state_dict"] = model.state_dict()
@@ -631,7 +633,7 @@ def load_checkpoint(
         checkpoint = torch.load(checkpoint_path, map_location=device)
 
     # Load model state
-    if isinstance(model, (nn.DataParallel, nn.parallel.DistributedDataParallel)):
+    if isinstance(model, nn.DataParallel | nn.parallel.DistributedDataParallel):
         model.module.load_state_dict(checkpoint["model_state_dict"], strict=strict)
     else:
         model.load_state_dict(checkpoint["model_state_dict"], strict=strict)

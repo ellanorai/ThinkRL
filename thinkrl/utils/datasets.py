@@ -102,7 +102,7 @@ def collate_batch(
                         collated[key] = torch.stack(items)
                     except Exception:
                         collated[key] = items
-        elif isinstance(items[0], (int, float)):
+        elif isinstance(items[0], int | float):
             collated[key] = torch.tensor(items)
         else:
             collated[key] = items
@@ -167,7 +167,7 @@ def split_batch(batch: dict[str, Any], micro_batch_size: int) -> list[dict[str, 
     # Find batch size from first tensor item
     batch_size = 0
     for v in batch.values():
-        if isinstance(v, (torch.Tensor, list)):
+        if isinstance(v, torch.Tensor | list):
             batch_size = len(v)
             break
 
@@ -178,7 +178,7 @@ def split_batch(batch: dict[str, Any], micro_batch_size: int) -> list[dict[str, 
     for i in range(0, batch_size, micro_batch_size):
         micro_batch = {}
         for k, v in batch.items():
-            if isinstance(v, (torch.Tensor, list)):
+            if isinstance(v, torch.Tensor | list):
                 micro_batch[k] = v[i : i + micro_batch_size]
             else:
                 micro_batch[k] = v
