@@ -70,11 +70,11 @@ markers = [
 
 filterwarnings = [
     "ignore:.*transformers not available.*:UserWarning",
-    "error",
     "ignore::UserWarning:torch.utils.checkpoint:",
     "ignore::FutureWarning:transformers.tokenization_utils_base:",
     "ignore::UserWarning:cupy.cuda.memory:",
     "ignore::DeprecationWarning",
+    "error",
 ]
 
 # ------------------------------------------------------------------

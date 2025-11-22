@@ -53,9 +53,9 @@ jobs:
       - name: Run slow tests
         run: |
           source .venv/bin/activate
-          # This runs tests marked with @pytest.mark.slow or matching "slow" keyword
+          # This runs tests marked with @pytest.mark.slow
           # which are explicitly excluded in your main tests.yml
-          pytest tests/ -v -k "slow" --tb=short
+          pytest tests/ -v -m slow --tb=short
         env:
           CUDA_VISIBLE_DEVICES: "" 
           PYTHONPATH: ${{ github.workspace }}
