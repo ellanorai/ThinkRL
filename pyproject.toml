@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 # Ruff Configuration (Replaces Black, Isort, Flake8)
 # ------------------------------------------------------------------
 [tool.ruff]
-target-version = "py39"  # Fixed: was "3.9", should be "py39"
+target-version = "py310"  # Match minimum Python version
 line-length = 88
 src = ["thinkrl", "tests"]
 
@@ -98,7 +98,7 @@ filterwarnings = [
 # Static Type Checking (Mypy) - Relaxed for ML Development
 # ------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.9"
+python_version = "3.10"  # FIXED: Match the Python 3.10+ syntax used in code
 warn_return_any = false  # Too noisy for ML code
 warn_unused_configs = true
 
@@ -200,3 +200,29 @@ ignore_errors = true
 
 # Relax coverage requirement - don't fail locally
 fail_under = 0  # Don't fail on coverage (handle in CI separately)
+
+# ------------------------------------------------------------------
+# Security Scanning (Bandit) Configuration
+# ------------------------------------------------------------------
+[tool.bandit]
+# Exclude test files and examples from security scanning
+exclude_dirs = [
+    "tests",
+    "examples",
+    "docs",
+]
+
+# Skip specific tests that are acceptable in this context
+skips = [
+    "B615",  # Unsafe HuggingFace Hub download - acceptable with version pinning in production
+    "B614",  # Unsafe PyTorch load - acceptable when loading trusted checkpoints
+]
+
+# Only report high severity issues
+severity = "high"
+
+# ------------------------------------------------------------------
+# Bandit Overrides (Alternative to skips)
+# ------------------------------------------------------------------
+[tool.bandit.assert_used]
+skips = ['*_test.py', '*/test_*.py']

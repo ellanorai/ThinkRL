@@ -526,7 +526,7 @@ setup(
     },
 
     # Dependencies
-    python_requires=">=3.9,<4.0", 
+    python_requires=">=3.10,<3.13", 
     install_requires=CORE_REQUIREMENTS,
     extras_require=EXTRAS_REQUIRE,
 

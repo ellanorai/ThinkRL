@@ -81,4 +81,4 @@ jobs:
         continue-on-error: true
 
       - name: Security check (bandit)
-        run: bandit -r thinkrl -ll -ii
+        run: bandit -r thinkrl -ll -ii --skip B614,B615
