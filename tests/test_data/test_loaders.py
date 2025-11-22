@@ -15,6 +15,10 @@ from torch.utils.data import Dataset
 from thinkrl.data.loaders import RLHFDataLoader, create_rlhf_collate_fn
 
 
+# Mark all tests in this module as slow
+pytestmark = pytest.mark.slow
+
+
 # --- Mocks and Fixtures ---
 
 

@@ -48,6 +48,7 @@ def simple_optimizer(simple_model):
 # Tests
 
 
+@pytest.mark.slow
 class TestCheckpointManager:
     """Tests for CheckpointManager."""
 
@@ -133,6 +134,7 @@ class TestCheckpointManager:
             assert not (temp_dir / "ckpt_fallback" / "model.safetensors").exists()
 
 
+@pytest.mark.slow
 class TestStandaloneFunctions:
     """Tests for standalone save/load functions."""
 

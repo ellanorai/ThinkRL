@@ -58,6 +58,7 @@ def temp_dir():
 # ============================================================================
 
 
+@pytest.mark.slow
 class TestLogging:
     """Test logging utilities."""
 

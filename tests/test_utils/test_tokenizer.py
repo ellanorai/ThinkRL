@@ -61,6 +61,7 @@ def temp_dir():
     shutil.rmtree(d)
 
 
+@pytest.mark.slow
 class TestTokenizers:
     """Test tokenizer utilities (requires transformers)."""
 

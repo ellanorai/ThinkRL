@@ -34,6 +34,7 @@ except ImportError:
 # --- Image Processor Tests ---
 
 
+@pytest.mark.slow
 class TestProcessImage:
     @pytest.mark.skipif(not _PIL_AVAILABLE, reason="Pillow not installed")
     @patch("thinkrl.data.processors._PIL_AVAILABLE", True)
@@ -102,6 +103,7 @@ class TestProcessImage:
 # --- Audio Processor Tests ---
 
 
+@pytest.mark.slow
 class TestProcessAudio:
     @pytest.mark.skipif(not _AUDIO_AVAILABLE, reason="Librosa not installed")
     @patch("thinkrl.data.processors._AUDIO_AVAILABLE", True)

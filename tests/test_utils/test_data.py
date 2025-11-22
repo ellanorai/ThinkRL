@@ -39,6 +39,10 @@ from thinkrl.utils.datasets import (
 )
 
 
+# Mark all tests in this module as slow
+pytestmark = pytest.mark.slow
+
+
 @pytest.fixture
 def sample_batch_tensors():
     return {

@@ -126,6 +126,7 @@ def temp_jsonl_file():
                 pass  # Ignore if still locked on Windows in edge cases
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not _DATASETS_AVAILABLE, reason="datasets library not installed")
 class TestRLHFDataset:
     """Tests for the RLHFDataset class."""
@@ -219,6 +220,7 @@ class TestRLHFDataset:
             _ = dataset[-5]
 
 
+@pytest.mark.slow
 @pytest.mark.skipif(not _DATASETS_AVAILABLE, reason="datasets library not installed")
 class TestPreferenceDataset:
     """Tests for the PreferenceDataset class."""

@@ -42,6 +42,7 @@ from thinkrl.utils.metrics import (
 xp = cp if _CUPY_AVAILABLE else np
 
 
+@pytest.mark.slow
 class TestMetrics:
     """Test metrics utilities."""
 
