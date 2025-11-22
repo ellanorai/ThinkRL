@@ -6,14 +6,16 @@ A powerful, open-source library for Reinforcement Learning from Human and AI Fee
 with state-of-the-art algorithms, reasoning capabilities, and multimodal support.
 """
 
-from setuptools import setup, find_packages
 import os
+
+from setuptools import find_packages, setup
+
 
 # Read long description from README
 def read_readme():
     """Read README.md for long description."""
     try:
-        with open("README.md", "r", encoding="utf-8") as fh:
+        with open("README.md", encoding="utf-8") as fh:
             return fh.read()
     except FileNotFoundError:
         return __doc__
@@ -25,13 +27,13 @@ def read_version():
         # Assuming thinkrl/__init__.py exists and contains __version__
         version_file = os.path.join("thinkrl", "__init__.py")
         if os.path.exists(version_file):
-             with open(version_file, "r", encoding="utf-8") as f:
+             with open(version_file, encoding="utf-8") as f:
                 for line in f:
                     if line.startswith("__version__"):
                         return line.split("=")[1].strip().strip('"').strip("'")
         else:
              # Fallback if thinkrl/__init__.py doesn't exist yet
-             with open("tests/__init__.py", "r", encoding="utf-8") as f:
+             with open("tests/__init__.py", encoding="utf-8") as f:
                 for line in f:
                     if line.startswith("__version__"):
                         return line.split("=")[1].strip().strip('"').strip("'")
@@ -44,7 +46,7 @@ def read_version():
 # Core dependencies - minimal, stable, no GPU requirements
 CORE_REQUIREMENTS = [
     "torch>=2.0.0,<3.0.0",
-    "cupy-cuda12x>=12.0.0,<13.0.0", 
+    "cupy-cuda12x>=12.0.0,<13.0.0",
     "scipy>=1.10.0",
     "pyyaml>=6.0,<7.0",
     "tqdm>=4.65.0",
@@ -308,10 +310,10 @@ CONVENIENCE_BUNDLES = {
         MODALITY_REQUIREMENTS["multimodal"] +
         REASONING_REQUIREMENTS["reasoning"] +
         REASONING_REQUIREMENTS["math"] +
-        REASONING_REQUIREMENTS["code"] + 
+        REASONING_REQUIREMENTS["code"] +
         LOGGING_REQUIREMENTS["wandb"] +
         LOGGING_REQUIREMENTS["tensorboard"] +
-        LOGGING_REQUIREMENTS["mlflow"] + 
+        LOGGING_REQUIREMENTS["mlflow"] +
         UTILITIES_REQUIREMENTS["data_processing"] +
         UTILITIES_REQUIREMENTS["general_utils"] +
         UTILITIES_REQUIREMENTS["serialization"] +
@@ -328,11 +330,11 @@ CONVENIENCE_BUNDLES = {
     "all": list(set(
         CORE_REQUIREMENTS +
         GPU_REQUIREMENTS["cuda"] +
-        GPU_REQUIREMENTS["cuda11"] + 
+        GPU_REQUIREMENTS["cuda11"] +
         FRAMEWORK_REQUIREMENTS["transformers"] +
         FRAMEWORK_REQUIREMENTS["peft"] +
         FRAMEWORK_REQUIREMENTS["deepspeed"] +
-        FRAMEWORK_REQUIREMENTS["fsdp"] + 
+        FRAMEWORK_REQUIREMENTS["fsdp"] +
         MODALITY_REQUIREMENTS["multimodal"] +
         REASONING_REQUIREMENTS["reasoning"] +
         REASONING_REQUIREMENTS["math"] +
@@ -347,7 +349,7 @@ CONVENIENCE_BUNDLES = {
         DEV_REQUIREMENTS["dev"] +
         DEV_REQUIREMENTS["format"] +
         DEV_REQUIREMENTS["quality"] +
-        DEV_REQUIREMENTS["docs"] + 
+        DEV_REQUIREMENTS["docs"] +
         EVAL_REQUIREMENTS["eval"] +
         EVAL_REQUIREMENTS["benchmarks"] +
         INFERENCE_REQUIREMENTS["inference"]
@@ -387,7 +389,7 @@ CONSOLE_SCRIPTS = {
     # Specialized training
     "thinkrl-multimodal": "thinkrl.scripts.multimodal_train:main",
     "thinkrl-distributed": "thinkrl.scripts.distributed_train:main",
-    
+
     # RLAIF generation
     "thinkrl-rlaif": "thinkrl.scripts.generate_rlaif_data:main",
 
@@ -472,14 +474,14 @@ KEYWORDS = [
 # Project URLs
 PROJECT_URLS = {
     "Homepage": "https://github.com/Archit03/ThinkRL",
-    "Documentation": "https://thinkrl.readthedocs.io/", 
+    "Documentation": "https://thinkrl.readthedocs.io/",
     "Repository": "https://github.com/Archit03/ThinkRL",
     "Bug Reports": "https://github.com/Archit03/ThinkRL/issues",
     "Feature Requests": "https://github.com/Archit03/ThinkRL/discussions",
-    "Changelog": "https://github.com/Archit03/ThinkRL/blob/main/CHANGELOG.md", 
+    "Changelog": "https://github.com/Archit03/ThinkRL/blob/main/CHANGELOG.md",
     "Company": "https://ellanorai.org",
-    "Examples": "https://github.com/Archit03/ThinkRL/tree/main/examples", 
-    "Tutorials": "https://github.com/Archit03/ThinkRL/tree/main/docs/tutorials", 
+    "Examples": "https://github.com/Archit03/ThinkRL/tree/main/examples",
+    "Tutorials": "https://github.com/Archit03/ThinkRL/tree/main/docs/tutorials",
 }
 
 # Main setup configuration
@@ -510,7 +512,7 @@ setup(
             "docs.*",
             "examples",
             "examples.*",
-            "scripts", 
+            "scripts",
             "scripts.*",
         ]
     ),
@@ -526,7 +528,7 @@ setup(
     },
 
     # Dependencies
-    python_requires=">=3.10,<3.13", 
+    python_requires=">=3.10,<3.13",
     install_requires=CORE_REQUIREMENTS,
     extras_require=EXTRAS_REQUIRE,
 
@@ -541,7 +543,7 @@ setup(
     # Package metadata
     classifiers=CLASSIFIERS,
     keywords=KEYWORDS,
-    license="Apache-2.0", 
+    license="Apache-2.0",
 
     # Package options
     zip_safe=False,
@@ -550,7 +552,7 @@ setup(
     # Additional metadata
     options={
         "bdist_wheel": {
-            "universal": False, 
+            "universal": False,
         }
     },
 )
