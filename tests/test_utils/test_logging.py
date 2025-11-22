@@ -46,9 +46,7 @@ def temp_dir():
     try:
         shutil.rmtree(temp_dir_path)
     except PermissionError:
-        print(
-            f"Warning: Could not remove temp directory {temp_dir_path} due to PermissionError."
-        )
+        print(f"Warning: Could not remove temp directory {temp_dir_path} due to PermissionError.")
     except OSError as e:
         print(f"Warning: Error removing temp directory {temp_dir_path}: {e}")
 
@@ -89,9 +87,7 @@ class TestLogging:
         # This will create a basic logger since one isn't set up
         logger = get_logger("thinkrl.test_get_new")
         assert logger is not None
-        assert isinstance(
-            logger, logging.Logger
-        )  # get_logger returns base logger if not setup
+        assert isinstance(logger, logging.Logger)  # get_logger returns base logger if not setup
         assert logger.name == "thinkrl.test_get_new"
 
         # Test getting an already configured logger
@@ -139,14 +135,13 @@ class TestLogging:
         )
         assert logger_rank0 is not None
         assert logger_rank0.name == logger_name_rank0  # Check name
-        assert any(
-            isinstance(h, logging.StreamHandler) for h in logger_rank0.handlers
-        ), "Rank 0 should have a StreamHandler"
+        assert any(isinstance(h, logging.StreamHandler) for h in logger_rank0.handlers), (
+            "Rank 0 should have a StreamHandler"
+        )
 
         # UP038 Fix: Combined check using | operator
         assert any(
-            isinstance(h, logging.FileHandler | logging.handlers.RotatingFileHandler)
-            for h in logger_rank0.handlers
+            isinstance(h, logging.FileHandler | logging.handlers.RotatingFileHandler) for h in logger_rank0.handlers
         ), "Rank 0 should have a FileHandler"
 
         logger_rank0.info("Rank 0 message")
@@ -166,9 +161,7 @@ class TestLogging:
         assert logger_rank1_file is not None
         assert logger_rank1_file.name == logger_name_rank1  # Check name
         # Assert ONLY FileHandler (or RotatingFileHandler) exists
-        assert len(logger_rank1_file.handlers) == 1, (
-            "Rank 1 with log_dir should have exactly one handler"
-        )
+        assert len(logger_rank1_file.handlers) == 1, "Rank 1 with log_dir should have exactly one handler"
 
         # UP038 Fix: Using | instead of tuple (,)
         assert isinstance(
@@ -179,9 +172,7 @@ class TestLogging:
         logger_rank1_file.info("Rank 1 message to file")
         # Check that the file was actually created using the correct name pattern
         rank1_log_files = list(temp_dir.glob(f"{logger_name_rank1}_*.log"))
-        assert len(rank1_log_files) == 1, (
-            f"Log file matching {logger_name_rank1}_*.log for rank 1 should exist"
-        )
+        assert len(rank1_log_files) == 1, f"Log file matching {logger_name_rank1}_*.log for rank 1 should exist"
 
         # --- FIX: Clear handlers for rank 1 logger BEFORE reconfiguring ---
         # Get the logger instance directly
@@ -200,21 +191,15 @@ class TestLogging:
             base_name=base_name_for_test,  # log_dir is None
         )
         assert logger_rank1_null is not None
-        assert (
-            logger_rank1_null.name == logger_name_rank1
-        )  # Should be the same logger instance
+        assert logger_rank1_null.name == logger_name_rank1  # Should be the same logger instance
 
         # Assert NullHandler is present and ONLY handler
-        assert len(logger_rank1_null.handlers) == 1, (
-            "Rank 1 without log_dir should have exactly one handler"
-        )
+        assert len(logger_rank1_null.handlers) == 1, "Rank 1 without log_dir should have exactly one handler"
         assert isinstance(logger_rank1_null.handlers[0], logging.NullHandler), (
             "Rank 1 without log_dir should have NullHandler"
         )
 
-        logger_rank1_null.info(
-            "This rank 1 message should NOT appear anywhere"
-        )  # Test it doesn't log
+        logger_rank1_null.info("This rank 1 message should NOT appear anywhere")  # Test it doesn't log
 
     def test_thinkrl_logger_methods(self, temp_dir):
         """Test the custom methods of ThinkRLLogger."""

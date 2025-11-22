@@ -329,10 +329,7 @@ def setup_logger(
 
     # Default format strings
     if format_string is None:
-        format_string = (
-            "%(asctime)s - %(name)s - %(levelname)s - "
-            "%(filename)s:%(lineno)d - %(message)s"
-        )
+        format_string = "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
 
     if date_format is None:
         date_format = "%Y-%m-%d %H:%M:%S"
@@ -340,9 +337,7 @@ def setup_logger(
     # Console handler with colors (always add for rank 0 or non-distributed)
     console_handler = logging.StreamHandler(sys.stdout)
     console_handler.setLevel(level)
-    console_formatter = ColoredFormatter(
-        fmt=format_string, datefmt=date_format, use_colors=use_colors
-    )
+    console_formatter = ColoredFormatter(fmt=format_string, datefmt=date_format, use_colors=use_colors)
     console_handler.setFormatter(console_formatter)
     logger.addHandler(console_handler)
 
@@ -371,12 +366,8 @@ def setup_logger(
             )
         except ImportError:
             # Fallback to regular file handler
-            warnings.warn(
-                "RotatingFileHandler not available. Using standard FileHandler."
-            )
-            file_handler = logging.FileHandler(
-                filename=str(log_path), mode=file_mode, encoding="utf-8"
-            )
+            warnings.warn("RotatingFileHandler not available. Using standard FileHandler.")
+            file_handler = logging.FileHandler(filename=str(log_path), mode=file_mode, encoding="utf-8")
 
         file_handler.setLevel(level)
 
@@ -413,11 +404,7 @@ def get_logger(name: str = "thinkrl", level: int | str | None = None) -> logging
 
     # If logger has no handlers AND is not disabled (level > CRITICAL), set it up.
     # Check for level NOTSET as well, as getLogger returns a logger with NOTSET by default.
-    if (
-        not logger.handlers
-        and logger.level <= logging.CRITICAL
-        and logger.level != logging.NOTSET
-    ):
+    if not logger.handlers and logger.level <= logging.CRITICAL and logger.level != logging.NOTSET:
         # Use provided level or default to INFO if creating handlers
         effective_level = level
         if effective_level is None:
@@ -464,9 +451,7 @@ def configure_logging_for_distributed(
             pass
         logger.removeHandler(h)
 
-    fmt = (
-        "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
-    )
+    fmt = "%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s"
     formatter = logging.Formatter(fmt)
 
     if rank == 0:
@@ -477,9 +462,7 @@ def configure_logging_for_distributed(
         logger.addHandler(sh)
         # file (if requested)
         if log_dir is not None:
-            log_path = (
-                Path(log_dir) / f"{logger_name}_{datetime.now():%Y%m%d_%H%M%S}.log"
-            )
+            log_path = Path(log_dir) / f"{logger_name}_{datetime.now():%Y%m%d_%H%M%S}.log"
             fh = logging.FileHandler(log_path, encoding="utf-8")
             fh.setLevel(level)
             fh.setFormatter(formatter)
@@ -487,9 +470,7 @@ def configure_logging_for_distributed(
     else:
         if log_dir is not None:
             # file-only for nonzero ranks
-            log_path = (
-                Path(log_dir) / f"{logger_name}_{datetime.now():%Y%m%d_%H%M%S}.log"
-            )
+            log_path = Path(log_dir) / f"{logger_name}_{datetime.now():%Y%m%d_%H%M%S}.log"
             fh = logging.FileHandler(log_path, encoding="utf-8")
             fh.setLevel(level)
             fh.setFormatter(formatter)

@@ -20,6 +20,7 @@ def read_readme():
     except FileNotFoundError:
         return __doc__
 
+
 # Read version from __init__.py
 def read_version():
     """Read version from thinkrl/__init__.py."""
@@ -27,13 +28,13 @@ def read_version():
         # Assuming thinkrl/__init__.py exists and contains __version__
         version_file = os.path.join("thinkrl", "__init__.py")
         if os.path.exists(version_file):
-             with open(version_file, encoding="utf-8") as f:
+            with open(version_file, encoding="utf-8") as f:
                 for line in f:
                     if line.startswith("__version__"):
                         return line.split("=")[1].strip().strip('"').strip("'")
         else:
-             # Fallback if thinkrl/__init__.py doesn't exist yet
-             with open("tests/__init__.py", encoding="utf-8") as f:
+            # Fallback if thinkrl/__init__.py doesn't exist yet
+            with open("tests/__init__.py", encoding="utf-8") as f:
                 for line in f:
                     if line.startswith("__version__"):
                         return line.split("=")[1].strip().strip('"').strip("'")
@@ -164,7 +165,7 @@ UTILITIES_REQUIREMENTS = {
         "sentencepiece>=0.1.99",
         "protobuf>=3.20.0,<5.0.0",
     ],
-     "api": [
+    "api": [
         "requests>=2.31.0",
         "aiohttp>=3.8.0",
         "urllib3>=2.0.0",
@@ -258,102 +259,107 @@ CI_REQUIREMENTS = {
 CONVENIENCE_BUNDLES = {
     # State-of-the-art algorithms with GPU support
     # Includes inference for RLAIF generation
-    "sota": list(set(
-        # CORE_REQUIREMENTS + # Core should be installed by default
-        GPU_REQUIREMENTS["cuda"] +
-        FRAMEWORK_REQUIREMENTS["transformers"] +
-        FRAMEWORK_REQUIREMENTS["peft"] +
-        REASONING_REQUIREMENTS["reasoning"] +
-        REASONING_REQUIREMENTS["math"] +
-        INFERENCE_REQUIREMENTS["inference"]
-    )),
-
+    "sota": list(
+        set(
+            # CORE_REQUIREMENTS + # Core should be installed by default
+            GPU_REQUIREMENTS["cuda"]
+            + FRAMEWORK_REQUIREMENTS["transformers"]
+            + FRAMEWORK_REQUIREMENTS["peft"]
+            + REASONING_REQUIREMENTS["reasoning"]
+            + REASONING_REQUIREMENTS["math"]
+            + INFERENCE_REQUIREMENTS["inference"]
+        )
+    ),
     # Distributed training setup
-    "distributed": list(set(
-        # CORE_REQUIREMENTS +
-        GPU_REQUIREMENTS["cuda"] +
-        FRAMEWORK_REQUIREMENTS["deepspeed"] +
-        FRAMEWORK_REQUIREMENTS["fsdp"]
-    )),
-
+    "distributed": list(
+        set(
+            # CORE_REQUIREMENTS +
+            GPU_REQUIREMENTS["cuda"] + FRAMEWORK_REQUIREMENTS["deepspeed"] + FRAMEWORK_REQUIREMENTS["fsdp"]
+        )
+    ),
     # Research setup
-    "research": list(set(
-        # CORE_REQUIREMENTS +
-        GPU_REQUIREMENTS["cuda"] +
-        FRAMEWORK_REQUIREMENTS["transformers"] +
-        FRAMEWORK_REQUIREMENTS["peft"] +
-        REASONING_REQUIREMENTS["reasoning"] +
-        REASONING_REQUIREMENTS["math"] +
-        LOGGING_REQUIREMENTS["wandb"] +
-        EVAL_REQUIREMENTS["eval"] +
-        UTILITIES_REQUIREMENTS["data_processing"]
-    )),
-
+    "research": list(
+        set(
+            # CORE_REQUIREMENTS +
+            GPU_REQUIREMENTS["cuda"]
+            + FRAMEWORK_REQUIREMENTS["transformers"]
+            + FRAMEWORK_REQUIREMENTS["peft"]
+            + REASONING_REQUIREMENTS["reasoning"]
+            + REASONING_REQUIREMENTS["math"]
+            + LOGGING_REQUIREMENTS["wandb"]
+            + EVAL_REQUIREMENTS["eval"]
+            + UTILITIES_REQUIREMENTS["data_processing"]
+        )
+    ),
     # Production setup (example, adjust as needed)
-    "production": list(set(
-        # CORE_REQUIREMENTS +
-        GPU_REQUIREMENTS["cuda"] +
-        FRAMEWORK_REQUIREMENTS["transformers"] +
-        FRAMEWORK_REQUIREMENTS["deepspeed"] +
-        LOGGING_REQUIREMENTS["tensorboard"] +
-        UTILITIES_REQUIREMENTS["api"] +
-        INFERENCE_REQUIREMENTS["inference"]
-    )),
-
+    "production": list(
+        set(
+            # CORE_REQUIREMENTS +
+            GPU_REQUIREMENTS["cuda"]
+            + FRAMEWORK_REQUIREMENTS["transformers"]
+            + FRAMEWORK_REQUIREMENTS["deepspeed"]
+            + LOGGING_REQUIREMENTS["tensorboard"]
+            + UTILITIES_REQUIREMENTS["api"]
+            + INFERENCE_REQUIREMENTS["inference"]
+        )
+    ),
     # Complete development environment - includes almost everything from requirements.txt
-    "complete": list(set(
-        CORE_REQUIREMENTS +
-        GPU_REQUIREMENTS["cuda"] +
-        FRAMEWORK_REQUIREMENTS["transformers"] +
-        FRAMEWORK_REQUIREMENTS["peft"] +
-        FRAMEWORK_REQUIREMENTS["deepspeed"] +
-        MODALITY_REQUIREMENTS["multimodal"] +
-        REASONING_REQUIREMENTS["reasoning"] +
-        REASONING_REQUIREMENTS["math"] +
-        REASONING_REQUIREMENTS["code"] +
-        LOGGING_REQUIREMENTS["wandb"] +
-        LOGGING_REQUIREMENTS["tensorboard"] +
-        LOGGING_REQUIREMENTS["mlflow"] +
-        UTILITIES_REQUIREMENTS["data_processing"] +
-        UTILITIES_REQUIREMENTS["general_utils"] +
-        UTILITIES_REQUIREMENTS["serialization"] +
-        UTILITIES_REQUIREMENTS["api"] +
-        DEV_REQUIREMENTS["dev"] +
-        DEV_REQUIREMENTS["format"] +
-        DEV_REQUIREMENTS["quality"] +
-        EVAL_REQUIREMENTS["eval"] +
-        EVAL_REQUIREMENTS["benchmarks"] +
-        INFERENCE_REQUIREMENTS["inference"] # Added vLLM support
-    )),
-
+    "complete": list(
+        set(
+            CORE_REQUIREMENTS
+            + GPU_REQUIREMENTS["cuda"]
+            + FRAMEWORK_REQUIREMENTS["transformers"]
+            + FRAMEWORK_REQUIREMENTS["peft"]
+            + FRAMEWORK_REQUIREMENTS["deepspeed"]
+            + MODALITY_REQUIREMENTS["multimodal"]
+            + REASONING_REQUIREMENTS["reasoning"]
+            + REASONING_REQUIREMENTS["math"]
+            + REASONING_REQUIREMENTS["code"]
+            + LOGGING_REQUIREMENTS["wandb"]
+            + LOGGING_REQUIREMENTS["tensorboard"]
+            + LOGGING_REQUIREMENTS["mlflow"]
+            + UTILITIES_REQUIREMENTS["data_processing"]
+            + UTILITIES_REQUIREMENTS["general_utils"]
+            + UTILITIES_REQUIREMENTS["serialization"]
+            + UTILITIES_REQUIREMENTS["api"]
+            + DEV_REQUIREMENTS["dev"]
+            + DEV_REQUIREMENTS["format"]
+            + DEV_REQUIREMENTS["quality"]
+            + EVAL_REQUIREMENTS["eval"]
+            + EVAL_REQUIREMENTS["benchmarks"]
+            + INFERENCE_REQUIREMENTS["inference"]  # Added vLLM support
+        )
+    ),
     # 'all' extra - made identical to 'complete' but includes legacy/compat versions
-    "all": list(set(
-        CORE_REQUIREMENTS +
-        GPU_REQUIREMENTS["cuda"] +
-        GPU_REQUIREMENTS["cuda11"] +
-        FRAMEWORK_REQUIREMENTS["transformers"] +
-        FRAMEWORK_REQUIREMENTS["peft"] +
-        FRAMEWORK_REQUIREMENTS["deepspeed"] +
-        FRAMEWORK_REQUIREMENTS["fsdp"] +
-        MODALITY_REQUIREMENTS["multimodal"] +
-        REASONING_REQUIREMENTS["reasoning"] +
-        REASONING_REQUIREMENTS["math"] +
-        REASONING_REQUIREMENTS["code"] +
-        LOGGING_REQUIREMENTS["wandb"] +
-        LOGGING_REQUIREMENTS["tensorboard"] +
-        LOGGING_REQUIREMENTS["mlflow"] +
-        UTILITIES_REQUIREMENTS["data_processing"] +
-        UTILITIES_REQUIREMENTS["general_utils"] +
-        UTILITIES_REQUIREMENTS["serialization"] +
-        UTILITIES_REQUIREMENTS["api"] +
-        DEV_REQUIREMENTS["dev"] +
-        DEV_REQUIREMENTS["format"] +
-        DEV_REQUIREMENTS["quality"] +
-        DEV_REQUIREMENTS["docs"] +
-        EVAL_REQUIREMENTS["eval"] +
-        EVAL_REQUIREMENTS["benchmarks"] +
-        INFERENCE_REQUIREMENTS["inference"]
-    )),
+    "all": list(
+        set(
+            CORE_REQUIREMENTS
+            + GPU_REQUIREMENTS["cuda"]
+            + GPU_REQUIREMENTS["cuda11"]
+            + FRAMEWORK_REQUIREMENTS["transformers"]
+            + FRAMEWORK_REQUIREMENTS["peft"]
+            + FRAMEWORK_REQUIREMENTS["deepspeed"]
+            + FRAMEWORK_REQUIREMENTS["fsdp"]
+            + MODALITY_REQUIREMENTS["multimodal"]
+            + REASONING_REQUIREMENTS["reasoning"]
+            + REASONING_REQUIREMENTS["math"]
+            + REASONING_REQUIREMENTS["code"]
+            + LOGGING_REQUIREMENTS["wandb"]
+            + LOGGING_REQUIREMENTS["tensorboard"]
+            + LOGGING_REQUIREMENTS["mlflow"]
+            + UTILITIES_REQUIREMENTS["data_processing"]
+            + UTILITIES_REQUIREMENTS["general_utils"]
+            + UTILITIES_REQUIREMENTS["serialization"]
+            + UTILITIES_REQUIREMENTS["api"]
+            + DEV_REQUIREMENTS["dev"]
+            + DEV_REQUIREMENTS["format"]
+            + DEV_REQUIREMENTS["quality"]
+            + DEV_REQUIREMENTS["docs"]
+            + EVAL_REQUIREMENTS["eval"]
+            + EVAL_REQUIREMENTS["benchmarks"]
+            + INFERENCE_REQUIREMENTS["inference"]
+        )
+    ),
 }
 
 # Combine all extras
@@ -376,23 +382,18 @@ CONSOLE_SCRIPTS = {
     # Core training commands
     "thinkrl": "thinkrl.scripts.train:main",
     "thinkrl-train": "thinkrl.scripts.train:main",
-
     # Evaluation commands
     "thinkrl-eval": "thinkrl.scripts.evaluate:main",
     "thinkrl-evaluate": "thinkrl.scripts.evaluate:main",
-
     # Reasoning commands
     "thinkrl-cot": "thinkrl.scripts.chain_of_thought:main",
     "thinkrl-tot": "thinkrl.scripts.tree_of_thought:main",
     "thinkrl-reason": "thinkrl.scripts.reasoning:main",
-
     # Specialized training
     "thinkrl-multimodal": "thinkrl.scripts.multimodal_train:main",
     "thinkrl-distributed": "thinkrl.scripts.distributed_train:main",
-
     # RLAIF generation
     "thinkrl-rlaif": "thinkrl.scripts.generate_rlaif_data:main",
-
     # Utilities
     "thinkrl-convert": "thinkrl.scripts.convert:main",
     "thinkrl-benchmark": "thinkrl.scripts.benchmark:main",
@@ -402,39 +403,31 @@ CONSOLE_SCRIPTS = {
 CLASSIFIERS = [
     # Development status
     "Development Status :: 4 - Beta",
-
     # Intended audience
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
     "Intended Audience :: Education",
-
     # License
     "License :: OSI Approved :: Apache Software License",
-
     # OS support
     "Operating System :: OS Independent",
     "Operating System :: POSIX :: Linux",
     "Operating System :: MacOS",
     "Operating System :: Microsoft :: Windows",
-
     # Python versions
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
-
     # Topics
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Scientific/Engineering :: Information Analysis",
     "Topic :: Text Processing :: Linguistic",
-
     # Framework
     "Framework :: Pytest",
-
     # Natural language
     "Natural Language :: English",
-
     # Environment
     "Environment :: Console",
     "Environment :: GPU :: NVIDIA CUDA",
@@ -493,16 +486,13 @@ setup(
     author_email="archit@ellanorai.org",
     maintainer="EllanorAI Team",
     maintainer_email="team@ellanorai.org",
-
     # Package description
     description="Universal RLHF/RLAIF Training Library with state-of-the-art algorithms, reasoning, and multimodal support",
     long_description=read_readme(),
     long_description_content_type="text/markdown",
-
     # URLs and links
     url="https://github.com/Archit03/ThinkRL",
     project_urls=PROJECT_URLS,
-
     # Package discovery
     packages=find_packages(
         exclude=[
@@ -516,7 +506,6 @@ setup(
             "scripts.*",
         ]
     ),
-
     # Include additional files
     include_package_data=True,
     package_data={
@@ -526,29 +515,21 @@ setup(
             "py.typed",
         ],
     },
-
     # Dependencies
     python_requires=">=3.10,<3.13",
     install_requires=CORE_REQUIREMENTS,
     extras_require=EXTRAS_REQUIRE,
-
     # Entry points
     entry_points={
-        "console_scripts": [
-            f"{name}={entry_point}"
-            for name, entry_point in CONSOLE_SCRIPTS.items()
-        ],
+        "console_scripts": [f"{name}={entry_point}" for name, entry_point in CONSOLE_SCRIPTS.items()],
     },
-
     # Package metadata
     classifiers=CLASSIFIERS,
     keywords=KEYWORDS,
     license="Apache-2.0",
-
     # Package options
     zip_safe=False,
     platforms=["any"],
-
     # Additional metadata
     options={
         "bdist_wheel": {

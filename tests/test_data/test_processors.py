@@ -129,9 +129,7 @@ class TestProcessAudio:
 
         result = process_audio("test.wav", sr=16000)
 
-        mock_librosa.resample.assert_called_with(
-            "audio_data_44k", orig_sr=44100, target_sr=16000
-        )
+        mock_librosa.resample.assert_called_with("audio_data_44k", orig_sr=44100, target_sr=16000)
         assert result == "audio_data_16k"
 
     @pytest.mark.skipif(not _AUDIO_AVAILABLE, reason="Librosa not installed")
@@ -146,9 +144,7 @@ class TestProcessAudio:
         result = process_audio("test.wav", sr=16000, transform=mock_transform)
 
         # Verify transform call signature matches the implementation
-        mock_transform.assert_called_with(
-            "raw_audio", sampling_rate=16000, return_tensors="pt"
-        )
+        mock_transform.assert_called_with("raw_audio", sampling_rate=16000, return_tensors="pt")
         assert result == "spectrogram"
 
     def test_process_audio_no_libs(self):
@@ -159,10 +155,7 @@ class TestProcessAudio:
 
                 assert result is None
                 mock_logger.warning.assert_called_once()
-                assert (
-                    "librosa/soundfile not installed"
-                    in mock_logger.warning.call_args[0][0]
-                )
+                assert "librosa/soundfile not installed" in mock_logger.warning.call_args[0][0]
 
     @pytest.mark.skipif(not _AUDIO_AVAILABLE, reason="Librosa not installed")
     @patch("thinkrl.data.processors._AUDIO_AVAILABLE", True)

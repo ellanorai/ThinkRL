@@ -12,7 +12,7 @@
 
 ## 🎉 Latest Updates
 
-- **November 2025**: 
+- **November 2025**:
   - **GPU Acceleration**: Integrated **CuPy** to replace NumPy for metric computations, enabling zero-copy GPU processing and significantly reducing training latency. Added robust CPU fallback for compatibility.
   - **Core Utilities**: Completed implementation and unit testing for `logging`, `checkpoint`, `metrics`, and `data` modules.
 - **July 2025**: ThinkRL will launch with cutting-edge algorithms such as VAPO, DAPO, GRPO, PPO, and REINFORCE, aiming to set new standards in reasoning performance.

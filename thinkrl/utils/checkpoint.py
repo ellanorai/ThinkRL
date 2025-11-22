@@ -116,8 +116,7 @@ class CheckpointManager:
 
         if self.use_safetensors and not _SAFETENSORS_AVAILABLE:
             logger.warning(
-                "SafeTensors not available. Falling back to PyTorch format. "
-                "Install with: pip install safetensors"
+                "SafeTensors not available. Falling back to PyTorch format. Install with: pip install safetensors"
             )
             self.use_safetensors = False
 
@@ -269,9 +268,7 @@ class CheckpointManager:
 
         # Load model state
         if model_path.suffix == ".safetensors":
-            state_dict = safetensors_load(
-                str(model_path), device=str(device) if device else "cpu"
-            )
+            state_dict = safetensors_load(str(model_path), device=str(device) if device else "cpu")
         else:
             state_dict = torch.load(model_path, map_location=device)
 
@@ -286,18 +283,14 @@ class CheckpointManager:
         if optimizer is not None:
             optimizer_path = checkpoint_dir / "optimizer.pt"
             if optimizer_path.exists():
-                optimizer.load_state_dict(
-                    torch.load(optimizer_path, map_location=device)
-                )
+                optimizer.load_state_dict(torch.load(optimizer_path, map_location=device))
                 logger.debug(f"Loaded optimizer from: {optimizer_path}")
 
         # Load scheduler
         if scheduler is not None:
             scheduler_path = checkpoint_dir / "scheduler.pt"
             if scheduler_path.exists():
-                scheduler.load_state_dict(
-                    torch.load(scheduler_path, map_location=device)
-                )
+                scheduler.load_state_dict(torch.load(scheduler_path, map_location=device))
                 logger.debug(f"Loaded scheduler from: {scheduler_path}")
 
         # Load metadata
@@ -349,9 +342,7 @@ class CheckpointManager:
 
         return metadata
 
-    def _update_best_checkpoint(
-        self, checkpoint_info: dict[str, Any], metric_value: float
-    ):
+    def _update_best_checkpoint(self, checkpoint_info: dict[str, Any], metric_value: float):
         """Update the best checkpoint based on metric value."""
         if self.best_checkpoint is None:
             self.best_checkpoint = checkpoint_info
@@ -366,10 +357,7 @@ class CheckpointManager:
 
         if is_better:
             self.best_checkpoint = checkpoint_info
-            logger.info(
-                f"New best checkpoint: {self.metric_name}={metric_value:.4f} "
-                f"(previous: {best_metric:.4f})"
-            )
+            logger.info(f"New best checkpoint: {self.metric_name}={metric_value:.4f} (previous: {best_metric:.4f})")
 
     def _cleanup_checkpoints(self):
         """Remove old checkpoints, keeping only the best ones."""
@@ -383,14 +371,10 @@ class CheckpointManager:
                 return ckpt["metrics"].get(self.metric_name, float("inf"))
 
             reverse = self.mode == "max"
-            sorted_checkpoints = sorted(
-                self.checkpoints, key=get_metric, reverse=reverse
-            )
+            sorted_checkpoints = sorted(self.checkpoints, key=get_metric, reverse=reverse)
         else:
             # Sort by timestamp (keep most recent)
-            sorted_checkpoints = sorted(
-                self.checkpoints, key=lambda x: x["timestamp"], reverse=True
-            )
+            sorted_checkpoints = sorted(self.checkpoints, key=lambda x: x["timestamp"], reverse=True)
 
         # Keep best checkpoints
         keep_checkpoints = sorted_checkpoints[: self.max_checkpoints]
@@ -474,9 +458,7 @@ class CheckpointManager:
                     "metrics": best_ckpt["metrics"],
                 }
 
-            logger.debug(
-                f"Loaded checkpoint metadata: {len(self.checkpoints)} checkpoints"
-            )
+            logger.debug(f"Loaded checkpoint metadata: {len(self.checkpoints)} checkpoints")
 
         except Exception as e:
             logger.warning(f"Failed to load checkpoint metadata: {e}")
@@ -617,9 +599,7 @@ def load_checkpoint(
     # Load checkpoint
     if checkpoint_path.suffix == ".safetensors":
         # Load safetensors model
-        state_dict = safetensors_load(
-            str(checkpoint_path), device=str(device) if device else "cpu"
-        )
+        state_dict = safetensors_load(str(checkpoint_path), device=str(device) if device else "cpu")
 
         # Load metadata
         metadata_path = checkpoint_path.with_suffix(".metadata.json")

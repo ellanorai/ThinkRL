@@ -149,8 +149,7 @@ def get_tokenizer(
     """
     if not _TRANSFORMERS_AVAILABLE:
         raise ImportError(
-            "transformers is required for tokenizer functionality. "
-            "Install with: pip install transformers"
+            "transformers is required for tokenizer functionality. Install with: pip install transformers"
         )
 
     logger.info(f"Loading tokenizer from: {model_name_or_path}")
@@ -181,10 +180,7 @@ def get_tokenizer(
             tokenizer.add_special_tokens({"pad_token": "[PAD]"})
             logger.info("Added new pad_token: [PAD]")
 
-    logger.info(
-        f"Tokenizer loaded: vocab_size={tokenizer.vocab_size}, "
-        f"padding_side={tokenizer.padding_side}"
-    )
+    logger.info(f"Tokenizer loaded: vocab_size={tokenizer.vocab_size}, padding_side={tokenizer.padding_side}")
 
     return tokenizer
 
@@ -462,10 +458,7 @@ def add_special_tokens(
     if num_added > 0:
         logger.info(f"Added {num_added} special tokens to tokenizer")
         if resize_embeddings:
-            logger.info(
-                "Remember to resize model embeddings: "
-                "model.resize_token_embeddings(len(tokenizer))"
-            )
+            logger.info("Remember to resize model embeddings: model.resize_token_embeddings(len(tokenizer))")
 
     return num_added
 
@@ -515,19 +508,12 @@ def tokenize_conversation(
         ```
     """
     # Try using chat template if available
-    if (
-        hasattr(tokenizer, "apply_chat_template")
-        and tokenizer.chat_template is not None
-    ):
+    if hasattr(tokenizer, "apply_chat_template") and tokenizer.chat_template is not None:
         try:
-            text = tokenizer.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=add_generation_prompt
-            )
+            text = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=add_generation_prompt)
             return tokenize_text(text, tokenizer, **kwargs)
         except Exception as e:
-            logger.warning(
-                f"Failed to use chat template: {e}, falling back to manual formatting"
-            )
+            logger.warning(f"Failed to use chat template: {e}, falling back to manual formatting")
 
     # Manual formatting
     formatted_messages = []
@@ -689,9 +675,7 @@ def truncate_to_token_limit(
         truncated_ids = token_ids[-max_tokens:]
 
     # Decode back to text
-    truncated_text = tokenizer.decode(
-        truncated_ids, skip_special_tokens=not add_special_tokens
-    )
+    truncated_text = tokenizer.decode(truncated_ids, skip_special_tokens=not add_special_tokens)
 
     return truncated_text
 
@@ -732,9 +716,7 @@ def get_tokenizer_info(tokenizer: TokenizerType) -> dict[str, Any]:
     return info
 
 
-def save_tokenizer(
-    tokenizer: TokenizerType, save_directory: str | Path, **kwargs
-) -> tuple[str, ...]:
+def save_tokenizer(tokenizer: TokenizerType, save_directory: str | Path, **kwargs) -> tuple[str, ...]:
     """
     Save tokenizer to directory.
 
@@ -783,9 +765,7 @@ def load_tokenizer(load_directory: str | Path, **kwargs) -> TokenizerType:
         ```
     """
     if not _TRANSFORMERS_AVAILABLE:
-        raise ImportError(
-            "transformers is required. Install with: pip install transformers"
-        )
+        raise ImportError("transformers is required. Install with: pip install transformers")
 
     tokenizer = AutoTokenizer.from_pretrained(str(load_directory), **kwargs)
 

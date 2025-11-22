@@ -59,9 +59,7 @@ class TestCheckpointManager:
 
     def test_save_and_cleanup(self, temp_dir, simple_model, simple_optimizer):
         """Test saving checkpoints and automatic cleanup."""
-        manager = CheckpointManager(
-            checkpoint_dir=temp_dir, max_checkpoints=2, metric_name="loss", mode="min"
-        )
+        manager = CheckpointManager(checkpoint_dir=temp_dir, max_checkpoints=2, metric_name="loss", mode="min")
 
         # Save 3 checkpoints
         for i, loss in enumerate([0.5, 0.3, 0.4]):
@@ -87,19 +85,11 @@ class TestCheckpointManager:
 
     def test_load_best(self, temp_dir, simple_model, simple_optimizer):
         """Test loading the best checkpoint."""
-        manager = CheckpointManager(
-            checkpoint_dir=temp_dir, metric_name="acc", mode="max"
-        )
+        manager = CheckpointManager(checkpoint_dir=temp_dir, metric_name="acc", mode="max")
 
-        manager.save_checkpoint(
-            simple_model, epoch=1, metrics={"acc": 0.8}, checkpoint_name="ckpt_1"
-        )
-        manager.save_checkpoint(
-            simple_model, epoch=2, metrics={"acc": 0.9}, checkpoint_name="ckpt_2"
-        )  # Best
-        manager.save_checkpoint(
-            simple_model, epoch=3, metrics={"acc": 0.85}, checkpoint_name="ckpt_3"
-        )
+        manager.save_checkpoint(simple_model, epoch=1, metrics={"acc": 0.8}, checkpoint_name="ckpt_1")
+        manager.save_checkpoint(simple_model, epoch=2, metrics={"acc": 0.9}, checkpoint_name="ckpt_2")  # Best
+        manager.save_checkpoint(simple_model, epoch=3, metrics={"acc": 0.85}, checkpoint_name="ckpt_3")
 
         nn.init.constant_(simple_model.weight, 0.0)
 
@@ -109,13 +99,9 @@ class TestCheckpointManager:
 
     def test_save_options(self, temp_dir, simple_model, simple_optimizer):
         """Test saving with options disabled."""
-        manager = CheckpointManager(
-            checkpoint_dir=temp_dir, save_optimizer=False, save_scheduler=False
-        )
+        manager = CheckpointManager(checkpoint_dir=temp_dir, save_optimizer=False, save_scheduler=False)
 
-        manager.save_checkpoint(
-            simple_model, optimizer=simple_optimizer, checkpoint_name="ckpt_no_opt"
-        )
+        manager.save_checkpoint(simple_model, optimizer=simple_optimizer, checkpoint_name="ckpt_no_opt")
 
         ckpt_path = temp_dir / "ckpt_no_opt"
         assert (ckpt_path / "model.pt").exists()

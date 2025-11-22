@@ -75,15 +75,11 @@ class TestBatchEncoding:
 
 
 def test_pad_sequences(sample_list_sequences):
-    padded_right = pad_sequences(
-        sample_list_sequences, padding_value=0, padding_side="right"
-    )
+    padded_right = pad_sequences(sample_list_sequences, padding_value=0, padding_side="right")
     expected_right = torch.tensor([[1, 2, 3], [4, 5, 0]])
     assert torch.equal(padded_right, expected_right)
 
-    padded_left = pad_sequences(
-        sample_list_sequences, padding_value=0, padding_side="left"
-    )
+    padded_left = pad_sequences(sample_list_sequences, padding_value=0, padding_side="left")
     expected_left = torch.tensor([[1, 2, 3], [0, 4, 5]])
     assert torch.equal(padded_left, expected_left)
 

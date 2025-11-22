@@ -129,9 +129,7 @@ def test_dataloader_basic(mock_tokenizer_right):
     """Test basic initialization and iteration of RLHFDataLoader."""
     dataset = SimpleDataset()
 
-    loader = RLHFDataLoader(
-        dataset, mock_tokenizer_right, batch_size=2, shuffle=False, drop_last=False
-    )
+    loader = RLHFDataLoader(dataset, mock_tokenizer_right, batch_size=2, shuffle=False, drop_last=False)
 
     batches = list(loader)
     assert len(batches) == 2  # 3 items / 2 batch_size -> 2 batches

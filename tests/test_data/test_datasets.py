@@ -33,9 +33,7 @@ from thinkrl.data.datasets import PreferenceDataset, RLHFDataset
 class MockTokenizer:
     """A mock tokenizer for testing."""
 
-    def __init__(
-        self, padding_side="right", pad_token_id=0, eos_token="<EOS>", eos_token_id=1
-    ):
+    def __init__(self, padding_side="right", pad_token_id=0, eos_token="<EOS>", eos_token_id=1):
         self.padding_side = padding_side
         self.pad_token_id = pad_token_id
         self.eos_token = eos_token
@@ -161,9 +159,7 @@ class TestRLHFDataset:
         )
         assert len(dataset) == 4  # 3 valid, 1 needs stripping
         assert dataset.data[0]["prompt"] == "this is prompt 1."
-        assert (
-            dataset.data[3]["prompt"] == "needs stripping."
-        )  # Stripped and preprocessed
+        assert dataset.data[3]["prompt"] == "needs stripping."  # Stripped and preprocessed
 
     def test_getitem(self, temp_jsonl_file, mock_tokenizer):
         """Test the __getitem__ method for tokenization."""

@@ -54,7 +54,7 @@ cd ThinkRL
 
 # 2. Create and activate virtual environment
 python -m venv .venv
-source .venv/bin/activate  
+source .venv/bin/activate
 # On Windows: .venv\Scripts\activate
 
 # 3. Install the complete development environment (includes dev, test, and docs tools)

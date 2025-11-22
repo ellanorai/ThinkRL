@@ -106,10 +106,7 @@ class MetricsTracker:
             return weighted_sum / total_count if total_count > 0 else 0.0
 
         # Return all averages
-        return {
-            metric_name: self.get_average(metric_name)
-            for metric_name in self.metrics.keys()
-        }
+        return {metric_name: self.get_average(metric_name) for metric_name in self.metrics.keys()}
 
     def get_history(self, name: str) -> list[float]:
         """Get full history of a metric."""
@@ -147,9 +144,7 @@ class MetricsTracker:
         return f"MetricsTracker({avg_metrics})"
 
 
-def compute_reward(
-    rewards: torch.Tensor, normalize: bool = True, epsilon: float = 1e-8
-) -> torch.Tensor:
+def compute_reward(rewards: torch.Tensor, normalize: bool = True, epsilon: float = 1e-8) -> torch.Tensor:
     """Compute and optionally normalize rewards."""
     if normalize:
         mean = rewards.mean()
@@ -187,9 +182,7 @@ def compute_advantages(
     advantages = torch.zeros_like(rewards)
 
     # Compute TD residuals
-    next_values = torch.cat(
-        [values[:, 1:], torch.zeros(batch_size, 1, device=values.device)], dim=1
-    )
+    next_values = torch.cat([values[:, 1:], torch.zeros(batch_size, 1, device=values.device)], dim=1)
     deltas = rewards + gamma * next_values - values
 
     # Compute GAE
@@ -205,9 +198,7 @@ def compute_advantages(
     return advantages
 
 
-def compute_returns(
-    rewards: torch.Tensor, gamma: float = 0.99, normalize: bool = False
-) -> torch.Tensor:
+def compute_returns(rewards: torch.Tensor, gamma: float = 0.99, normalize: bool = False) -> torch.Tensor:
     """Compute discounted returns."""
     batch_size, seq_len = rewards.shape
     returns = torch.zeros_like(rewards)
@@ -225,9 +216,7 @@ def compute_returns(
     return returns
 
 
-def compute_policy_entropy(
-    logits: torch.Tensor, reduction: str = "mean"
-) -> torch.Tensor:
+def compute_policy_entropy(logits: torch.Tensor, reduction: str = "mean") -> torch.Tensor:
     """Compute entropy of policy distribution."""
     probs = F.softmax(logits, dim=-1)
     log_probs = F.log_softmax(logits, dim=-1)
@@ -243,9 +232,7 @@ def compute_policy_entropy(
         raise ValueError(f"Unknown reduction: {reduction}")
 
 
-def compute_accuracy(
-    predictions: torch.Tensor, targets: torch.Tensor, ignore_index: int = -100
-) -> float:
+def compute_accuracy(predictions: torch.Tensor, targets: torch.Tensor, ignore_index: int = -100) -> float:
     """Compute accuracy of predictions."""
     # If predictions are logits, get argmax
     if predictions.dim() > targets.dim():
@@ -276,9 +263,7 @@ def compute_clip_fraction(ratio: torch.Tensor, epsilon: float = 0.2) -> float:
     return clipped.mean().item()
 
 
-def compute_explained_variance(
-    predictions: torch.Tensor, targets: torch.Tensor
-) -> float:
+def compute_explained_variance(predictions: torch.Tensor, targets: torch.Tensor) -> float:
     """Compute explained variance for value function."""
     var_y = targets.var()
     if var_y == 0:
@@ -287,9 +272,7 @@ def compute_explained_variance(
     return 1.0 - (targets - predictions).var() / var_y
 
 
-def aggregate_metrics(
-    metrics_list: list[dict[str, float]], weights: list[float] | None = None
-) -> dict[str, float]:
+def aggregate_metrics(metrics_list: list[dict[str, float]], weights: list[float] | None = None) -> dict[str, float]:
     """Aggregate metrics from multiple batches or processes."""
     if not metrics_list:
         return {}
@@ -315,9 +298,7 @@ def aggregate_metrics(
     return aggregated
 
 
-def compute_group_metrics(
-    rewards: torch.Tensor, group_ids: torch.Tensor
-) -> dict[str, torch.Tensor]:
+def compute_group_metrics(rewards: torch.Tensor, group_ids: torch.Tensor) -> dict[str, torch.Tensor]:
     """Compute metrics per group."""
     unique_groups = torch.unique(group_ids)
 
@@ -336,9 +317,7 @@ def compute_group_metrics(
         if group_rewards.numel() > 1:
             group_stds.append(group_rewards.std())
         else:
-            group_stds.append(
-                torch.tensor(0.0, device=rewards.device, dtype=rewards.dtype)
-            )
+            group_stds.append(torch.tensor(0.0, device=rewards.device, dtype=rewards.dtype))
 
         group_maxs.append(group_rewards.max())
         group_mins.append(group_rewards.min())
@@ -351,9 +330,7 @@ def compute_group_metrics(
     }
 
 
-def compute_ranking_metrics(
-    scores: torch.Tensor, labels: torch.Tensor, k: int = 10
-) -> dict[str, float]:
+def compute_ranking_metrics(scores: torch.Tensor, labels: torch.Tensor, k: int = 10) -> dict[str, float]:
     """Compute ranking metrics (useful for preference learning)."""
     # Sort by scores
     sorted_indices = torch.argsort(scores, descending=True)
@@ -608,9 +585,7 @@ def _compute_higher_moments(data: np.ndarray | CupyArray, xp: Any) -> dict[str, 
 
             if data.size >= 4:
                 kurt = cupy_stats.kurtosis(data, axis=None, nan_policy="omit")
-                moments["kurtosis"] = float(
-                    kurt.item() if hasattr(kurt, "item") else kurt
-                )
+                moments["kurtosis"] = float(kurt.item() if hasattr(kurt, "item") else kurt)
 
         elif xp == np and _SCIPY_AVAILABLE:
             # Use SciPy stats
@@ -701,11 +676,7 @@ def compute_metrics(
 
     compute_all = "all" in metric_names
 
-    if (
-        (compute_all or "accuracy" in metric_names)
-        and "logits" in outputs
-        and targets is not None
-    ):
+    if (compute_all or "accuracy" in metric_names) and "logits" in outputs and targets is not None:
         metrics["accuracy"] = compute_accuracy(outputs["logits"], targets)
 
     if (compute_all or "perplexity" in metric_names) and "loss" in outputs:
@@ -722,26 +693,14 @@ def compute_metrics(
         value_stats = compute_statistical_metrics(outputs["values"])
         metrics.update({f"value_{k}": v for k, v in value_stats.items()})
 
-    if (
-        (compute_all or "kl_div" in metric_names)
-        and "log_probs" in outputs
-        and "ref_log_probs" in outputs
-    ):
-        metrics["kl_div"] = compute_kl_divergence(
-            outputs["log_probs"], outputs["ref_log_probs"]
-        ).item()
+    if (compute_all or "kl_div" in metric_names) and "log_probs" in outputs and "ref_log_probs" in outputs:
+        metrics["kl_div"] = compute_kl_divergence(outputs["log_probs"], outputs["ref_log_probs"]).item()
 
     if (compute_all or "clip_fraction" in metric_names) and "ratio" in outputs:
         metrics["clip_fraction"] = compute_clip_fraction(outputs["ratio"])
 
-    if (
-        (compute_all or "explained_variance" in metric_names)
-        and "values" in outputs
-        and "returns" in outputs
-    ):
-        metrics["explained_variance"] = compute_explained_variance(
-            outputs["values"], outputs["returns"]
-        )
+    if (compute_all or "explained_variance" in metric_names) and "values" in outputs and "returns" in outputs:
+        metrics["explained_variance"] = compute_explained_variance(outputs["values"], outputs["returns"])
 
     return metrics
 
