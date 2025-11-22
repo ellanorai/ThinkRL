@@ -14,9 +14,9 @@ Author: Archit Sood
 
 import logging
 import logging.handlers  # Import handlers for isinstance check
-from pathlib import Path
 import shutil
 import tempfile
+from pathlib import Path
 
 import pytest
 
@@ -143,7 +143,7 @@ class TestLogging:
             isinstance(h, logging.StreamHandler) for h in logger_rank0.handlers
         ), "Rank 0 should have a StreamHandler"
 
-        # UP038: Combined check using | operator for cleaner type checking
+        # UP038 Fix: Combined check using | operator
         assert any(
             isinstance(h, logging.FileHandler | logging.handlers.RotatingFileHandler)
             for h in logger_rank0.handlers
