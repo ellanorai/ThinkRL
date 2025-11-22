@@ -34,7 +34,8 @@ except ImportError:
         # Create dummy classes for runtime when transformers is not installed
         PreTrainedTokenizer = None
         PreTrainedTokenizerFast = None
-    warnings.warn("transformers not available. Install with: pip install transformers")
+    # Warning removed to prevent import-time side effects in CI/CD environments
+    # warnings.warn("transformers not available. Install with: pip install transformers")
 
 # Type checking imports
 if TYPE_CHECKING:
