@@ -69,6 +69,7 @@ markers = [
 ]
 
 filterwarnings = [
+    "ignore:transformers not available:UserWarning",
     "error",
     "ignore::UserWarning:torch.utils.checkpoint:",
     "ignore::FutureWarning:transformers.tokenization_utils_base:",
