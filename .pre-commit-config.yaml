@@ -19,31 +19,28 @@ repos:
       - id: mixed-line-ending
 
   # ------------------------------------------------------------------
-  # Ruff (Linter & Formatter)
-  # Replaces Black, Isort, and Flake8 with a single, faster tool
+  # Ruff (Linter & Formatter) - Match CI version
   # ------------------------------------------------------------------
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.1.14
     hooks:
-      # Run the linter (sorts imports, fixes errors)
       - id: ruff
-        types_or: [ python, pyi ]
-        args: [ --fix ]
-      # Run the formatter (formats code style)
+        types_or: [python, pyi]
+        args: [--fix]
       - id: ruff-format
-        types_or: [ python, pyi ]
+        types_or: [python, pyi]
 
   # ------------------------------------------------------------------
-  # Static Type Checking (Mypy) - LOCAL HOOK
-  # Uses the version installed in your local environment
+  # Mypy (Type Checking) - Match CI version
   # ------------------------------------------------------------------
-  - repo: local
+  - repo: https://github.com/pre-commit/mirrors-mypy
+    rev: v1.8.0
     hooks:
       - id: mypy
-        name: mypy (strict)
-        entry: mypy
-        language: system
-        types: [python]
-        require_serial: true
-        args: ["thinkrl"]
+        args: [--config-file=pyproject.toml]
+        additional_dependencies:
+          - types-PyYAML>=6.0.12
+          - types-requests>=2.31.0
+          - torch>=2.0.0
         pass_filenames: false
+        files: ^thinkrl/

@@ -62,23 +62,24 @@ jobs:
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          # Only install linting tools, not the full package
-          pip install ruff mypy bandit
+          # Install linting tools with exact versions
+          pip install ruff==0.1.14
+          pip install mypy==1.8.0
+          pip install bandit[toml]>=1.7.0
           # Install minimal dependencies for type checking
           pip install torch --index-url https://download.pytorch.org/whl/cpu
           pip install types-PyYAML types-requests
-          pip install -e . --no-deps  # Install package without dependencies
+          pip install -e . --no-deps
 
-      - name: Check code quality (Ruff)
-        run: |
-          # Check for linting errors (replaces flake8/isort)
-          ruff check thinkrl tests
-          # Check formatting (replaces black --check)
-          ruff format --check thinkrl tests
+      - name: Check code formatting (Ruff format)
+        run: ruff format --check thinkrl tests
+
+      - name: Lint code (Ruff check)
+        run: ruff check thinkrl tests
 
       - name: Type checking (mypy)
         run: mypy thinkrl
         continue-on-error: true
 
       - name: Security check (bandit)
-        run: bandit -r thinkrl -ll -ii --skip B614,B615
+        run: bandit -r thinkrl -c pyproject.toml

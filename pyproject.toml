@@ -6,20 +6,11 @@ build-backend = "setuptools.build_meta"
 # Ruff Configuration (Replaces Black, Isort, Flake8)
 # ------------------------------------------------------------------
 [tool.ruff]
-target-version = "py310"  # Match minimum Python version
+target-version = "py310"
 line-length = 88
 src = ["thinkrl", "tests"]
 
 [tool.ruff.lint]
-# Enable specific rules:
-# E: Pycodestyle errors
-# F: Pyflakes
-# I: Isort (import sorting)
-# W: Pycodestyle warnings
-# UP: Pyupgrade (modernizes syntax)
-# B: Flake8-bugbear (finds likely bugs)
-# T: Flake8-print (catches print statements)
-# C: McCabe complexity
 extend-select = ["E", "F", "I", "W", "UP", "B", "T", "C"]
 
 ignore = [
@@ -28,31 +19,20 @@ ignore = [
     "C901",  # function complexity (too strict for ML code)
     "E501",  # Line too long (let ruff format handle this)
     "E741",  # Ambiguous variable name (common in ML: l, O, I)
+    "UP038", # Use X | Y in isinstance - disabled for readability
 ]
 
 [tool.ruff.lint.per-file-ignores]
-# Allow prints in examples and scripts
 "examples/**.py" = ["T201"]
 "scripts/**.py" = ["T201"]
-
-# Test files: allow prints for debugging and unused imports for availability checks
-"tests/**.py" = [
-    "T201",  # print statements (useful for test debugging/cleanup warnings)
-    "F401",  # unused imports (used for availability checks via try/except)
-    "B028",  # warnings without stacklevel (test warnings are fine)
-]
-
-# __init__.py: allow unused imports (re-exports)
+"tests/**.py" = ["T201", "F401", "B028"]
 "__init__.py" = ["F401"]
-
-# Allow longer lines in config files
 "**/config.py" = ["E501"]
 "**/settings.py" = ["E501"]
 
 [tool.ruff.lint.isort]
 lines-after-imports = 2
 known-first-party = ["thinkrl"]
-# Combine imports from same package
 force-sort-within-sections = true
 
 # ------------------------------------------------------------------
@@ -65,7 +45,6 @@ python_files = "test_*.py"
 python_classes = "Test*"
 python_functions = "test_*"
 
-# Default options: verbose output, short tracebacks, strict markers
 addopts = """
     --verbose
     --tb=short
@@ -75,7 +54,6 @@ addopts = """
     --cov-report=xml:coverage.xml
 """
 
-# Custom markers to organize the test suite
 markers = [
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "gpu: marks tests as requiring a CUDA device (deselect with '-m \"not gpu\"')",
@@ -84,50 +62,41 @@ markers = [
     "distributed: tests requiring multi-GPU setup"
 ]
 
-# Treat warnings as errors to ensure rigorous code quality
 filterwarnings = [
     "error",
-    # Ignore known benign warnings from dependencies
     "ignore::UserWarning:torch.utils.checkpoint:",
     "ignore::FutureWarning:transformers.tokenization_utils_base:",
     "ignore::UserWarning:cupy.cuda.memory:",
-    "ignore::DeprecationWarning",  # Ignore deprecation warnings from dependencies
+    "ignore::DeprecationWarning",
 ]
 
 # ------------------------------------------------------------------
-# Static Type Checking (Mypy) - Relaxed for ML Development
+# Static Type Checking (Mypy)
 # ------------------------------------------------------------------
 [tool.mypy]
-python_version = "3.10"  # FIXED: Match the Python 3.10+ syntax used in code
-warn_return_any = false  # Too noisy for ML code
+python_version = "3.10"
+warn_return_any = false
 warn_unused_configs = true
 
-# Relax these for practical ML development
-disallow_untyped_defs = false  # Too strict for ML code
-disallow_incomplete_defs = false  # Too strict for ML code
-check_untyped_defs = false  # Don't check untyped functions
-disallow_untyped_decorators = false  # Decorators often don't have types
-no_implicit_optional = false  # Allow implicit Optional
+disallow_untyped_defs = false
+disallow_incomplete_defs = false
+check_untyped_defs = false
+disallow_untyped_decorators = false
+no_implicit_optional = false
 warn_redundant_casts = false
-warn_unused_ignores = false  # Can be noisy
+warn_unused_ignores = false
 strict_equality = false
 
-# Be lenient with missing types
 disallow_any_generics = false
 disallow_subclassing_any = false
 disallow_untyped_calls = false
 
-# Allow dynamic typing
 allow_untyped_globals = true
 allow_redefinition = true
-
-# Ignore missing imports globally
 ignore_missing_imports = true
 
-# Ignore errors in problematic modules
 [[tool.mypy.overrides]]
 module = [
-    # External dependencies
     "cupy.*",
     "cupyx.*",
     "scipy.*",
@@ -149,12 +118,10 @@ module = [
 ]
 ignore_errors = true
 
-# PyTorch specific settings
 [[tool.mypy.overrides]]
 module = "torch.*"
 implicit_reexport = true
 
-# Problematic thinkrl modules - ignore for now
 [[tool.mypy.overrides]]
 module = [
     "thinkrl.utils.tokenizer",
@@ -167,7 +134,6 @@ module = [
 ]
 ignore_errors = true
 
-# Test files - very relaxed typing
 [[tool.mypy.overrides]]
 module = "tests.*"
 ignore_errors = true
@@ -193,36 +159,18 @@ exclude_lines = [
     "if __name__ == .__main__.:",
     "class .*\\bProtocol\\):",
     "@(abc\\.)?abstractmethod",
-    "if TYPE_CHECKING:",  # Type checking blocks
-    "\\.\\.\\.",  # Ellipsis in stubs
+    "if TYPE_CHECKING:",
+    "\\.\\.\\.",
 ]
 ignore_errors = true
-
-# Relax coverage requirement - don't fail locally
-fail_under = 0  # Don't fail on coverage (handle in CI separately)
+fail_under = 0
 
 # ------------------------------------------------------------------
-# Security Scanning (Bandit) Configuration
+# Bandit Configuration
 # ------------------------------------------------------------------
 [tool.bandit]
-# Exclude test files and examples from security scanning
-exclude_dirs = [
-    "tests",
-    "examples",
-    "docs",
-]
+exclude_dirs = ["tests", "examples", "docs"]
+skips = ["B615", "B614"]
 
-# Skip specific tests that are acceptable in this context
-skips = [
-    "B615",  # Unsafe HuggingFace Hub download - acceptable with version pinning in production
-    "B614",  # Unsafe PyTorch load - acceptable when loading trusted checkpoints
-]
-
-# Only report high severity issues
-severity = "high"
-
-# ------------------------------------------------------------------
-# Bandit Overrides (Alternative to skips)
-# ------------------------------------------------------------------
 [tool.bandit.assert_used]
 skips = ['*_test.py', '*/test_*.py']
