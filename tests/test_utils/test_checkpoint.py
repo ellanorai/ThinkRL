@@ -132,6 +132,36 @@ class TestCheckpointManager:
             assert (temp_dir / "ckpt_fallback" / "model.pt").exists()
             assert not (temp_dir / "ckpt_fallback" / "model.safetensors").exists()
 
+    def test_save_load_safetensors_forced(self, temp_dir, simple_model):
+        """Test SafeTensors path explicitly."""
+        # Force availability to True
+        with patch("thinkrl.utils.checkpoint._SAFETENSORS_AVAILABLE", True):
+            manager = CheckpointManager(temp_dir, use_safetensors=True)
+
+            # Save
+            manager.save_checkpoint(simple_model, epoch=1, metrics={"acc": 0.5}, checkpoint_name="ckpt_safe")
+
+            # Verify file creation
+            assert (temp_dir / "ckpt_safe" / "model.safetensors").exists()
+            assert (temp_dir / "ckpt_safe" / "metadata.json").exists()
+
+            # Load back
+            loaded = manager.load_checkpoint(temp_dir / "ckpt_safe", simple_model)
+            assert loaded["metrics"]["acc"] == 0.5
+
+    def test_load_metadata_corruption(self, temp_dir):
+        """Test resilience against corrupted metadata files."""
+        manager = CheckpointManager(temp_dir)
+
+        # Create a corrupted metadata file
+        meta_file = temp_dir / "checkpoint_registry.json"
+        with open(meta_file, "w") as f:
+            f.write("{INVALID JSON")
+
+        # Should not raise error, just log warning
+        manager._load_metadata()
+        assert len(manager.checkpoints) == 0
+
 
 class TestStandaloneFunctions:
     """Tests for standalone save/load functions."""
