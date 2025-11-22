@@ -37,7 +37,7 @@ repos:
     rev: v1.8.0
     hooks:
       - id: mypy
-        args: [--config-file=pyproject.toml]
+        args: [--config-file=pyproject.toml, thinkrl]
         additional_dependencies:
           - types-PyYAML>=6.0.12
           - types-requests>=2.31.0
