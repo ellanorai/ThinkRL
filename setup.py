@@ -216,8 +216,8 @@ EVAL_REQUIREMENTS = {
 # Inference and Serving (New for RLAIF/vLLM)
 INFERENCE_REQUIREMENTS = {
     "inference": [
-        "vllm>=0.2.0",
-        "ray",
+        "vllm>=0.5.0,<1.0.0",
+        "ray>=2.9.0",
     ],
 }
 
@@ -367,7 +367,7 @@ EXTRAS_REQUIRE = {
     **DEV_REQUIREMENTS,
     **EVAL_REQUIREMENTS,
     **INFERENCE_REQUIREMENTS,
-    **CI_REQUIREMENTS,  # NEW: Added CI requirements
+    **CI_REQUIREMENTS,
     **CONVENIENCE_BUNDLES,
 }
 
