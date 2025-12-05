@@ -4,7 +4,7 @@
 # Forces pip to download CUDA-enabled wheels
 --extra-index-url https://download.pytorch.org/whl/cu121
 
-torch>=2.0.0,<2.5.0
+torch>=2.7.0,<2.9.1
 torchvision>=0.15.0
 torchaudio
 
