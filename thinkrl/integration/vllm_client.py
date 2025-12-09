@@ -7,7 +7,7 @@ Handles Multi-GPU (DDP/FSDP) training environments correctly.
 import requests
 import torch
 import torch.distributed as dist
-from typing import Any, List, Optional
+from typing import Any
 
 from thinkrl.utils.logging import get_logger
 
@@ -40,7 +40,7 @@ class VLLMClient:
             # Only Rank 0 of the training cluster should talk to vLLM
             self.is_main_process = (dist.get_rank() == 0)
 
-    def generate(self, prompts: List[str], params: dict[str, Any]) -> List[str]:
+    def generate(self, prompts: list[str], params: dict[str, Any]) -> list[str]:
         """Generates completions via HTTP request."""
         # In a multi-GPU setup, usually only main process triggers generation, 
         # or prompts are scattered. Assuming centralized request for now.
