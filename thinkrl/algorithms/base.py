@@ -16,7 +16,7 @@ Author: Archit Sood @ EllanorAI
 """
 
 from abc import ABC, abstractmethod
-from typing import Any
+from typing import TYPE_CHECKING, Any, Optional
 
 import torch
 import torch.distributed as dist
@@ -33,13 +33,18 @@ from thinkrl.utils.metrics import (
 
 
 # Optional vLLM integration
-try:
+if TYPE_CHECKING:
     from thinkrl.integration.vllm_client import VLLMClient
 
     _VLLM_AVAILABLE = True
-except ImportError:
-    VLLMClient = None
-    _VLLM_AVAILABLE = False
+else:
+    try:
+        from thinkrl.integration.vllm_client import VLLMClient
+
+        _VLLM_AVAILABLE = True
+    except ImportError:
+        VLLMClient = None
+        _VLLM_AVAILABLE = False
 
 logger = get_logger(__name__)
 
@@ -125,7 +130,7 @@ class BaseRLHFAlgorithm(ABC):
 
         # vLLM integration
         self.use_vllm = use_vllm
-        self.vllm_client = None
+        self.vllm_client: Optional["VLLMClient"] = None
         if use_vllm:
             if not _VLLM_AVAILABLE:
                 raise ImportError("vLLM is required for generation. Install with: pip install vllm")
@@ -249,7 +254,10 @@ class BaseRLHFAlgorithm(ABC):
         """
         Generate text completions using vLLM (if enabled) or policy model.
         """
-        if self.use_vllm and self.vllm_client is not None:
+        # Assign to distinct local variable for strict type narrowing
+        client = self.vllm_client
+
+        if self.use_vllm and client is not None:
             if self.is_main_process:
                 logger.debug(f"Generating {len(prompts)} rollouts via vLLM")
 
@@ -262,7 +270,7 @@ class BaseRLHFAlgorithm(ABC):
                     **generation_kwargs,
                 }
 
-                completions = self.vllm_client.generate(prompts, generation_params)
+                completions = client.generate(prompts, generation_params)
                 return completions
             else:
                 return []
@@ -301,17 +309,21 @@ class BaseRLHFAlgorithm(ABC):
         """
         Synchronize policy model weights to vLLM server.
         """
-        if self.use_vllm and self.vllm_client is not None and self.is_main_process:
+        # Assign to distinct local variable for strict type narrowing
+        client = self.vllm_client
+        if self.use_vllm and client is not None and self.is_main_process:
             logger.debug("Syncing weights to vLLM server")
-            self.vllm_client.update_model_weights(self.policy_model)
+            client.update_model_weights(self.policy_model)
 
     def init_vllm_weight_sync(self, device: torch.device):
         """
         Initialize the NCCL bridge for vLLM weight synchronization.
         """
-        if self.use_vllm and self.vllm_client is not None and self.is_main_process:
+        # Assign to distinct local variable for strict type narrowing
+        client = self.vllm_client
+        if self.use_vllm and client is not None and self.is_main_process:
             logger.info("Initializing vLLM weight sync bridge")
-            self.vllm_client.init_weight_sync(device)
+            client.init_weight_sync(device)
 
     def get_metrics(self) -> dict[str, float]:
         """
