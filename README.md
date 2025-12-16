@@ -12,7 +12,9 @@
 
 ## 🎉 Latest Updates
 
-- **November 2025**: 
+- **December 2025**:
+  - **Algorithm Expansion**: Implemented **Direct Preference Optimization (DPO)** and **Decoupled Clip and Dynamic Sampling Policy Optimization (DAPO)**, significantly expanding the library's capabilities for preference alignment and complex reasoning tasks.
+- **November 2025**:
   - **GPU Acceleration**: Integrated **CuPy** to replace NumPy for metric computations, enabling zero-copy GPU processing and significantly reducing training latency. Added robust CPU fallback for compatibility.
   - **Core Utilities**: Completed implementation and unit testing for `logging`, `checkpoint`, `metrics`, and `data` modules.
 - **July 2025**: ThinkRL will launch with cutting-edge algorithms such as VAPO, DAPO, GRPO, PPO, and REINFORCE, aiming to set new standards in reasoning performance.
@@ -63,9 +65,10 @@ ThinkRL will emerge as an open-source, modular platform for large-scale RLHF and
 ### Core Installation
 ```bash
 pip install thinkrl
-```
+````
 
 ### Optional Features
+
 ```bash
 # HuggingFace transformers
 pip install thinkrl[transformers]
@@ -90,6 +93,7 @@ pip install thinkrl[all]
 ```
 
 ### Specialized Setups
+
 ```bash
 # State-of-the-art algorithms (VAPO/DAPO)
 pip install thinkrl[sota]
@@ -101,11 +105,12 @@ pip install thinkrl[distributed]
 pip install thinkrl[complete]
 ```
 
----
+-----
 
 ## 🎯 Quick Start
 
 ### Basic RLHF Training
+
 ```python
 from thinkrl import RLHFTrainer, ModelConfig
 
@@ -120,6 +125,7 @@ trainer.train()
 ```
 
 ### Chain-of-Thought Reasoning
+
 ```python
 from thinkrl import CoTTrainer, ReasoningConfig
 
@@ -134,6 +140,7 @@ trainer.train()
 ```
 
 ### Multimodal Training
+
 ```python
 from thinkrl import MultimodalTrainer, MultimodalDataset
 
@@ -151,9 +158,10 @@ trainer = MultimodalTrainer(config, dataset=dataset)
 trainer.train()
 ```
 
----
+-----
 
 ## 🛠️ Command-Line Interface
+
 ```bash
 # Train with a configuration file
 thinkrl train --config configs/vapo_qwen.yaml
@@ -171,9 +179,10 @@ thinkrl tot --model Qwen/Qwen2.5-8B --problem "Plan a 7-day Japan itinerary"
 thinkrl multimodal --config configs/multimodal_training.yaml
 ```
 
----
+-----
 
 ## 🏗️ Project Structure
+
 ```plaintext
 ThinkRL/
 ├── algorithms/           # RL algorithms (VAPO, DAPO, GRPO, PPO, etc.)
@@ -187,42 +196,47 @@ ThinkRL/
 └── logs/                 # Training logs and checkpoints
 ```
 
----
+-----
 
 ## 🤝 Contributing
-Contributions will be warmly welcomed! Detailed guidelines will be available in our [Contributing Guide](CONTRIBUTING.md).
+
+Contributions will be warmly welcomed\! Detailed guidelines will be available in our [Contributing Guide](https://www.google.com/search?q=CONTRIBUTING.md).
 
 ### Development Setup
+
 ```bash
-git clone https://github.com/ellanorai/ThinkRL.git
+git clone [https://github.com/ellanorai/ThinkRL.git](https://github.com/ellanorai/ThinkRL.git)
 cd ThinkRL
 pip install -e .[complete]
 pre-commit install
 ```
 
----
+-----
 
 ## 📜 License
-ThinkRL will be licensed under the [Apache License 2.0](LICENSE).
 
----
+ThinkRL will be licensed under the [Apache License 2.0](https://www.google.com/search?q=LICENSE).
+
+-----
 
 ## 🙏 Acknowledgments
-- ByteDance Seed Team will be recognized for their DAPO contributions.
-- The research community will be thanked for advancements like VAPO.
-- [HuggingFace](https://huggingface.co) will be credited for its transformers ecosystem.
-- The open-source ML community will be acknowledged for inspiration and tools.
 
----
+  - ByteDance Seed Team will be recognized for their DAPO contributions.
+  - The research community will be thanked for advancements like VAPO.
+  - [HuggingFace](https://huggingface.co) will be credited for its transformers ecosystem.
+  - The open-source ML community will be acknowledged for inspiration and tools.
+
+-----
 
 ## 📞 Contact
-- **Archit Sood**: [@Archit03](https://github.com/Archit03) - [archit@ellanorai.org](mailto:archit@ellanorai.org)
-- **EllanorAI**: [https://ellanorai.org](https://ellanorai.org)
-- **Project**: [https://github.com/ellanorai/ThinkRL](https://github.com/ellanorai/ThinkRL)
 
-<div align="center">
-  ⭐ <strong>Star us on <a href="https://github.com/ellanorai/ThinkRL">GitHub</a> to support ThinkRL!</strong>
-  <p>Crafted with ❤️ for AI innovation in India 🇮🇳 by <a href="https://ellanorai.org">EllanorAI</a></p>
-</div>
+  - **Archit Sood**: [@Archit03](https://github.com/Archit03) - [archit@ellanorai.org](mailto:archit@ellanorai.org)
+  - **EllanorAI**: [https://ellanorai.org](https://ellanorai.org)
+  - **Project**: [https://github.com/ellanorai/ThinkRL](https://github.com/ellanorai/ThinkRL)
 
----
+\<div align="center"\>
+⭐ \<strong\>Star us on \<a href="https://github.com/ellanorai/ThinkRL"\>GitHub\</a\> to support ThinkRL\!\</strong\>
+\<p\>Crafted with ❤️ for AI innovation in India 🇮🇳 by \<a href="https://ellanorai.org"\>EllanorAI\</a\>\</p\>
+\</div\>
+
+```
