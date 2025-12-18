@@ -46,6 +46,13 @@ try:
 except ImportError:
     _SAFETENSORS_AVAILABLE = False
 
+    # Define stubs to avoid NameError when safetensors is not available
+    def safetensors_save(*args, **kwargs):
+        raise ImportError("safetensors is not installed. Install with: pip install safetensors")
+
+    def safetensors_load(*args, **kwargs):
+        raise ImportError("safetensors is not installed. Install with: pip install safetensors")
+
 
 logger = logging.getLogger(__name__)
 
