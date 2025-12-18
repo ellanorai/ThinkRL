@@ -134,20 +134,24 @@ class TestCheckpointManager:
 
     def test_save_load_safetensors_forced(self, temp_dir, simple_model):
         """Test SafeTensors path explicitly."""
-        # Force availability to True
-        with patch("thinkrl.utils.checkpoint._SAFETENSORS_AVAILABLE", True):
-            manager = CheckpointManager(temp_dir, use_safetensors=True)
+        # Skip if safetensors is not installed
+        try:
+            from safetensors.torch import load_file, save_file  # noqa: F401
+        except ImportError:
+            pytest.skip("safetensors not installed")
 
-            # Save
-            manager.save_checkpoint(simple_model, epoch=1, metrics={"acc": 0.5}, checkpoint_name="ckpt_safe")
+        manager = CheckpointManager(temp_dir, use_safetensors=True)
 
-            # Verify file creation
-            assert (temp_dir / "ckpt_safe" / "model.safetensors").exists()
-            assert (temp_dir / "ckpt_safe" / "metadata.json").exists()
+        # Save
+        manager.save_checkpoint(simple_model, epoch=1, metrics={"acc": 0.5}, checkpoint_name="ckpt_safe")
 
-            # Load back
-            loaded = manager.load_checkpoint(temp_dir / "ckpt_safe", simple_model)
-            assert loaded["metrics"]["acc"] == 0.5
+        # Verify file creation
+        assert (temp_dir / "ckpt_safe" / "model.safetensors").exists()
+        assert (temp_dir / "ckpt_safe" / "metadata.json").exists()
+
+        # Load back
+        loaded = manager.load_checkpoint(temp_dir / "ckpt_safe", simple_model)
+        assert loaded["metrics"]["acc"] == 0.5
 
     def test_load_metadata_corruption(self, temp_dir):
         """Test resilience against corrupted metadata files."""
