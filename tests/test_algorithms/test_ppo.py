@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 import pytest
 import torch
 import torch.nn as nn
@@ -404,9 +404,7 @@ def test_compute_diagnostics(ppo_algo):
     advantages = torch.randn(batch_size, seq_len)
     token_mask = torch.ones(batch_size, seq_len, dtype=torch.bool)
 
-    diagnostics = ppo_algo._compute_diagnostics(
-        ratio, advantages, token_mask
-    )
+    diagnostics = ppo_algo._compute_diagnostics(ratio, advantages, token_mask)
 
     assert "clip_frac" in diagnostics
     assert "ratio_mean" in diagnostics
@@ -462,6 +460,7 @@ def test_training_step_backward_pass(ppo_algo):
     ppo_algo.optimizer.zero_grad()
 
     metrics = ppo_algo.training_step(batch)
+    assert "loss" in metrics
 
     has_grad = False
     for param in ppo_algo.policy_model.parameters():
@@ -596,9 +595,7 @@ def test_create_ppo_with_optimizer():
     """Test PPO creation with custom optimizer"""
 
     policy_model = SimplePolicy()
-    custom_optimizer = torch.optim.SGD(
-        policy_model.parameters(), lr=1e-2
-    )
+    custom_optimizer = torch.optim.SGD(policy_model.parameters(), lr=1e-2)
 
     ppo = create_ppo(policy_model, optimizer=custom_optimizer)
 
@@ -670,6 +667,62 @@ def test_ppo_with_different_clip_ratios():
         ppo = PPOAlgorithm(policy_model=policy_model, config=config)
 
         assert ppo.config.policy_clip == clip_ratio
+
+
+def test_empty_memory_buffer():
+    """Test handling of empty memory buffer (Issue #10)"""
+    memory = PPOMemory(batch_size=4)
+
+    # Empty memory should raise ValueError when generating batches
+    with pytest.raises(
+        ValueError, match="Cannot generate batches from empty memory buffer"
+    ):
+        memory.generate_batches()
+
+
+def test_single_sample_memory():
+    """Test handling of single sample in memory (Issue #11)"""
+    memory = PPOMemory(batch_size=4)
+
+    # Store single sample
+    memory.store_memory(
+        state=[1.0, 2.0], action=0, probs=-0.5, vals=1.0, reward=1.0, done=False
+    )
+
+    states, actions, old_probs, vals, rewards, dones, batches = (
+        memory.generate_batches()
+    )
+
+    assert len(states) == 1
+    assert len(batches) == 1
+    assert len(batches[0]) == 1
+
+
+def test_large_rollout_stress():
+    """Test performance with large rollout buffer (Issue #12)"""
+    memory = PPOMemory(batch_size=64)
+
+    # Store 10,000 samples
+    n_samples = 10000
+    for i in range(n_samples):
+        memory.store_memory(
+            state=[float(i), float(i + 1)],
+            action=i % 4,
+            probs=-0.5,
+            vals=1.0,
+            reward=1.0,
+            done=(i % 100 == 0),
+        )
+
+    states, actions, old_probs, vals, rewards, dones, batches = (
+        memory.generate_batches()
+    )
+
+    assert len(states) == n_samples
+    assert len(batches) > 0
+    # Verify all samples are covered in batches
+    total_samples_in_batches = sum(len(batch) for batch in batches)
+    assert total_samples_in_batches == n_samples
 
 
 if __name__ == "__main__":

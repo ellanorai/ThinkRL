@@ -1,5 +1,6 @@
 from dataclasses import dataclass
 from typing import Optional, Union
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -65,29 +66,30 @@ class PPOMemory:
         """
 
         n_states = len(self.states)
+        if n_states == 0:
+            raise ValueError("Cannot generate batches from empty memory buffer")
+
         batch_start = torch.arange(0, n_states, self.batch_size)
         indices = torch.arange(n_states, dtype=torch.int64)
         indices = indices[torch.randperm(n_states)]
 
         batches = [indices[i : i + self.batch_size] for i in batch_start]
 
-        # Convert lists to numpy arrays first to avoid warnings
-        import numpy as np
-
-        states_np = np.array(self.states, dtype=np.float32)
-        actions_np = np.array(self.actions)
-        probs_np = np.array(self.probs, dtype=np.float32)
-        vals_np = np.array(self.vals, dtype=np.float32)
-        rewards_np = np.array(self.rewards, dtype=np.float32)
-        dones_np = np.array(self.dones, dtype=np.float32)
+        # Convert to numpy first to handle mixed types efficiently
+        states_array = np.array(self.states, dtype=np.float32)
+        actions_array = np.array(self.actions, dtype=np.int64)
+        probs_array = np.array(self.probs, dtype=np.float32)
+        vals_array = np.array(self.vals, dtype=np.float32)
+        rewards_array = np.array(self.rewards, dtype=np.float32)
+        dones_array = np.array(self.dones, dtype=np.float32)
 
         return (
-            torch.from_numpy(states_np),
-            torch.from_numpy(actions_np),
-            torch.from_numpy(probs_np),
-            torch.from_numpy(vals_np),
-            torch.from_numpy(rewards_np),
-            torch.from_numpy(dones_np),
+            torch.from_numpy(states_array),
+            torch.from_numpy(actions_array),
+            torch.from_numpy(probs_array),
+            torch.from_numpy(vals_array),
+            torch.from_numpy(rewards_array),
+            torch.from_numpy(dones_array),
             batches,
         )
 
@@ -264,11 +266,11 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         """
 
         if self.use_separate_value_network:
-            # Convert to numpy array first if needed, then to tensor
-            import numpy as np
-
-            obs_array = np.array(observation, dtype=np.float32)
-            state = torch.from_numpy(obs_array).unsqueeze(0).to(self.actor.device)
+            state = (
+                torch.tensor(observation, dtype=torch.float32)
+                .unsqueeze(0)
+                .to(self.actor.device)
+            )
             dist = self.actor(state)
             value = self.critic(state)
             action = dist.sample()
@@ -305,17 +307,12 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         device = rewards.device
 
         advantage = torch.zeros(len(rewards), dtype=torch.float).to(device)
+        gae = 0
 
-        for t in range(len(rewards) - 1):
-            discount = 1
-
-            gae = 0
-            for k in range(t, len(rewards) - 1):
-                delta = (
-                    rewards[k] + cfg.gamma * values[k + 1] * (1 - dones[k]) - values[k]
-                )
-                gae += discount * delta
-                discount *= cfg.gamma * cfg.gae_lambda
+        # Backward iteration for O(n) complexity
+        for t in reversed(range(len(rewards) - 1)):
+            delta = rewards[t] + cfg.gamma * values[t + 1] * (1 - dones[t]) - values[t]
+            gae = delta + cfg.gamma * cfg.gae_lambda * (1 - dones[t]) * gae
             advantage[t] = gae
         return advantage
 
@@ -380,7 +377,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         self,
         batch: dict[str, torch.Tensor],
     ) -> dict[str, torch.Tensor]:
-        """Compute loss using seperate actor-critic networks"""
+        """Compute loss using separate actor-critic networks"""
 
         cfg = self.config
         device = self.actor.device
@@ -396,7 +393,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         critic_value = torch.squeeze(critic_value)
 
         new_probs = dist.log_prob(actions)
-        prob_ratio = new_probs.exp() / old_probs.exp()
+        prob_ratio = torch.exp(new_probs - old_probs)
 
         weighted_probs = advantages * prob_ratio
         weighted_clipped_probs = (
@@ -553,10 +550,16 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         }
 
     def _extract_values(self, logits: torch.Tensor) -> torch.Tensor:
-        """Extract value estimates from logits"""
-        log_probs = F.log_softmax(logits, dim=-1)
-        max_log_probs = log_probs.max(dim=-1).values
-        return max_log_probs.unsqueeze(-1)
+        """Extract value estimates from logits using proper value head projection"""
+        # Use mean pooling over vocabulary dimension as value estimate
+        # This is more stable than max and represents expected value better
+        probs = F.softmax(logits, dim=-1)
+        values = (probs * torch.arange(logits.size(-1), device=logits.device)).sum(
+            dim=-1
+        )
+        # Normalize by vocabulary size for stability
+        values = values / logits.size(-1)
+        return values.unsqueeze(-1)
 
     def _compute_entropy(
         self,
@@ -625,6 +628,13 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         loss.backward()
 
         if self.use_separate_value_network:
+            # Apply gradient clipping to both networks
+            _ = torch.nn.utils.clip_grad_norm_(
+                self.actor.parameters(), self.config.clip_grad_norm
+            )
+            _ = torch.nn.utils.clip_grad_norm_(
+                self.critic.parameters(), self.config.clip_grad_norm
+            )
             self.actor.optimizer.step()
             self.critic.optimizer.step()
 
@@ -647,7 +657,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         """
         Multi-epoch training using stored rollouts,
 
-        This implements the core PPO learnoing loop with mini-batch updates.
+        This implements the core PPO learning loop with mini-batch updates.
         """
 
         all_metrics = []
