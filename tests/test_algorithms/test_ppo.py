@@ -1,14 +1,15 @@
 from unittest.mock import patch
+
 import pytest
 import torch
 import torch.nn as nn
 
 from thinkrl.algorithms.ppo import (
+    ActorNetwork,
+    CriticNetwork,
     PPOAlgorithm,
     PPOConfig,
     PPOMemory,
-    ActorNetwork,
-    CriticNetwork,
     create_ppo,
 )
 

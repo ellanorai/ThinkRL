@@ -1,11 +1,13 @@
 from dataclasses import dataclass
-from typing import Optional, Union
+from typing import Any
+
 import numpy as np
 import torch
+from torch.distributions.categorical import Categorical
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Optimizer
-from torch.distributions.categorical import Categorical
+
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
 from thinkrl.utils.logging import get_logger
 
@@ -127,7 +129,7 @@ class ActorNetwork(nn.Module):
         fc2_dims: int = 256,
     ):
 
-        super(ActorNetwork, self).__init__()
+        super().__init__()
 
         self.input_layer = nn.Linear(*input_dims, fc1_dims)
         self.hidden_layer = nn.Linear(fc1_dims, fc2_dims)
@@ -168,7 +170,7 @@ class CriticNetwork(nn.Module):
     def __init__(
         self, input_dims: tuple, alpha: float, fc1_dims: int = 256, fc2_dims: int = 256
     ):
-        super(CriticNetwork, self).__init__()
+        super().__init__()
 
         self.input_layer = nn.Linear(*input_dims, fc1_dims)
         self.hidden_layer = nn.Linear(fc1_dims, fc2_dims)
@@ -208,11 +210,11 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
     def __init__(
         self,
         policy_model: nn.Module,
-        ref_model: Optional[nn.Module] = None,
-        optimizer: Optional[Optimizer] = None,
-        config: Optional[PPOConfig] = None,
-        n_actions: Optional[int] = None,
-        input_dims: Optional[tuple] = None,
+        ref_model: nn.Module | None = None,
+        optimizer: Optimizer | None = None,
+        config: PPOConfig | None = None,
+        n_actions: int | None = None,
+        input_dims: tuple | None = None,
         **kwargs,
     ):
         config = config or PPOConfig()
@@ -223,9 +225,6 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
             optimizer=optimizer,
             learning_rate=config.learning_rate,
             kl_coeff=0.0,
-            gamma=config.gamma,
-            lambda_=config.gae_lambda,
-            clip_grad_norm=config.clip_grad_norm,
             **kwargs,
         )
 
@@ -266,6 +265,8 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         """
 
         if self.use_separate_value_network:
+            assert self.actor is not None, "Actor network not initialized"
+            assert self.critic is not None, "Critic network not initialized"
             state = (
                 torch.tensor(observation, dtype=torch.float32)
                 .unsqueeze(0)
@@ -289,7 +290,11 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         )
 
     def compute_gae_advantages(
-        self, rewards: torch.Tensor, values: torch.Tensor, dones: torch.Tensor
+        self,
+        rewards: torch.Tensor,
+        values: torch.Tensor,
+        normalize: bool | None = None,
+        dones: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Compute Generalized Advantage Estimation (GAE)
@@ -297,7 +302,8 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         Args:
             rewards: Rewards tensor[T]
             values: value estimates [T]
-            dones: Done flags [T]
+            normalize: Whether to normalize advantages (unused, for compatibility)
+            dones: Done flags [T] (optional, defaults to all zeros)
 
         Returns:
             advantages: Computed advantages [T]
@@ -306,8 +312,12 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         cfg = self.config
         device = rewards.device
 
+        # Handle missing dones tensor
+        if dones is None:
+            dones = torch.zeros_like(rewards)
+
         advantage = torch.zeros(len(rewards), dtype=torch.float).to(device)
-        gae = 0
+        gae = 0.0
 
         # Backward iteration for O(n) complexity
         for t in reversed(range(len(rewards) - 1)):
@@ -318,7 +328,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
 
     def get_log_probs(
         self,
-        outputs: Union[dict[str, torch.Tensor], torch.Tensor],
+        outputs: dict[str, torch.Tensor] | torch.Tensor,
         labels: torch.Tensor,
     ) -> torch.Tensor:
         """
@@ -378,6 +388,9 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         batch: dict[str, torch.Tensor],
     ) -> dict[str, torch.Tensor]:
         """Compute loss using separate actor-critic networks"""
+
+        assert self.actor is not None, "Actor network not initialized"
+        assert self.critic is not None, "Critic network not initialized"
 
         cfg = self.config
         device = self.actor.device
@@ -440,9 +453,13 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
             if hasattr(self.policy_model, "embedding") and states.dtype == torch.float:
                 # Convert float states to long for embedding models
                 # Ensure values are within vocab range
-                vocab_size = self.policy_model.embedding.num_embeddings
-                states_input = states.long() % vocab_size  # Wrap to valid range
-                outputs = self.policy_model(input_ids=states_input)
+                embedding_layer = self.policy_model.embedding
+                if isinstance(embedding_layer, nn.Embedding):
+                    vocab_size = embedding_layer.num_embeddings
+                    states_input = states.long() % vocab_size  # Wrap to valid range
+                    outputs = self.policy_model(input_ids=states_input)
+                else:
+                    outputs = self.policy_model(states)
             else:
                 outputs = self.policy_model(states)
 
@@ -601,7 +618,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
     def training_step(
         self,
         batch: dict[str, torch.Tensor],
-    ) -> dict[str, torch.Tensor]:
+    ) -> dict[str, float]:
         """
         Execute single training step
 
@@ -614,11 +631,14 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         """
 
         if self.use_separate_value_network:
+            assert self.actor is not None, "Actor network not initialized"
+            assert self.critic is not None, "Critic network not initialized"
             self.actor.train()
             self.critic.train()
             self.actor.optimizer.zero_grad()
             self.critic.optimizer.zero_grad()
         else:
+            assert self.optimizer is not None, "Optimizer not initialized"
             self.policy_model.train()
             self.optimizer.zero_grad()
 
@@ -627,7 +647,10 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
 
         loss.backward()
 
+        grad_norm: float = 0.0
         if self.use_separate_value_network:
+            assert self.actor is not None, "Actor network not initialized"
+            assert self.critic is not None, "Critic network not initialized"
             # Apply gradient clipping to both networks
             _ = torch.nn.utils.clip_grad_norm_(
                 self.actor.parameters(), self.config.clip_grad_norm
@@ -639,17 +662,19 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
             self.critic.optimizer.step()
 
         else:
-            grad_norm = torch.nn.utils.clip_grad_norm_(
+            assert self.optimizer is not None, "Optimizer not initialized"
+            grad_norm_tensor = torch.nn.utils.clip_grad_norm_(
                 self.policy_model.parameters(), self.config.clip_grad_norm
             )
+            grad_norm = float(grad_norm_tensor.item())
             self.optimizer.step()
 
-        metrics = {
-            k: v.item() if isinstance(v, torch.Tensor) else v
+        metrics: dict[str, float] = {
+            k: float(v.item()) if isinstance(v, torch.Tensor) else float(v)
             for k, v in loss_dict.items()
         }
         if not self.use_separate_value_network:
-            metrics["grad_norm"] = grad_norm.item()
+            metrics["grad_norm"] = grad_norm
 
         return metrics
 
@@ -673,6 +698,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
                 batches,
             ) = self.memory.generate_batches()
             if self.use_separate_value_network:
+                assert self.actor is not None, "Actor network not initialized"
                 device = self.actor.device
             else:
                 device = next(self.policy_model.parameters()).device
@@ -695,7 +721,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
                     adv_mean = batch_advantages.mean()
                     adv_std = batch_advantages.std()
                     # Ensure std is not too small to avoid division issues
-                    if adv_std < 1e-8:
+                    if adv_std.item() < 1e-8:
                         adv_std = torch.tensor(1.0, device=batch_advantages.device)
                     batch_advantages = (batch_advantages - adv_mean) / (adv_std + 1e-8)
 
@@ -714,11 +740,13 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         self.memory.clear_memory()
         return all_metrics
 
-    def state_dict(self) -> dict:
+    def state_dict(self) -> dict[str, Any]:
         """Override base state_dict to handle PPOConfig dataclass."""
         from dataclasses import asdict
 
-        state = {
+        assert self.optimizer is not None, "Optimizer not initialized"
+
+        state: dict[str, Any] = {
             "policy_model": self.policy_model.state_dict(),
             "optimizer": self.optimizer.state_dict(),
             "config": {
@@ -737,6 +765,8 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
             state["ref_model"] = self.ref_model.state_dict()
 
         if self.use_separate_value_network:
+            assert self.actor is not None, "Actor network not initialized"
+            assert self.critic is not None, "Critic network not initialized"
             state["actor"] = self.actor.state_dict()
             state["critic"] = self.critic.state_dict()
 
@@ -745,7 +775,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
 
 def create_ppo(
     policy_model: nn.Module,
-    optimizer: Optional[Optimizer] = None,
+    optimizer: Optimizer | None = None,
     learning_rate: float = 3e-4,
     policy_clip: float = 0.2,
     n_epochs: int = 10,
