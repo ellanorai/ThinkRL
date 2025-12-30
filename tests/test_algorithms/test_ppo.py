@@ -726,5 +726,114 @@ def test_large_rollout_stress():
     assert total_samples_in_batches == n_samples
 
 
+def test_compute_gae_with_episode_boundaries(ppo_algo):
+    """Test GAE correctly handles episode boundaries via dones tensor.
+
+    This test verifies that:
+    1. The dones parameter is properly passed to compute_gae_advantages
+    2. Episode boundaries reset the advantage accumulation
+    """
+    # Two episodes: [0,1] and [2,3]
+    rewards = torch.tensor([1.0, 2.0, 3.0, 4.0])
+    values = torch.tensor([0.5, 1.0, 1.5, 2.0])
+    dones = torch.tensor([0.0, 1.0, 0.0, 1.0])  # Episodes end at t=1 and t=3
+
+    advantages_with_dones = ppo_algo.compute_gae_advantages(
+        rewards, values, dones=dones
+    )
+    advantages_no_dones = ppo_algo.compute_gae_advantages(rewards, values, dones=None)
+
+    # Advantages should be different when dones are properly handled
+    # because episode boundaries reset the GAE accumulation
+    assert advantages_with_dones.shape == (4,)
+    assert not torch.allclose(
+        advantages_with_dones, advantages_no_dones
+    ), "Dones tensor should affect GAE computation"
+
+
+def test_learn_respects_episode_boundaries():
+    """Integration test: verify learn() passes dones correctly to GAE computation.
+
+    This regression test ensures the dones tensor flows through the learn() method
+    to compute_gae_advantages.
+    """
+    n_actions = 4
+    input_dims = (8,)
+
+    config = PPOConfig(
+        learning_rate=1e-3,
+        n_epochs=1,
+        batch_size=8,
+        use_separate_value_network=True,
+    )
+
+    policy_model = nn.Linear(8, 8)
+    ppo = PPOAlgorithm(
+        policy_model=policy_model,
+        config=config,
+        n_actions=n_actions,
+        input_dims=input_dims,
+    )
+
+    # Create rollout with clear episode boundaries
+    for i in range(16):
+        observation = torch.randn(8).numpy()
+        action, prob, value = ppo.choose_action(observation)
+        reward = 1.0
+        done = 1.0 if (i + 1) % 4 == 0 else 0.0  # Episode ends every 4 steps
+
+        ppo.remember(observation, action, prob, value, reward, done)
+
+    # Patch compute_gae_advantages to verify dones is passed
+    original_gae = ppo.compute_gae_advantages
+    gae_calls = []
+
+    def tracking_gae(*args, **kwargs):
+        gae_calls.append(kwargs)
+        return original_gae(*args, **kwargs)
+
+    ppo.compute_gae_advantages = tracking_gae
+
+    metrics = ppo.learn()
+
+    assert len(metrics) > 0
+    assert len(gae_calls) > 0
+    # Verify that dones was passed as a keyword argument
+    assert "dones" in gae_calls[0], "dones must be passed to compute_gae_advantages"
+    assert gae_calls[0]["dones"] is not None, "dones tensor should not be None"
+
+
+def test_compute_loss_unified_with_simple_states(policy_model, ppo_config):
+    """Test _compute_loss_unified_model with simple state-action batches (non-LLM case)."""
+
+    # Create a simple MLP policy without embeddings
+    class SimpleMLP(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(4, 8)
+
+        def forward(self, x):
+            return self.fc(x)
+
+    simple_policy = SimpleMLP()
+    ppo = PPOAlgorithm(policy_model=simple_policy, config=ppo_config)
+
+    batch = {
+        "states": torch.randn(4, 4),
+        "actions": torch.randint(0, 8, (4,)),
+        "old_probs": torch.randn(4),
+        "advantages": torch.randn(4),
+        "returns": torch.randn(4),
+    }
+
+    loss_dict = ppo.compute_loss(batch)
+
+    assert "loss" in loss_dict
+    assert "policy_loss" in loss_dict
+    assert "value_loss" in loss_dict
+    assert "entropy_loss" in loss_dict
+    assert not torch.isnan(loss_dict["loss"])
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
