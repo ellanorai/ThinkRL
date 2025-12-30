@@ -48,10 +48,10 @@ class DAPOConfig:
     # Multi-epoch training (Algorithm 1: for iteration = 1, ..., μ)
     n_epochs: int = 1  # Number of optimization epochs per rollout
 
-    # Dynamic sampling
-    dynamic_sampling: bool = True
-    min_batch_size: int = 256  # Minimum valid samples required
-    max_sampling_attempts: int = 10  # Max over-sampling rounds
+    # Dynamic sampling (WARNING: not DDP-safe, use False for distributed training)
+    dynamic_sampling: bool = False  # Disabled by default for DDP safety
+    min_batch_size: int = 256  # Minimum valid samples required (only if dynamic_sampling=True)
+    max_sampling_attempts: int = 10  # Max over-sampling rounds (only if dynamic_sampling=True)
 
     # Overlong punishment
     use_overlong_punishment: bool = True
@@ -80,6 +80,13 @@ class DynamicSamplingBuffer:
 
     Over-samples and filters prompts with accuracy = 0 or 1 (zero variance),
     keeping batch size constant with only effective gradient samples.
+
+    WARNING: This class is NOT safe for DDP/distributed training!
+    In multi-GPU setups, different GPUs may filter different amounts,
+    causing batch size mismatches and DDP deadlocks.
+
+    For distributed training, use DAPOAlgorithm with dynamic_sampling=False
+    (the default now). Zero-variance groups will be masked in the loss instead.
     """
 
     def __init__(self, config: DAPOConfig):
@@ -246,8 +253,8 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
 
         token_log_probs = log_probs.gather(dim=-1, index=gather_labels.unsqueeze(-1)).squeeze(-1)
 
-        # Zero out masked positions
-        token_log_probs[shift_labels == -100] = 0.0
+        # Zero out masked positions (use multiplication for gradient safety)
+        token_log_probs = token_log_probs * (shift_labels != -100).float()
 
         # Pad to match original sequence length
         padding = torch.zeros(token_log_probs.size(0), 1, device=token_log_probs.device, dtype=token_log_probs.dtype)
@@ -256,21 +263,34 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
     def compute_advantages(
         self,
         rewards: torch.Tensor,
-    ) -> torch.Tensor:
+    ) -> tuple[torch.Tensor, torch.Tensor]:
         """
         Compute group-relative advantages (Equation 9).
 
-        Note: With proper dynamic sampling, all groups should have non-zero
-        variance, so we don't need to return a validity mask here.
+        For DDP safety, instead of rejecting zero-variance groups, we return
+        a validity mask. The loss function uses this mask to zero out gradients
+        for invalid groups, keeping batch size constant across all GPUs.
 
         Args:
             rewards: Per-sample rewards [B] (R_i in paper notation)
 
         Returns:
-            advantages: Normalized advantages [B]
+            Tuple of:
+                - advantages: Normalized advantages [B]
+                - valid_mask: Boolean mask [B] indicating valid (non-zero variance) samples
+
+        Raises:
+            ValueError: If batch size is not divisible by group_size
         """
         cfg = self.config
         batch_size = rewards.size(0)
+
+        if batch_size % cfg.group_size != 0:
+            raise ValueError(
+                f"Batch size {batch_size} is not divisible by group_size {cfg.group_size}. "
+                f"Ensure data is batched in complete groups."
+            )
+
         num_groups = batch_size // cfg.group_size
 
         # Reshape to groups: [num_groups, group_size]
@@ -280,12 +300,16 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
         mean = grouped.mean(dim=1, keepdim=True)
         std = grouped.std(dim=1, keepdim=True, unbiased=False)
 
-        # Safe normalization (should be safe if dynamic sampling worked)
+        # Identify valid groups (non-zero variance) for masking
+        # Shape: [num_groups, 1] -> broadcast to [num_groups, group_size]
+        valid_groups = (std > cfg.advantage_eps).expand_as(grouped)
+
+        # Safe normalization
         std_safe = std.clamp(min=cfg.advantage_eps)
         advantages = (grouped - mean) / std_safe
 
         # Flatten back to batch dimension
-        return advantages.view(-1)
+        return advantages.view(-1), valid_groups.reshape(-1)
 
     def compute_overlong_penalty(self, seq_lengths: torch.Tensor) -> torch.Tensor:
         """
@@ -372,11 +396,16 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
             penalties = self.compute_overlong_penalty(seq_lengths)
             rewards = rewards + penalties.to(device)
 
-        # Compute advantages
-        advantages = self.compute_advantages(rewards)
+        # Compute advantages and validity mask (for DDP-safe masking)
+        advantages, valid_mask = self.compute_advantages(rewards)
 
         # Token mask: only compute loss on target tokens
         token_mask = labels != -100
+
+        # Combine token mask with sample validity mask for DDP safety
+        # valid_mask is [B], expand to [B, S] to match token_mask
+        valid_mask_expanded = valid_mask.unsqueeze(1).expand_as(token_mask)
+        combined_mask = token_mask & valid_mask_expanded
 
         # Importance sampling ratio: π_θ / π_θ_old
         ratio = torch.exp(log_probs - old_log_probs)
@@ -397,8 +426,9 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
         surr_min = torch.min(surr_unclipped, surr_clipped)
 
         # Token-level aggregation (Equation 12): 1 / Σ|o_i|
-        num_tokens = token_mask.sum().float().clamp(min=1.0)
-        policy_loss = -surr_min[token_mask].sum() / num_tokens
+        # Only count tokens from valid (non-zero variance) groups
+        num_valid_tokens = combined_mask.sum().float().clamp(min=1.0)
+        policy_loss = -surr_min[combined_mask].sum() / num_valid_tokens
 
         # Optional entropy bonus
         entropy_loss = torch.tensor(0.0, device=device)
@@ -416,9 +446,13 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
                 log_probs=log_probs,
                 old_log_probs=old_log_probs,
                 advantages=adv_expanded,
-                token_mask=token_mask,
+                token_mask=combined_mask,  # Use combined mask for accurate metrics
                 rewards=rewards,
             )
+            # Track how many samples were masked due to zero variance
+            num_groups = rewards.size(0) // cfg.group_size
+            num_valid_groups = valid_mask.view(num_groups, cfg.group_size)[:, 0].sum()
+            metrics["masked_group_ratio"] = 1.0 - (num_valid_groups.float() / num_groups)
 
         return {
             "loss": total_loss,

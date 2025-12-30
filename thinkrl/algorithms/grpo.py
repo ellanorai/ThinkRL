@@ -258,12 +258,21 @@ class GRPOAlgorithm(BaseRLHFAlgorithm):
 
         # Metrics - detach for logging
         with torch.no_grad():
+            # Clip fraction accounting for advantage sign:
+            # - High clip: trying to increase prob (A > 0) but ratio exceeds upper bound
+            # - Low clip: trying to decrease prob (A < 0) but ratio below lower bound
+            clipped_high = (ratio > 1.0 + cfg.clip_epsilon) & (advantages_expanded > 0)
+            clipped_low = (ratio < 1.0 - cfg.clip_epsilon) & (advantages_expanded < 0)
+            clipped = clipped_high | clipped_low
+
             metrics = {
                 "kl_mean": (kl_div * token_mask).sum() / num_tokens,
                 "advantage_mean": advantages.mean(),
                 "reward_mean": rewards.mean(),
                 "reward_std": rewards.std(),
-                "clip_fraction": ((ratio < 1.0 - cfg.clip_epsilon) | (ratio > 1.0 + cfg.clip_epsilon)).float().mean(),
+                "clip_fraction": (clipped * token_mask).sum() / num_tokens,
+                "clip_fraction_high": (clipped_high * token_mask).sum() / num_tokens,
+                "clip_fraction_low": (clipped_low * token_mask).sum() / num_tokens,
             }
 
         return {
@@ -324,12 +333,23 @@ class GRPOAlgorithm(BaseRLHFAlgorithm):
         )
         return self.get_log_probs(outputs, batch["labels"])
 
-    def train_on_rollout(self, batch: dict[str, torch.Tensor]) -> list[dict[str, float]]:
+    def train_on_rollout(
+        self,
+        batch: dict[str, torch.Tensor],
+        max_kl: float = 0.1,
+    ) -> list[dict[str, float]]:
         """
         Execute the GRPO inner loop (iterations 1..mu).
 
         Eq 19 optimizes pi_theta against a fixed pi_old (from which data was sampled).
         We calculate old_log_probs once and reuse them.
+
+        Args:
+            batch: Rollout batch with input_ids, attention_mask, labels, rewards
+            max_kl: Maximum KL divergence before early stopping (default: 0.1)
+
+        Returns:
+            List of metrics dicts, one per epoch
         """
         # Freeze old policy distribution (Algorithm 1, Line 6/7 context)
         # In this implementation, 'batch' corresponds to D_b sampled from pi_theta_old
@@ -340,5 +360,13 @@ class GRPOAlgorithm(BaseRLHFAlgorithm):
             metrics = self.training_step(batch, old_log_probs=old_log_probs)
             metrics["epoch"] = epoch
             epoch_metrics.append(metrics)
+
+            # Early stopping if KL divergence too high
+            if metrics.get("kl_mean", 0) > max_kl:
+                logger.warning(
+                    f"KL divergence too high ({metrics['kl_mean']:.4f} > {max_kl}), "
+                    f"stopping early at epoch {epoch + 1}/{self.config.n_epochs}"
+                )
+                break
 
         return epoch_metrics

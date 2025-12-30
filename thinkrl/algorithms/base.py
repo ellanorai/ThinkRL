@@ -58,7 +58,6 @@ class BaseRLHFAlgorithm(ABC):
     - Optimizer configuration
     - KL divergence computation from reference policy
     - Reward normalization and processing
-    - Advantage estimation (GAE)
     - Integration with vLLM for efficient generation
     - Distributed training utilities
     - Metrics tracking
@@ -66,6 +65,15 @@ class BaseRLHFAlgorithm(ABC):
     Subclasses must implement:
         - compute_loss(): Algorithm-specific loss computation
         - training_step(): Complete training step with gradient updates
+
+    Optional methods (algorithm-specific):
+        - compute_gae_advantages(): GAE for actor-critic (PPO). Not used by GRPO/DAPO.
+        - get_log_probs(): Default implementation handles causal LM. Override if needed.
+
+    Note on gamma/lambda_ parameters:
+        These are used for GAE computation in actor-critic algorithms (PPO).
+        Group-relative algorithms (GRPO, DAPO) ignore these and compute
+        advantages by normalizing within sample groups.
     """
 
     def __init__(
@@ -211,6 +219,18 @@ class BaseRLHFAlgorithm(ABC):
     ) -> torch.Tensor:
         """
         Compute Generalized Advantage Estimation (GAE).
+
+        Note: This is primarily used by PPO and other actor-critic algorithms.
+        Group-relative algorithms (GRPO, DAPO) use their own advantage computation
+        that normalizes within sample groups instead.
+
+        Args:
+            rewards: Reward tensor [B, T] or [B]
+            values: Value estimates from critic [B, T] or [B]
+            normalize: Whether to normalize advantages (defaults to self.normalize_advantages)
+
+        Returns:
+            GAE advantages tensor
         """
         should_normalize = normalize if normalize is not None else self.normalize_advantages
         return compute_advantages(
@@ -227,18 +247,46 @@ class BaseRLHFAlgorithm(ABC):
         labels: torch.Tensor,
     ) -> torch.Tensor:
         """
-        Extract log probabilities of target tokens from model outputs.
+        Extract per-token log probabilities for causal language models.
+
+        Handles the causal shift (logits[t] predicts labels[t+1]) and properly
+        masks positions where labels == -100.
+
+        Args:
+            outputs: Model outputs (dict with 'logits' key or raw logits tensor)
+            labels: Target token IDs [B, S], with -100 for masked positions
+
+        Returns:
+            Log probabilities [B, S] with 0.0 at masked positions
         """
         if isinstance(outputs, dict):
             logits = outputs["logits"]
         else:
             logits = outputs
 
-        log_probs = torch.log_softmax(logits, dim=-1)
+        # Causal shift: logits[t] predicts token at t+1
+        shift_logits = logits[:, :-1, :].contiguous()
+        shift_labels = labels[:, 1:].contiguous()
 
-        target_log_probs = torch.gather(log_probs, dim=-1, index=labels.unsqueeze(-1)).squeeze(-1)
+        log_probs = torch.log_softmax(shift_logits, dim=-1)
 
-        return target_log_probs
+        # Replace -100 with 0 for gathering (will be masked out later)
+        gather_labels = shift_labels.clone()
+        gather_labels[gather_labels == -100] = 0
+
+        # Gather log probs of target tokens
+        token_log_probs = torch.gather(log_probs, dim=-1, index=gather_labels.unsqueeze(-1)).squeeze(-1)
+
+        # Mask out positions where label was -100 (use multiplication for gradient safety)
+        token_log_probs = token_log_probs * (shift_labels != -100).float()
+
+        # Pad to maintain original sequence length [B, S]
+        padding = torch.zeros(
+            token_log_probs.size(0), 1,
+            device=token_log_probs.device,
+            dtype=token_log_probs.dtype
+        )
+        return torch.cat([token_log_probs, padding], dim=1)
 
     def generate_rollouts(
         self,
@@ -249,10 +297,33 @@ class BaseRLHFAlgorithm(ABC):
         top_k: int = 50,
         do_sample: bool = True,
         num_return_sequences: int = 1,
+        return_logprobs: bool = True,
         **generation_kwargs,
-    ) -> list[str]:
+    ) -> dict[str, Any]:
         """
         Generate text completions using vLLM (if enabled) or policy model.
+
+        Args:
+            prompts: List of prompt strings
+            max_new_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            top_p: Nucleus sampling parameter
+            top_k: Top-k sampling parameter
+            do_sample: Whether to sample (vs greedy)
+            num_return_sequences: Number of sequences per prompt
+            return_logprobs: If True, return log probabilities (avoids double forward pass)
+            **generation_kwargs: Additional generation parameters
+
+        Returns:
+            Dict containing:
+                - "text": List of generated text strings
+                - "token_ids": List of token ID lists (when return_logprobs=True and vLLM)
+                - "log_probs": List of log probability lists (when return_logprobs=True and vLLM)
+
+        Note:
+            When using vLLM with return_logprobs=True, the log_probs are computed
+            during generation, eliminating the need for compute_rollout_log_probs().
+            This effectively doubles training throughput for large models.
         """
         # Assign to distinct local variable for strict type narrowing
         client = self.vllm_client
@@ -270,12 +341,13 @@ class BaseRLHFAlgorithm(ABC):
                     **generation_kwargs,
                 }
 
-                completions = client.generate(prompts, generation_params)
-                return completions
+                result = client.generate(prompts, generation_params, return_logprobs=return_logprobs)
+                return result
             else:
-                return []
+                return {"text": [], "token_ids": [], "log_probs": []}
         else:
-            return self._generate_with_policy_model(
+            # Fallback to policy model (no log_probs available inline)
+            texts = self._generate_with_policy_model(
                 prompts=prompts,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
@@ -285,6 +357,7 @@ class BaseRLHFAlgorithm(ABC):
                 num_return_sequences=num_return_sequences,
                 **generation_kwargs,
             )
+            return {"text": texts, "token_ids": [], "log_probs": []}
 
     def _generate_with_policy_model(
         self,
