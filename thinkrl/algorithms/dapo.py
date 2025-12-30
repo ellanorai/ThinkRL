@@ -246,8 +246,8 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
 
         token_log_probs = log_probs.gather(dim=-1, index=gather_labels.unsqueeze(-1)).squeeze(-1)
 
-        # Zero out masked positions
-        token_log_probs[shift_labels == -100] = 0.0
+        # Zero out masked positions (use multiplication for gradient safety)
+        token_log_probs = token_log_probs * (shift_labels != -100).float()
 
         # Pad to match original sequence length
         padding = torch.zeros(token_log_probs.size(0), 1, device=token_log_probs.device, dtype=token_log_probs.dtype)
@@ -268,9 +268,19 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
 
         Returns:
             advantages: Normalized advantages [B]
+
+        Raises:
+            ValueError: If batch size is not divisible by group_size
         """
         cfg = self.config
         batch_size = rewards.size(0)
+
+        if batch_size % cfg.group_size != 0:
+            raise ValueError(
+                f"Batch size {batch_size} is not divisible by group_size {cfg.group_size}. "
+                f"Ensure data is batched in complete groups."
+            )
+
         num_groups = batch_size // cfg.group_size
 
         # Reshape to groups: [num_groups, group_size]
