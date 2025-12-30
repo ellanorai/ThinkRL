@@ -91,6 +91,7 @@ def sample_batch():
         "attention_mask": torch.ones(batch_size, seq_len, dtype=torch.long),
         "labels": torch.randint(0, 100, (batch_size, seq_len)),
         "rewards": torch.randn(batch_size),
+        "old_log_probs": torch.randn(batch_size, seq_len),  # Required for compute_loss
     }
 
 
@@ -110,7 +111,7 @@ class TestDAPOConfig:
         assert config.group_size == 16
         assert config.beta == 0.0
         assert config.n_epochs == 1
-        assert config.dynamic_sampling is True
+        assert config.dynamic_sampling is False  # Changed to False for DDP safety
         assert config.use_overlong_punishment is True
 
     def test_custom_values(self):
@@ -384,12 +385,30 @@ class TestDAPOAlgorithm:
         """Test advantage computation."""
         rewards = torch.tensor([0.0, 1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0])
 
-        advantages = dapo_algorithm.compute_advantages(rewards)
+        # compute_advantages now returns (advantages, valid_mask) tuple
+        advantages, valid_mask = dapo_algorithm.compute_advantages(rewards)
 
         assert advantages.shape == rewards.shape
+        assert valid_mask.shape == rewards.shape
+        # All samples should be valid (non-zero variance groups)
+        assert valid_mask.all()
         # Check normalization within groups
         grouped = advantages.view(2, 4)
         assert torch.allclose(grouped.mean(dim=1), torch.zeros(2), atol=1e-6)
+
+    def test_compute_advantages_zero_variance_masking(self, dapo_algorithm):
+        """Test that zero-variance groups are masked instead of rejected (DDP-safe)."""
+        # Two groups: first has variance, second has zero variance
+        rewards = torch.tensor([0.0, 1.0, 2.0, 3.0, 5.0, 5.0, 5.0, 5.0])
+
+        advantages, valid_mask = dapo_algorithm.compute_advantages(rewards)
+
+        assert advantages.shape == (8,)
+        assert valid_mask.shape == (8,)
+        # First group should be valid
+        assert valid_mask[:4].all()
+        # Second group should be masked (zero variance)
+        assert not valid_mask[4:].any()
 
     def test_compute_overlong_penalty_no_penalty(self, dapo_algorithm):
         """Test no penalty for short sequences."""
@@ -439,13 +458,17 @@ class TestDAPOAlgorithm:
         assert "advantage_mean" in loss_dict
         assert "reward_mean" in loss_dict
         assert "ratio_mean" in loss_dict
+        assert "masked_group_ratio" in loss_dict  # DDP-safe masking metric
 
         assert loss_dict["loss"].requires_grad
 
     def test_compute_loss_with_old_log_probs(self, dapo_algorithm, sample_batch):
-        """Test loss computation with pre-computed old_log_probs."""
+        """Test loss computation with pre-computed old_log_probs in batch."""
+        # Compute old_log_probs and add to batch
         old_log_probs = dapo_algorithm.compute_rollout_log_probs(sample_batch)
-        loss_dict = dapo_algorithm.compute_loss(sample_batch, old_log_probs)
+        sample_batch["old_log_probs"] = old_log_probs
+
+        loss_dict = dapo_algorithm.compute_loss(sample_batch)
 
         assert "loss" in loss_dict
         assert loss_dict["loss"].requires_grad
@@ -460,6 +483,7 @@ class TestDAPOAlgorithm:
             "attention_mask": torch.ones(8, 16, dtype=torch.long),
             "labels": torch.randint(0, 100, (8, 16)),
             "rewards": torch.randn(8),
+            "old_log_probs": torch.randn(8, 16),
         }
 
         loss_dict = algo.compute_loss(batch)
@@ -476,6 +500,7 @@ class TestDAPOAlgorithm:
             "attention_mask": torch.ones(8, 16, dtype=torch.long),
             "labels": torch.randint(0, 100, (8, 16)),
             "rewards": torch.randn(8),
+            "old_log_probs": torch.randn(8, 16),
         }
 
         # Should not raise error
@@ -734,6 +759,7 @@ class TestDAPOIntegration:
             "attention_mask": torch.ones(8, 16, dtype=torch.long),
             "labels": torch.randint(0, 100, (8, 16)),
             "rewards": torch.randn(8),
+            "old_log_probs": torch.randn(8, 16),
         }
 
         loss_dict = algo.compute_loss(batch)
@@ -758,6 +784,7 @@ class TestDAPOIntegration:
             "attention_mask": torch.ones(8, 16, dtype=torch.long),
             "labels": torch.randint(0, 100, (8, 16)),
             "rewards": torch.tensor([1e6, -1e6, 1e6, -1e6, 1e6, -1e6, 1e6, -1e6]),
+            "old_log_probs": torch.randn(8, 16),
         }
 
         loss_dict = algo.compute_loss(batch)
@@ -779,6 +806,7 @@ class TestDAPOIntegration:
             "attention_mask": torch.ones(8, 16, dtype=torch.long),
             "labels": torch.randint(0, 100, (8, 16)),
             "rewards": torch.randn(8),
+            "old_log_probs": torch.randn(8, 16),
         }
 
         loss_dict = algo.compute_loss(batch)
@@ -804,6 +832,7 @@ class TestDAPOEdgeCases:
             "attention_mask": torch.ones(4, 16, dtype=torch.long),
             "labels": torch.randint(0, 100, (4, 16)),
             "rewards": torch.randn(4),
+            "old_log_probs": torch.randn(4, 16),
         }
 
         loss_dict = algo.compute_loss(batch)
@@ -819,6 +848,7 @@ class TestDAPOEdgeCases:
             "attention_mask": torch.ones(4, 16, dtype=torch.long),
             "labels": torch.full((4, 16), -100),  # All masked
             "rewards": torch.randn(4),
+            "old_log_probs": torch.randn(4, 16),
         }
 
         # Should handle gracefully
@@ -835,6 +865,7 @@ class TestDAPOEdgeCases:
             "attention_mask": torch.ones(4, 16, dtype=torch.long),
             "labels": torch.randint(0, 100, (4, 16)),
             "rewards": torch.zeros(4),
+            "old_log_probs": torch.randn(4, 16),
         }
 
         loss_dict = algo.compute_loss(batch)
@@ -842,7 +873,7 @@ class TestDAPOEdgeCases:
         assert not torch.isnan(loss_dict["loss"])
 
     def test_uniform_rewards_in_group(self, simple_model):
-        """Test handling of uniform rewards within group."""
+        """Test handling of uniform rewards within group (masked, not rejected)."""
         config = DAPOConfig(group_size=4, advantage_eps=1e-8)
         algo = DAPOAlgorithm(policy_model=simple_model, config=config)
 
@@ -850,9 +881,12 @@ class TestDAPOEdgeCases:
             "input_ids": torch.randint(0, 100, (4, 16)),
             "attention_mask": torch.ones(4, 16, dtype=torch.long),
             "labels": torch.randint(0, 100, (4, 16)),
-            "rewards": torch.ones(4),  # All same
+            "rewards": torch.ones(4),  # All same - will be masked
+            "old_log_probs": torch.randn(4, 16),
         }
 
-        # Should handle via advantage_eps clamping
+        # Should handle via masking (DDP-safe approach)
         loss_dict = algo.compute_loss(batch)
         assert not torch.isnan(loss_dict["loss"])
+        # The group should be masked (zero variance)
+        assert loss_dict["masked_group_ratio"] == 1.0

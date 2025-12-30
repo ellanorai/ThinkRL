@@ -43,7 +43,7 @@ def test_dapo_config_defaults():
     config = DAPOConfig()
     assert config.learning_rate == 1e-6
     assert config.group_size == 16
-    assert config.dynamic_sampling is True
+    assert config.dynamic_sampling is False  # Changed to False for DDP safety
 
 
 def test_dapo_config_validation():
@@ -134,9 +134,13 @@ def test_compute_advantages(dapo_algo):
     # Mean: 25, Std (unbiased): 12.91
     rewards = torch.tensor([10.0, 20.0, 30.0, 40.0])
 
-    adv = dapo_algo.compute_advantages(rewards)
+    # compute_advantages now returns (advantages, valid_mask) tuple
+    adv, valid_mask = dapo_algo.compute_advantages(rewards)
 
     assert adv.shape == (4,)
+    assert valid_mask.shape == (4,)
+    # All samples should be valid (non-zero variance group)
+    assert valid_mask.all()
     # Sum of standardized values should be close to 0
     assert torch.isclose(adv.sum(), torch.tensor(0.0), atol=1e-5)
     # Variance should be close to 1
@@ -147,6 +151,39 @@ def test_compute_advantages(dapo_algo):
     std = torch.tensor([10.0, 20.0, 30.0, 40.0]).std(unbiased=False)
     expected = (rewards - mean) / (std + 1e-8)
     assert torch.allclose(adv, expected, atol=1e-5)
+
+
+def test_compute_advantages_zero_variance_masking(dapo_algo):
+    """Test that zero-variance groups are masked instead of rejected (DDP-safe)."""
+    # Two groups: first has variance, second has zero variance
+    rewards = torch.tensor([10.0, 20.0, 30.0, 40.0, 5.0, 5.0, 5.0, 5.0])
+
+    adv, valid_mask = dapo_algo.compute_advantages(rewards)
+
+    assert adv.shape == (8,)
+    assert valid_mask.shape == (8,)
+    # First group should be valid
+    assert valid_mask[:4].all()
+    # Second group should be masked (zero variance)
+    assert not valid_mask[4:].any()
+
+
+def test_compute_loss_masked_group_ratio(dapo_algo):
+    """Test that masked_group_ratio metric is computed correctly."""
+    batch = {
+        "input_ids": torch.randint(0, 10, (8, 5)),
+        "attention_mask": torch.ones((8, 5)),
+        "labels": torch.randint(0, 10, (8, 5)),
+        # First group has variance, second group has zero variance
+        "rewards": torch.tensor([0.0, 1.0, 2.0, 3.0, 5.0, 5.0, 5.0, 5.0]),
+        "old_log_probs": torch.zeros((8, 5)),
+    }
+
+    loss_dict = dapo_algo.compute_loss(batch)
+
+    assert "masked_group_ratio" in loss_dict
+    # 1 out of 2 groups masked = 0.5 ratio
+    assert torch.isclose(loss_dict["masked_group_ratio"], torch.tensor(0.5), atol=1e-5)
 
 
 def test_overlong_penalty(dapo_algo):

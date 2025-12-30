@@ -113,6 +113,9 @@ def test_compute_loss_structure(grpo_algo):
     assert "kl_mean" in loss_dict
     assert "advantage_mean" in loss_dict
     assert "clip_fraction" in loss_dict
+    # New metrics accounting for advantage sign
+    assert "clip_fraction_high" in loss_dict
+    assert "clip_fraction_low" in loss_dict
 
     # Check gradients
     loss = loss_dict["loss"]
@@ -199,3 +202,62 @@ def test_no_ref_model_warning():
         mock_logger.warning.assert_called_with(
             "GRPO initialized without ref_model but beta > 0. KL penalty will be 0."
         )
+
+
+def test_train_on_rollout_kl_early_stop(grpo_algo):
+    """Test that train_on_rollout stops early when KL exceeds max_kl."""
+    grpo_algo.config.n_epochs = 10  # High number of epochs
+
+    batch = {
+        "input_ids": torch.randint(0, 10, (4, 5), dtype=torch.long),
+        "attention_mask": torch.ones((4, 5)),
+        "labels": torch.randint(0, 10, (4, 5), dtype=torch.long),
+        "rewards": torch.randn(4),
+    }
+
+    # Mock compute_rollout_log_probs
+    with patch.object(grpo_algo, "compute_rollout_log_probs") as mock_old_log:
+        mock_old_log.return_value = torch.zeros(4, 5)
+
+        # Mock training_step to return high KL
+        with patch.object(grpo_algo, "training_step") as mock_step:
+            # Return high kl_mean to trigger early stopping
+            mock_step.side_effect = lambda batch, old_log_probs: {"loss": 0.5, "kl_mean": 0.2}
+
+            # Use low max_kl to trigger early stop
+            metrics = grpo_algo.train_on_rollout(batch, max_kl=0.1)
+
+            # Should stop early after first epoch (kl_mean=0.2 > max_kl=0.1)
+            assert len(metrics) == 1
+            assert mock_step.call_count == 1
+
+
+def test_train_on_rollout_custom_max_kl(grpo_algo):
+    """Test that max_kl parameter is respected."""
+    grpo_algo.config.n_epochs = 3
+
+    batch = {
+        "input_ids": torch.randint(0, 10, (4, 5), dtype=torch.long),
+        "attention_mask": torch.ones((4, 5)),
+        "labels": torch.randint(0, 10, (4, 5), dtype=torch.long),
+        "rewards": torch.randn(4),
+    }
+
+    with patch.object(grpo_algo, "compute_rollout_log_probs") as mock_old_log:
+        mock_old_log.return_value = torch.zeros(4, 5)
+
+        with patch.object(grpo_algo, "training_step") as mock_step:
+            # Return moderate kl_mean
+            mock_step.side_effect = lambda batch, old_log_probs: {"loss": 0.5, "kl_mean": 0.15}
+
+            # With default max_kl=0.1, should stop early
+            metrics1 = grpo_algo.train_on_rollout(batch, max_kl=0.1)
+            assert len(metrics1) == 1
+
+            # Reset mock
+            mock_step.reset_mock()
+            mock_step.side_effect = lambda batch, old_log_probs: {"loss": 0.5, "kl_mean": 0.15}
+
+            # With higher max_kl=0.2, should complete all epochs
+            metrics2 = grpo_algo.train_on_rollout(batch, max_kl=0.2)
+            assert len(metrics2) == 3
