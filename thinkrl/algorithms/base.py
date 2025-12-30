@@ -297,10 +297,33 @@ class BaseRLHFAlgorithm(ABC):
         top_k: int = 50,
         do_sample: bool = True,
         num_return_sequences: int = 1,
+        return_logprobs: bool = True,
         **generation_kwargs,
-    ) -> list[str]:
+    ) -> dict[str, Any]:
         """
         Generate text completions using vLLM (if enabled) or policy model.
+
+        Args:
+            prompts: List of prompt strings
+            max_new_tokens: Maximum tokens to generate
+            temperature: Sampling temperature
+            top_p: Nucleus sampling parameter
+            top_k: Top-k sampling parameter
+            do_sample: Whether to sample (vs greedy)
+            num_return_sequences: Number of sequences per prompt
+            return_logprobs: If True, return log probabilities (avoids double forward pass)
+            **generation_kwargs: Additional generation parameters
+
+        Returns:
+            Dict containing:
+                - "text": List of generated text strings
+                - "token_ids": List of token ID lists (when return_logprobs=True and vLLM)
+                - "log_probs": List of log probability lists (when return_logprobs=True and vLLM)
+
+        Note:
+            When using vLLM with return_logprobs=True, the log_probs are computed
+            during generation, eliminating the need for compute_rollout_log_probs().
+            This effectively doubles training throughput for large models.
         """
         # Assign to distinct local variable for strict type narrowing
         client = self.vllm_client
@@ -318,12 +341,13 @@ class BaseRLHFAlgorithm(ABC):
                     **generation_kwargs,
                 }
 
-                completions = client.generate(prompts, generation_params)
-                return completions
+                result = client.generate(prompts, generation_params, return_logprobs=return_logprobs)
+                return result
             else:
-                return []
+                return {"text": [], "token_ids": [], "log_probs": []}
         else:
-            return self._generate_with_policy_model(
+            # Fallback to policy model (no log_probs available inline)
+            texts = self._generate_with_policy_model(
                 prompts=prompts,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
@@ -333,6 +357,7 @@ class BaseRLHFAlgorithm(ABC):
                 num_return_sequences=num_return_sequences,
                 **generation_kwargs,
             )
+            return {"text": texts, "token_ids": [], "log_probs": []}
 
     def _generate_with_policy_model(
         self,
