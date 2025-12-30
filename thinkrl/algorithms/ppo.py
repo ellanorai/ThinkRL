@@ -123,7 +123,7 @@ class ActorNetwork(nn.Module):
     def __init__(
         self,
         n_actions: int,
-        input_dims: tuple,
+        input_dims: tuple[int, ...],
         alpha: float,
         fc1_dims: int = 256,
         fc2_dims: int = 256,
@@ -131,7 +131,7 @@ class ActorNetwork(nn.Module):
 
         super().__init__()
 
-        self.input_layer = nn.Linear(*input_dims, fc1_dims)
+        self.input_layer = nn.Linear(input_dims[0], fc1_dims)
         self.hidden_layer = nn.Linear(fc1_dims, fc2_dims)
         self.output_layer = nn.Linear(fc2_dims, n_actions)
         self.activation = nn.ReLU()
@@ -168,11 +168,11 @@ class CriticNetwork(nn.Module):
     """
 
     def __init__(
-        self, input_dims: tuple, alpha: float, fc1_dims: int = 256, fc2_dims: int = 256
+        self, input_dims: tuple[int, ...], alpha: float, fc1_dims: int = 256, fc2_dims: int = 256
     ):
         super().__init__()
 
-        self.input_layer = nn.Linear(*input_dims, fc1_dims)
+        self.input_layer = nn.Linear(input_dims[0], fc1_dims)
         self.hidden_layer = nn.Linear(fc1_dims, fc2_dims)
         self.value_head = nn.Linear(fc2_dims, 1)
 
@@ -214,7 +214,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         optimizer: Optimizer | None = None,
         config: PPOConfig | None = None,
         n_actions: int | None = None,
-        input_dims: tuple | None = None,
+        input_dims: tuple[int, ...] | None = None,
         **kwargs,
     ):
         config = config or PPOConfig()
@@ -466,8 +466,10 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
             # Compute action probabilities
             if isinstance(outputs, dict) and "logits" in outputs:
                 logits = outputs["logits"]
-            else:
+            elif isinstance(outputs, torch.Tensor):
                 logits = outputs
+            else:
+                raise TypeError(f"Expected outputs to be Tensor or dict with 'logits', got {type(outputs)}")
 
             # Handle sequence dimension if present: take last token
             if logits.dim() == 3:  # [batch, seq, vocab]
