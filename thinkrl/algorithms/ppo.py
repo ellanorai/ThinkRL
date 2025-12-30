@@ -707,7 +707,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
             reward_arr = reward_arr.to(device)
             dones = done_arr.to(device)
 
-            advantages = self.compute_gae_advantages(reward_arr, values, dones)
+            advantages = self.compute_gae_advantages(reward_arr, values, dones=dones)
             returns = advantages + values
 
             for batch_indices in batches:
