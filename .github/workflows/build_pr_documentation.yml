@@ -34,7 +34,7 @@ jobs:
         run: |
           cd docs
           # turning warnings into errors ensures high quality docs
-          SPHINXOPTS="-W" make html 
+          SPHINXOPTS="-W" make html
 
       - name: Upload Documentation Artifact
         uses: actions/upload-artifact@v4

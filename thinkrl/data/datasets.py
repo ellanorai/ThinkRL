@@ -58,9 +58,7 @@ class BaseRLHFDataset(Dataset):
             # Load dataset
             if isinstance(dataset_name_or_path, str):
                 if dataset_name_or_path.endswith((".json", ".jsonl")):
-                    self.dataset = load_dataset(
-                        "json", data_files=dataset_name_or_path, split=split
-                    )
+                    self.dataset = load_dataset("json", data_files=dataset_name_or_path, split=split)
                 else:
                     self.dataset = load_dataset(dataset_name_or_path, split=split)
             else:
@@ -123,9 +121,7 @@ class RLHFDataset(BaseRLHFDataset):
             item[self.prompt_column] = prompt.strip()
             self.data.append(item)
 
-        logger.info(
-            f"Loaded {len(self.data)} valid samples from {dataset_name_or_path}"
-        )
+        logger.info(f"Loaded {len(self.data)} valid samples from {dataset_name_or_path}")
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         sample = self.data[idx]
@@ -202,9 +198,7 @@ class PreferenceDataset(BaseRLHFDataset):
             item[self.rejected_column] = rejected.strip()
             self.data.append(item)
 
-        logger.info(
-            f"Loaded {len(self.data)} valid preference pairs from {dataset_name_or_path}"
-        )
+        logger.info(f"Loaded {len(self.data)} valid preference pairs from {dataset_name_or_path}")
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         sample = self.data[idx]

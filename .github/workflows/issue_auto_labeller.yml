@@ -33,7 +33,7 @@ jobs:
             if (title.includes("doc") || title.includes("typo") || body.includes("documentation")) {
               labelsToAdd.add("documentation");
             }
-            
+
             // Keywords for 'question'
             if (title.includes("?") || title.includes("how to") || title.includes("question")) {
               labelsToAdd.add("question");

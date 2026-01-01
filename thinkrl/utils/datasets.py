@@ -13,9 +13,7 @@ import torch
 class BatchEncoding(dict):
     """Holds the output of the tokenizer."""
 
-    def __init__(
-        self, data: dict[str, Any], encoding: Any = None, tensor_type: str = "pt"
-    ):
+    def __init__(self, data: dict[str, Any], encoding: Any = None, tensor_type: str = "pt"):
         super().__init__(data)
         self.encoding = encoding
         self.tensor_type = tensor_type
@@ -28,9 +26,7 @@ class BatchEncoding(dict):
         return self
 
 
-def pad_sequences(
-    sequences: list[torch.Tensor], padding_value: int = 0, padding_side: str = "right"
-) -> torch.Tensor:
+def pad_sequences(sequences: list[torch.Tensor], padding_value: int = 0, padding_side: str = "right") -> torch.Tensor:
     """Pad a list of sequences to the same length."""
     from torch.nn.utils.rnn import pad_sequence
 
@@ -46,9 +42,7 @@ def pad_sequences(
     return pad_sequence(sequences, batch_first=True, padding_value=padding_value)
 
 
-def create_attention_mask(
-    input_ids: torch.Tensor, padding_value: int = 0
-) -> torch.Tensor:
+def create_attention_mask(input_ids: torch.Tensor, padding_value: int = 0) -> torch.Tensor:
     """Create attention mask from input_ids."""
     return (input_ids != padding_value).long()
 
@@ -77,11 +71,7 @@ def collate_batch(
 
     # Determine padding value
     pad_token_id = 0
-    if (
-        tokenizer is not None
-        and hasattr(tokenizer, "pad_token_id")
-        and tokenizer.pad_token_id is not None
-    ):
+    if tokenizer is not None and hasattr(tokenizer, "pad_token_id") and tokenizer.pad_token_id is not None:
         pad_token_id = tokenizer.pad_token_id
 
     for key in keys:
@@ -113,17 +103,13 @@ def collate_batch(
     return collated
 
 
-def create_dataloader(
-    dataset, batch_size: int, shuffle: bool = True, collate_fn=None, **kwargs
-):
+def create_dataloader(dataset, batch_size: int, shuffle: bool = True, collate_fn=None, **kwargs):
     """Create a PyTorch DataLoader."""
     from torch.utils.data import DataLoader
 
     if collate_fn is None:
         collate_fn = collate_batch
-    return DataLoader(
-        dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn, **kwargs
-    )
+    return DataLoader(dataset, batch_size=batch_size, shuffle=shuffle, collate_fn=collate_fn, **kwargs)
 
 
 def preprocess_text(text: str) -> str:
@@ -133,9 +119,7 @@ def preprocess_text(text: str) -> str:
     return text.strip()
 
 
-def truncate_sequence(
-    sequence: list | torch.Tensor, max_length: int, side: str = "right"
-) -> list | torch.Tensor:
+def truncate_sequence(sequence: list | torch.Tensor, max_length: int, side: str = "right") -> list | torch.Tensor:
     """Truncate a sequence to max_length."""
     if len(sequence) <= max_length:
         return sequence
@@ -146,16 +130,12 @@ def truncate_sequence(
         return sequence[-max_length:]
 
 
-def create_labels_for_clm(
-    input_ids: torch.Tensor, ignore_index: int = -100
-) -> torch.Tensor:
+def create_labels_for_clm(input_ids: torch.Tensor, ignore_index: int = -100) -> torch.Tensor:
     """Create labels for Causal Language Modeling (usually same as input_ids)."""
     return input_ids.clone()
 
 
-def mask_padding_in_loss(
-    labels: torch.Tensor, attention_mask: torch.Tensor, ignore_index: int = -100
-) -> torch.Tensor:
+def mask_padding_in_loss(labels: torch.Tensor, attention_mask: torch.Tensor, ignore_index: int = -100) -> torch.Tensor:
     """Mask padding tokens in labels so they don't contribute to loss."""
     labels = labels.clone()
     labels[attention_mask == 0] = ignore_index
@@ -229,8 +209,6 @@ def to_device(batch: dict[str, Any], device: str | torch.device) -> dict[str, An
     return new_batch
 
 
-def prepare_batch_for_training(
-    batch: dict[str, Any], device: str | torch.device
-) -> dict[str, Any]:
+def prepare_batch_for_training(batch: dict[str, Any], device: str | torch.device) -> dict[str, Any]:
     """Prepare batch for training (move to device, etc.)."""
     return to_device(batch, device)

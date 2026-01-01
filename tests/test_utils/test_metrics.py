@@ -94,21 +94,15 @@ class TestMetrics:
         log_probs_policy = torch.log(torch.tensor([0.2, 0.3, 0.5]))
         log_probs_ref = torch.log(torch.tensor([0.1, 0.4, 0.5]))
 
-        kl_div_mean = compute_kl_divergence(
-            log_probs_policy, log_probs_ref, reduction="mean"
-        )
+        kl_div_mean = compute_kl_divergence(log_probs_policy, log_probs_ref, reduction="mean")
         assert isinstance(kl_div_mean, torch.Tensor)
         assert kl_div_mean.dim() == 0
 
-        kl_div_sum = compute_kl_divergence(
-            log_probs_policy, log_probs_ref, reduction="sum"
-        )
+        kl_div_sum = compute_kl_divergence(log_probs_policy, log_probs_ref, reduction="sum")
         assert kl_div_sum.dim() == 0
         assert kl_div_sum == pytest.approx(kl_div_mean * 3)
 
-        kl_div_none = compute_kl_divergence(
-            log_probs_policy, log_probs_ref, reduction="none"
-        )
+        kl_div_none = compute_kl_divergence(log_probs_policy, log_probs_ref, reduction="none")
         assert kl_div_none.dim() == 1
         assert kl_div_none.shape == (3,)
 
@@ -116,9 +110,7 @@ class TestMetrics:
         rewards = torch.randn(4, 10)
         values = torch.randn(4, 10)
 
-        advantages = compute_advantages(
-            rewards=rewards, values=values, gamma=0.99, lambda_=0.95, normalize=True
-        )
+        advantages = compute_advantages(rewards=rewards, values=values, gamma=0.99, lambda_=0.95, normalize=True)
         assert advantages.shape == rewards.shape
         assert torch.abs(advantages.mean()) < 1e-6
         assert torch.abs(advantages.std() - 1.0) < 1e-5
@@ -170,9 +162,7 @@ class TestMetrics:
 
         targets_with_ignore = torch.tensor([[1, 2, 0], [1, -100, 1]])
         predictions_ignore = torch.tensor([[1, 2, 3], [1, 1, 1]])
-        accuracy_ignore = compute_accuracy(
-            predictions_ignore, targets_with_ignore, ignore_index=-100
-        )
+        accuracy_ignore = compute_accuracy(predictions_ignore, targets_with_ignore, ignore_index=-100)
         assert accuracy_ignore == pytest.approx(4 / 5)
 
     def test_compute_perplexity(self):
@@ -330,15 +320,9 @@ class TestMetrics:
 
         group_metrics = compute_group_metrics(rewards, group_ids)
 
-        assert torch.allclose(
-            group_metrics["group_means"], torch.tensor([2.0, 10.5, 20.0])
-        )
-        assert torch.allclose(
-            group_metrics["group_maxs"], torch.tensor([3.0, 11.0, 20.0])
-        )
-        assert torch.allclose(
-            group_metrics["group_mins"], torch.tensor([1.0, 10.0, 20.0])
-        )
+        assert torch.allclose(group_metrics["group_means"], torch.tensor([2.0, 10.5, 20.0]))
+        assert torch.allclose(group_metrics["group_maxs"], torch.tensor([3.0, 11.0, 20.0]))
+        assert torch.allclose(group_metrics["group_mins"], torch.tensor([1.0, 10.0, 20.0]))
 
     def test_compute_ranking_metrics(self):
         scores = torch.tensor([0.9, 0.7, 0.5, 0.3, 0.1])
@@ -379,9 +363,7 @@ class TestMetrics:
         # Use xp (numpy/cupy) for assertion
         assert metrics["perplexity"] == pytest.approx(float(xp.exp(1.2)))
 
-        metrics_subset = compute_metrics(
-            outputs, targets, metric_names=["accuracy", "loss"]
-        )
+        metrics_subset = compute_metrics(outputs, targets, metric_names=["accuracy", "loss"])
 
         assert "accuracy" in metrics_subset
         assert "perplexity" not in metrics_subset

@@ -281,11 +281,7 @@ class BaseRLHFAlgorithm(ABC):
         token_log_probs = token_log_probs * (shift_labels != -100).float()
 
         # Pad to maintain original sequence length [B, S]
-        padding = torch.zeros(
-            token_log_probs.size(0), 1,
-            device=token_log_probs.device,
-            dtype=token_log_probs.dtype
-        )
+        padding = torch.zeros(token_log_probs.size(0), 1, device=token_log_probs.device, dtype=token_log_probs.dtype)
         return torch.cat([token_log_probs, padding], dim=1)
 
     def generate_rollouts(

@@ -45,9 +45,7 @@ def process_image(image_path: str, transform: Any | None = None) -> Any | None:
         return None
 
 
-def process_audio(
-    audio_path: str, sr: int = 16000, transform: Any | None = None
-) -> Any | None:
+def process_audio(audio_path: str, sr: int = 16000, transform: Any | None = None) -> Any | None:
     """
     Load and process an audio file.
     """

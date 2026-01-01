@@ -40,9 +40,7 @@ except ImportError:
     _TRANSFORMERS_AVAILABLE = False
 
 # Skip all tests in this file if transformers is not installed
-pytestmark = pytest.mark.skipif(
-    not _TRANSFORMERS_AVAILABLE, reason="transformers not installed"
-)
+pytestmark = pytest.mark.skipif(not _TRANSFORMERS_AVAILABLE, reason="transformers not installed")
 
 
 @pytest.fixture(scope="module")
@@ -79,9 +77,7 @@ class TestTokenizers:
     def test_tokenize_text(self, gpt2_tokenizer):
         """Test text tokenization for single string and batch."""
         text = "Hello, world!"
-        encoded = tokenize_text(
-            text, gpt2_tokenizer, max_length=10, padding="max_length", truncation=True
-        )
+        encoded = tokenize_text(text, gpt2_tokenizer, max_length=10, padding="max_length", truncation=True)
 
         assert "input_ids" in encoded
         assert "attention_mask" in encoded
@@ -90,9 +86,7 @@ class TestTokenizers:
 
         # Test batch
         texts = ["Hello!", "How are you?"]
-        encoded_batch = tokenize_text(
-            texts, gpt2_tokenizer, padding=True, return_tensors="pt"
-        )
+        encoded_batch = tokenize_text(texts, gpt2_tokenizer, padding=True, return_tensors="pt")
         assert encoded_batch["input_ids"].shape[0] == 2
         assert encoded_batch["input_ids"].shape[1] >= 3
 
@@ -101,9 +95,7 @@ class TestTokenizers:
         texts = ["Text 1", "Text 2", "A slightly longer text"] * 10
 
         # Test with batch_size
-        encoded = tokenize_batch(
-            texts, gpt2_tokenizer, max_length=10, padding="max_length", batch_size=8
-        )
+        encoded = tokenize_batch(texts, gpt2_tokenizer, max_length=10, padding="max_length", batch_size=8)
 
         assert "input_ids" in encoded
         assert "attention_mask" in encoded
@@ -115,16 +107,12 @@ class TestTokenizers:
         text = "Hello, world!"
         token_ids = gpt2_tokenizer.encode(text)
 
-        decoded_text = decode_tokens(
-            token_ids, gpt2_tokenizer, skip_special_tokens=True
-        )
+        decoded_text = decode_tokens(token_ids, gpt2_tokenizer, skip_special_tokens=True)
         assert decoded_text == text
 
         texts = ["Hello!", "How are you?"]
         batch_ids = [gpt2_tokenizer.encode(t) for t in texts]
-        decoded_batch = decode_tokens(
-            batch_ids, gpt2_tokenizer, skip_special_tokens=True
-        )
+        decoded_batch = decode_tokens(batch_ids, gpt2_tokenizer, skip_special_tokens=True)
 
         assert isinstance(decoded_batch, list)
         assert len(decoded_batch) == 2
@@ -146,16 +134,12 @@ class TestTokenizers:
         tokenizer = get_tokenizer("gpt2")
         original_vocab_size = len(tokenizer)
 
-        num_added = add_special_tokens(
-            tokenizer, {"additional_special_tokens": ["<|user|>", "<|assistant|>"]}
-        )
+        num_added = add_special_tokens(tokenizer, {"additional_special_tokens": ["<|user|>", "<|assistant|>"]})
 
         assert num_added == 2
         assert len(tokenizer) == original_vocab_size + 2
         assert tokenizer.convert_tokens_to_ids("<|user|>") == original_vocab_size
-        assert (
-            tokenizer.convert_tokens_to_ids("<|assistant|>") == original_vocab_size + 1
-        )
+        assert tokenizer.convert_tokens_to_ids("<|assistant|>") == original_vocab_size + 1
 
     def test_tokenize_conversation_manual(self, gpt2_tokenizer):
         """Test conversation tokenization using manual formatting."""
@@ -202,9 +186,7 @@ class TestTokenizers:
 
             tokenize_conversation(messages, mock_tokenizer, add_generation_prompt=True)
 
-            mock_tokenizer.apply_chat_template.assert_called_with(
-                messages, tokenize=False, add_generation_prompt=True
-            )
+            mock_tokenizer.apply_chat_template.assert_called_with(messages, tokenize=False, add_generation_prompt=True)
 
             mock_tokenize_text.assert_called_with("Template output", mock_tokenizer)
 
@@ -233,14 +215,10 @@ class TestTokenizers:
         """Test truncating text based on token count."""
         long_text = "This is a very long text that will surely be truncated."
 
-        truncated_right = truncate_to_token_limit(
-            long_text, gpt2_tokenizer, max_tokens=7
-        )
+        truncated_right = truncate_to_token_limit(long_text, gpt2_tokenizer, max_tokens=7)
         assert truncated_right == "This is a very long text that"
 
-        truncated_left = truncate_to_token_limit(
-            long_text, gpt2_tokenizer, max_tokens=7, side="left"
-        )
+        truncated_left = truncate_to_token_limit(long_text, gpt2_tokenizer, max_tokens=7, side="left")
         assert truncated_left == " that will surely be truncated."
 
     def test_get_tokenizer_info(self, gpt2_tokenizer):
@@ -259,9 +237,7 @@ class TestTokenizers:
     def test_save_and_load_tokenizer(self, temp_dir):
         """Test saving and loading a modified tokenizer."""
         tokenizer_to_save = get_tokenizer("gpt2")
-        add_special_tokens(
-            tokenizer_to_save, {"additional_special_tokens": ["<|my_token|>"]}
-        )
+        add_special_tokens(tokenizer_to_save, {"additional_special_tokens": ["<|my_token|>"]})
 
         assert tokenizer_to_save.convert_tokens_to_ids("<|my_token|>") == 50257
 
@@ -272,9 +248,7 @@ class TestTokenizers:
 
         loaded_tokenizer = load_tokenizer(temp_dir)
 
-        assert isinstance(
-            loaded_tokenizer, PreTrainedTokenizer | PreTrainedTokenizerFast
-        )
+        assert isinstance(loaded_tokenizer, PreTrainedTokenizer | PreTrainedTokenizerFast)
         assert len(loaded_tokenizer) == len(tokenizer_to_save)
         assert loaded_tokenizer.convert_tokens_to_ids("<|my_token|>") == 50257
         assert loaded_tokenizer.pad_token_id == 50256

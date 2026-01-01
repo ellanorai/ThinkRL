@@ -28,7 +28,7 @@ jobs:
               repo: context.repo.repo,
               pull_number: prNumber
             });
-            
+
             if (!pr.head.repo) {
               core.setFailed("The source repository for this PR seems to have been deleted.");
               return;
@@ -61,13 +61,13 @@ jobs:
         run: pip install pre-commit
 
       - name: Run style checks
-        # Run pre-commit on all files. 
+        # Run pre-commit on all files.
         # '|| true' ensures the step doesn't "fail" so we can commit the fixes found.
         run: pre-commit run --all-files || true
 
       - name: Commit and push changes
         id: commit_and_push
-        env: 
+        env:
           HEAD_REPO: ${{ steps.pr_info.outputs.headRepoFullName }}
           HEAD_REF: ${{ steps.pr_info.outputs.headRef }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

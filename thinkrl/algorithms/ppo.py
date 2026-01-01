@@ -1,12 +1,30 @@
+"""
+PPO Algorithm (RLHF / Token-level)
+==================================
+
+Infrastructure-grade implementation of Proximal Policy Optimization (PPO) for LLMs.
+Focuses strictly on the RLHF use-case (token-level policies).
+
+Key features:
+- Explicit separation of Policy and Value models (or unified architecture with clear contract)
+- Proper GAE calculation at trajectory level
+- Frozen "Old Policy" logic across PPO epochs
+- DDP-safe batch processing (via BaseRLHFAlgorithm)
+
+This implementation assumes the user provides a batch of completed rollouts
+(input_ids, attention_mask, rewards) and handles the internal PPO update loop.
+
+Author: EllanorAI
+"""
+
 from dataclasses import dataclass
 from typing import Any
 
-import numpy as np
 import torch
-from torch.distributions.categorical import Categorical
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Optimizer
+from torch.utils.data import DataLoader, TensorDataset
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
 from thinkrl.utils.logging import get_logger
@@ -17,206 +35,66 @@ logger = get_logger(__name__)
 
 @dataclass
 class PPOConfig:
+    """Configuration for PPO training."""
+
     learning_rate: float = 3e-4
+    value_lr: float | None = None  # Optional separate LR for critic
+
+    # PPO Hyperparameters
     gamma: float = 0.99
     gae_lambda: float = 0.95
     policy_clip: float = 0.2
+    value_clip: float | None = 0.2  # Clip value function updates
+
+    # Coefficients
     value_coeff: float = 0.5
     entropy_coeff: float = 0.01
 
-    # Multi epoch training
-    n_epochs: int = 10
-    batch_size: int = 64
+    # Training Loop
+    n_epochs: int = 4
+    batch_size: int = 64  # Mini-batch size for PPO updates
 
-    # Training stability
-    clip_grad_norm: float = 1
+    # Stability
+    clip_grad_norm: float = 1.0
     normalize_advantages: bool = True
-
-    # value function
-    use_separate_value_network: bool = False
+    gradient_checkpointing: bool = False
 
     def __post_init__(self):
-        assert self.policy_clip > 0
-        assert self.gamma > 0 and self.gamma <= 1
-        assert self.gae_lambda >= 0 and self.gae_lambda <= 1
-        assert self.n_epochs >= 1
-        assert self.batch_size > 0
-
-
-class PPOMemory:
-    """
-    Memory buffer for PPO rollouts.
-
-    Stores states, actions, rewards, values, and log probabilities
-    for computing advantage and training
-    """
-
-    def __init__(self, batch_size: int):
-        self.states = []
-        self.probs = []
-        self.vals = []
-        self.actions = []
-        self.rewards = []
-        self.dones = []
-        self.batch_size = batch_size
-
-    def generate_batches(self):
-        """
-        Generate random mini-batches for training
-        Returns:
-            Tuple of (states, actions, probs, vals, rewards, dones, batches)
-        """
-
-        n_states = len(self.states)
-        if n_states == 0:
-            raise ValueError("Cannot generate batches from empty memory buffer")
-
-        batch_start = torch.arange(0, n_states, self.batch_size)
-        indices = torch.arange(n_states, dtype=torch.int64)
-        indices = indices[torch.randperm(n_states)]
-
-        batches = [indices[i : i + self.batch_size] for i in batch_start]
-
-        # Convert to numpy first to handle mixed types efficiently
-        states_array = np.array(self.states, dtype=np.float32)
-        actions_array = np.array(self.actions, dtype=np.int64)
-        probs_array = np.array(self.probs, dtype=np.float32)
-        vals_array = np.array(self.vals, dtype=np.float32)
-        rewards_array = np.array(self.rewards, dtype=np.float32)
-        dones_array = np.array(self.dones, dtype=np.float32)
-
-        return (
-            torch.from_numpy(states_array),
-            torch.from_numpy(actions_array),
-            torch.from_numpy(probs_array),
-            torch.from_numpy(vals_array),
-            torch.from_numpy(rewards_array),
-            torch.from_numpy(dones_array),
-            batches,
-        )
-
-    def store_memory(self, state, action, probs, vals, reward, done):
-        """Store a single transition in memory"""
-        self.states.append(state)
-        self.actions.append(action)
-        self.probs.append(probs)
-        self.vals.append(vals)
-        self.rewards.append(reward)
-        self.dones.append(done)
-
-    def clear_memory(self):
-        """Clear all stored memory"""
-        self.states = []
-        self.probs = []
-        self.vals = []
-        self.actions = []
-        self.rewards = []
-        self.dones = []
-
-
-class ActorNetwork(nn.Module):
-    """
-    Actor network for policy learning
-    Outputs action probabilities given state
-    """
-
-    def __init__(
-        self,
-        n_actions: int,
-        input_dims: tuple[int, ...],
-        alpha: float,
-        fc1_dims: int = 256,
-        fc2_dims: int = 256,
-    ):
-
-        super().__init__()
-
-        self.input_layer = nn.Linear(input_dims[0], fc1_dims)
-        self.hidden_layer = nn.Linear(fc1_dims, fc2_dims)
-        self.output_layer = nn.Linear(fc2_dims, n_actions)
-        self.activation = nn.ReLU()
-        self.output_activation = nn.Softmax(dim=-1)
-
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=alpha)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.to(self.device)
-
-    def forward(self, state):
-        """
-        Forward pass through actor network
-
-        Args:
-            State: Current state tensor
-
-        Returns:
-            Categorical distribution over actions
-        """
-
-        x = self.activation(self.input_layer(state))
-        x = self.activation(self.hidden_layer(x))
-        action_probs = self.output_activation(self.output_layer(x))
-
-        return Categorical(action_probs)
-
-
-class CriticNetwork(nn.Module):
-    """
-    Value network for state evaluation
-
-    Estimates the expected cumulative reward from a given state using
-    a multi layer perceptron architecture.
-    """
-
-    def __init__(
-        self, input_dims: tuple[int, ...], alpha: float, fc1_dims: int = 256, fc2_dims: int = 256
-    ):
-        super().__init__()
-
-        self.input_layer = nn.Linear(input_dims[0], fc1_dims)
-        self.hidden_layer = nn.Linear(fc1_dims, fc2_dims)
-        self.value_head = nn.Linear(fc2_dims, 1)
-
-        self.activation = nn.ReLU()
-
-        self.optimizer = torch.optim.Adam(self.parameters(), lr=alpha)
-        self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-        self.to(self.device)
-
-    def forward(self, state):
-        """
-        Forward pass through critic network
-
-        Args:
-            State: Current state tensor
-
-        Returns:
-            Value estimate for the state
-        """
-
-        x = self.activation(self.input_layer(state))
-        x = self.activation(self.hidden_layer(x))
-        value = self.value_head(x)
-        return value
+        assert self.n_epochs >= 1, "n_epochs must be >= 1"
+        assert self.batch_size > 0, "batch_size must be > 0"
+        assert 0 < self.policy_clip < 1.0, "policy_clip should be in (0, 1)"
 
 
 class PPOAlgorithm(BaseRLHFAlgorithm):
     """
-    Proximal Policy Optimization (PPO) algorithm implementation.
+    PPO Algorithm specialized for Language Models (RLHF).
 
-    Uses clipped surrogate objective with actor-critic architecture.
-    GAE for advantage estimates, and multi-epoch mini-batch training
+    This class manages the PPO update logic given a buffer of rollouts.
+    It supports both unified models (Policy + Value head) and separate models.
     """
 
     def __init__(
         self,
         policy_model: nn.Module,
+        value_model: nn.Module | None = None,
         ref_model: nn.Module | None = None,
         optimizer: Optimizer | None = None,
+        value_optimizer: Optimizer | None = None,
         config: PPOConfig | None = None,
-        n_actions: int | None = None,
-        input_dims: tuple[int, ...] | None = None,
         **kwargs,
     ):
+        """
+        Initialize PPO Algorithm.
+
+        Args:
+            policy_model: Language model (Actor). If value_model is None, this
+                         must also output 'values' in its forward pass.
+            value_model: Optional separate Critic model.
+            ref_model: Reference model for KL penalty.
+            optimizer: Optimizer for policy (and value if unified).
+            value_optimizer: Optional separate optimizer for value_model.
+            config: PPO configuration.
+        """
         config = config or PPOConfig()
 
         super().__init__(
@@ -224,563 +102,289 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
             ref_model=ref_model,
             optimizer=optimizer,
             learning_rate=config.learning_rate,
-            kl_coeff=0.0,
+            kl_coeff=0.0,  # PPO often handles KL as a reward penalty, handled in data prep
+            clip_grad_norm=config.clip_grad_norm,
             **kwargs,
         )
 
         self.config = config
-        self.memory = PPOMemory(config.batch_size)
+        self.value_model = value_model
 
-        # Initialize actor and critic networks if using separate networks
-        if config.use_separate_value_network and n_actions and input_dims:
-            self.actor = ActorNetwork(
-                n_actions=n_actions, input_dims=input_dims, alpha=config.learning_rate
-            )
-            self.critic = CriticNetwork(
-                input_dims=input_dims, alpha=config.learning_rate
-            )
-            self.use_separate_value_network = True
+        # Handle Optimizers
+        if self.value_model is not None:
+            if value_optimizer is None:
+                lr = config.value_lr if config.value_lr is not None else config.learning_rate
+                self.value_optimizer = torch.optim.AdamW(self.value_model.parameters(), lr=lr)
+            else:
+                self.value_optimizer = value_optimizer
         else:
-            self.actor = None
-            self.critic = None
-            self.use_separate_value_network = False
+            # Unified model case: One optimizer handled by BaseRLHFAlgorithm
+            self.value_optimizer = None
 
         logger.info(
-            f"Initialized PPO (clip={config.policy_clip}, entropy={config.entropy_coeff}, "
-            f"value_coeff={config.value_coeff}, n_epochs={config.n_epochs})"
+            f"Initialized PPO (epochs={config.n_epochs}, clip={config.policy_clip}, "
+            f"separate_critic={self.value_model is not None})"
         )
 
-    def remember(self, state, action, probs, vals, reward, done):
-        """Store transition in memory."""
-        self.memory.store_memory(state, action, probs, vals, reward, done)
-
-    def choose_action(self, observation):
+    def forward_value(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor, outputs: dict[str, Any] | None = None
+    ) -> torch.Tensor:
         """
-        Sample action from policy
+        Get value estimates.
 
-        Args:
-            observation: Current state observation
-        Returns:
-            Tuple of (action, log_prob, value)
+        If separate value model exists, use it.
+        Otherwise, expect 'values' in policy_model output.
         """
+        if self.value_model is not None:
+            # Separate Critic
+            v_out = self.value_model(input_ids=input_ids, attention_mask=attention_mask)
+            if isinstance(v_out, dict):
+                return v_out["values"] if "values" in v_out else v_out["logits"].squeeze(-1)
+            return v_out.squeeze(-1)
+        else:
+            # Unified Actor-Critic
+            if outputs is None:
+                outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
 
-        if self.use_separate_value_network:
-            assert self.actor is not None, "Actor network not initialized"
-            assert self.critic is not None, "Critic network not initialized"
-            state = (
-                torch.tensor(observation, dtype=torch.float32)
-                .unsqueeze(0)
-                .to(self.actor.device)
+            if isinstance(outputs, dict) and "values" in outputs:
+                return outputs["values"]
+
+            raise ValueError(
+                "Policy model did not return 'values' and no separate value_model was provided. "
+                "Ensure your model includes a value head (e.g., AutoModelForCausalLMWithValueHead)."
             )
-            dist = self.actor(state)
-            value = self.critic(state)
-            action = dist.sample()
-            probs = torch.squeeze(dist.log_prob(action)).item()
-            action = torch.squeeze(action).item()
-            value = torch.squeeze(value).item()
-            return action, probs, value
-        else:
 
-            return self._choose_action_from_policy_model(observation)
-
-    def _choose_action_from_policy_model(self, observation):
-        """Choose action using the main policy model (for LLM case)."""
-        raise NotImplementedError(
-            "Implement action selection for your specific policy model"
-        )
-
-    def compute_gae_advantages(
-        self,
-        rewards: torch.Tensor,
-        values: torch.Tensor,
-        normalize: bool | None = None,
-        dones: torch.Tensor | None = None,
-    ) -> torch.Tensor:
+    def train_on_rollout(self, batch: dict[str, torch.Tensor]) -> list[dict[str, float]]:
         """
-        Compute Generalized Advantage Estimation (GAE)
+        Perform PPO updates on a batch of collected rollouts.
+
+        This method:
+        1. Computes 'old' log probs and values (frozen for the epoch loop).
+        2. Computes GAE advantages.
+        3. Runs N epochs of PPO mini-batch updates.
 
         Args:
-            rewards: Rewards tensor[T]
-            values: value estimates [T]
-            normalize: Whether to normalize advantages (unused, for compatibility)
-            dones: Done flags [T] (optional, defaults to all zeros)
+            batch: Dictionary containing:
+                - input_ids: [B, T]
+                - attention_mask: [B, T]
+                - labels: [B, T] (usually input_ids masked)
+                - rewards: [B] (sequence-level) or [B, T] (token-level)
 
         Returns:
-            advantages: Computed advantages [T]
+            List of metrics dictionaries (one per epoch).
         """
+        # 1. Setup Data
+        input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
+        labels = batch.get("labels", input_ids.clone())
+        # Rewards should typically be sequence level scalars or token-level map
+        rewards = batch["rewards"]
 
-        cfg = self.config
-        device = rewards.device
+        device = input_ids.device
 
-        # Handle missing dones tensor
-        if dones is None:
-            dones = torch.zeros_like(rewards)
+        # 2. Compute "Old" Policy & Values (No Grad)
+        # We need these to compute advantages and for the ratio denominator
+        with torch.no_grad():
+            if self.policy_model.training:
+                self.policy_model.eval()
 
-        advantage = torch.zeros(len(rewards), dtype=torch.float).to(device)
-        gae = 0.0
+            outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
+            old_log_probs = self.get_log_probs(outputs, labels)
+            old_values = self.forward_value(input_ids, attention_mask, outputs=outputs)
 
-        # Backward iteration for O(n) complexity
-        for t in reversed(range(len(rewards) - 1)):
-            delta = rewards[t] + cfg.gamma * values[t + 1] * (1 - dones[t]) - values[t]
-            gae = delta + cfg.gamma * cfg.gae_lambda * (1 - dones[t]) * gae
-            advantage[t] = gae
-        return advantage
+            # Ensure proper shapes for GAE
+            # Values: [B, T] or [B, T-1] depending on implementation.
+            # We align with log_probs shape [B, T]
+            if old_values.shape[-1] != old_log_probs.shape[-1]:
+                # If value head returns 1 value per token, straightforward.
+                # If it mimics causal LM, check alignment.
+                # Here we assume [B, T] alignment.
+                old_values = old_values[:, : old_log_probs.shape[-1]]
 
-    def get_log_probs(
-        self,
-        outputs: dict[str, torch.Tensor] | torch.Tensor,
-        labels: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Compute per token log probabilities.
+        # 3. Compute Advantages (GAE)
+        # If rewards are sequence-level [B], we assume they apply to the last token or are distributed
+        # Ideally, we construct a dense reward tensor [B, T] including KL penalties here.
+        # For this infra implementation, we assume `rewards` is already dense or properly shaped [B, T]
+        # or user wants sparse rewards.
 
-        Args:
-            outputs: Model outputs (dict with 'logits' or tensor of logits)
-            labels: Target token IDs [B,S], -100 for masked positions
-
-        Returns:
-            log_probs: [B,S] with 0.0at masked positions
-        """
-
-        if isinstance(outputs, dict):
-            logits = outputs["logits"]
+        # Simplified assumption for infra: rewards is [B] (score) and we assign to last token
+        # Or rewards is [B, T] (dense).
+        dense_rewards = torch.zeros_like(old_values)
+        if rewards.dim() == 1:
+            # Assign sparse reward to last token of each sequence
+            # (Finding last non-pad token)
+            last_indices = attention_mask.sum(dim=1) - 1
+            dense_rewards[torch.arange(rewards.size(0)), last_indices] = rewards
         else:
-            logits = outputs
+            dense_rewards = rewards
 
-        shift_logits = logits[:, :-1, :].contiguous()
-        shift_labels = labels[:, 1:].contiguous()
-        log_probs = F.log_softmax(shift_logits, dim=-1)
+        # GAE
+        advantages = self.compute_gae_advantages(dense_rewards, old_values)
+        returns = advantages + old_values
 
-        gather_labels = shift_labels.clone()
-        gather_labels[gather_labels == -100] = 0
+        # 4. Prepare Dataset for Mini-batching
+        # Flatten batches for shuffling
+        # Note: We flatten [B, T] to [B] samples (sequences), not tokens,
+        # because causal masking requires full context.
+        dataset = TensorDataset(input_ids, attention_mask, labels, old_log_probs, old_values, advantages, returns)
+        dataloader = DataLoader(dataset, batch_size=self.config.batch_size, shuffle=True)
 
-        token_log_probs = log_probs.gather(
-            dim=-1, index=gather_labels.unsqueeze(-1)
-        ).squeeze(-1)
-        token_log_probs[shift_labels == -100] = 0.0
+        # 5. Training Loop
+        self.policy_model.train()
+        if self.value_model:
+            self.value_model.train()
 
-        padding = torch.zeros(
-            token_log_probs.size(0),
-            1,
-            device=token_log_probs.device,
-            dtype=token_log_probs.dtype,
-        )
-        return torch.cat([token_log_probs, padding], dim=1)
+        all_metrics = []
+
+        for epoch in range(self.config.n_epochs):
+            epoch_metrics = []
+
+            for mb in dataloader:
+                (mb_input_ids, mb_mask, mb_labels, mb_old_log_probs, mb_old_values, mb_advantages, mb_returns) = (
+                    x.to(device) for x in mb
+                )
+
+                # Normalize advantages (Minibatch level)
+                if self.config.normalize_advantages:
+                    mb_advantages = (mb_advantages - mb_advantages.mean()) / (mb_advantages.std() + 1e-8)
+
+                training_batch = {
+                    "input_ids": mb_input_ids,
+                    "attention_mask": mb_mask,
+                    "labels": mb_labels,
+                    "old_log_probs": mb_old_log_probs,
+                    "old_values": mb_old_values,
+                    "advantages": mb_advantages,
+                    "returns": mb_returns,
+                }
+
+                metrics = self.training_step(training_batch)
+                epoch_metrics.append(metrics)
+
+            # Average metrics for the epoch
+            avg_metrics = {k: sum(d[k] for d in epoch_metrics) / len(epoch_metrics) for k in epoch_metrics[0]}
+            avg_metrics["epoch"] = epoch
+            all_metrics.append(avg_metrics)
+
+        return all_metrics
 
     def compute_loss(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """
-        Compute PPO loss with clipped surrogate objective.
-
-        Args:
-            batch: Training batch containing states, actions, old_probs, advantages, returns
-
-        Returns:
-            Dictionary with loss components
+        Compute PPO Loss (Policy + Value + Entropy).
         """
-
-        if self.use_separate_value_network:
-            return self._compute_loss_separate_networks(batch)
-        else:
-            return self._compute_loss_unified_model(batch)
-
-    def _compute_loss_separate_networks(
-        self,
-        batch: dict[str, torch.Tensor],
-    ) -> dict[str, torch.Tensor]:
-        """Compute loss using separate actor-critic networks"""
-
-        assert self.actor is not None, "Actor network not initialized"
-        assert self.critic is not None, "Critic network not initialized"
-
-        cfg = self.config
-        device = self.actor.device
-
-        states = batch["states"].to(device)
-        actions = batch["actions"].to(device)
-        old_probs = batch["old_probs"].to(device)
-        advantages = batch["advantages"].to(device)
-        returns = batch["returns"].to(device)
-
-        dist = self.actor(states)
-        critic_value = self.critic(states)
-        critic_value = torch.squeeze(critic_value)
-
-        new_probs = dist.log_prob(actions)
-        prob_ratio = torch.exp(new_probs - old_probs)
-
-        weighted_probs = advantages * prob_ratio
-        weighted_clipped_probs = (
-            torch.clamp(prob_ratio, 1 - cfg.policy_clip, 1 + cfg.policy_clip)
-            * advantages
-        )
-
-        actor_loss = -torch.min(weighted_probs, weighted_clipped_probs).mean()
-
-        critic_loss = (returns - critic_value) ** 2
-        critic_loss = critic_loss.mean()
-
-        entropy = dist.entropy().mean()
-        entropy_loss = -cfg.entropy_coeff * entropy
-
-        total_loss = actor_loss + cfg.value_coeff * critic_loss + entropy_loss
-        return {
-            "loss": total_loss,
-            "actor_loss": actor_loss.detach(),
-            "critic_loss": critic_loss.detach(),
-            "entropy_loss": entropy_loss.detach(),
-            "entropy": entropy.detach(),
-        }
-
-    def _compute_loss_unified_model(
-        self,
-        batch: dict[str, torch.Tensor],
-    ) -> dict[str, torch.Tensor]:
-        """Compute loss using unified policy model (for LLM or simple state cases)."""
-
-        cfg = self.config
-
-        # Handle simple state-action case (non-LLM)
-        if "states" in batch and "input_ids" not in batch:
-            states = batch["states"]
-            device = states.device
-            actions = batch["actions"]
-            old_probs = batch["old_probs"]
-            advantages = batch["advantages"]
-            returns = batch["returns"]
-
-            # Forward pass through policy model
-            # Check if model expects integer input (has embedding layer)
-            if hasattr(self.policy_model, "embedding") and states.dtype == torch.float:
-                # Convert float states to long for embedding models
-                # Ensure values are within vocab range
-                embedding_layer = self.policy_model.embedding
-                if isinstance(embedding_layer, nn.Embedding):
-                    vocab_size = embedding_layer.num_embeddings
-                    states_input = states.long() % vocab_size  # Wrap to valid range
-                    outputs = self.policy_model(input_ids=states_input)
-                else:
-                    outputs = self.policy_model(states)
-            else:
-                outputs = self.policy_model(states)
-
-            # Compute action probabilities
-            if isinstance(outputs, dict) and "logits" in outputs:
-                logits = outputs["logits"]
-            elif isinstance(outputs, torch.Tensor):
-                logits = outputs
-            else:
-                raise TypeError(f"Expected outputs to be Tensor or dict with 'logits', got {type(outputs)}")
-
-            # Handle sequence dimension if present: take last token
-            if logits.dim() == 3:  # [batch, seq, vocab]
-                logits_for_action = logits[:, -1, :]  # Take last token
-            else:  # [batch, vocab]
-                logits_for_action = logits
-
-            dist = Categorical(logits=logits_for_action)
-            new_log_probs = dist.log_prob(actions)
-
-            # PPO clipped objective
-            ratio = torch.exp(new_log_probs - old_probs)
-            surr1 = ratio * advantages
-            surr2 = (
-                torch.clamp(ratio, 1 - cfg.policy_clip, 1 + cfg.policy_clip)
-                * advantages
-            )
-            policy_loss = -torch.min(surr1, surr2).mean()
-
-            # Value loss (estimate value from logits)
-            values = self._extract_values(logits).squeeze(-1)
-            if values.dim() > 1:
-                values = values.mean(dim=1)  # Average over sequence dimension if needed
-            value_loss = F.smooth_l1_loss(values, returns)
-
-            # Entropy bonus
-            entropy = dist.entropy().mean()
-            entropy_loss = -cfg.entropy_coeff * entropy
-
-            total_loss = policy_loss + cfg.value_coeff * value_loss + entropy_loss
-
-            return {
-                "loss": total_loss,
-                "policy_loss": policy_loss.detach(),
-                "value_loss": value_loss.detach(),
-                "entropy_loss": entropy_loss.detach(),
-                "entropy": entropy.detach(),
-            }
-
-        # Handle LLM case with input_ids
-        device = batch["input_ids"].device
-
         input_ids = batch["input_ids"]
-        attention_mask = batch.get("attention_mask", None)
+        attention_mask = batch["attention_mask"]
         labels = batch["labels"]
         old_log_probs = batch["old_log_probs"]
+        old_values = batch["old_values"]
         advantages = batch["advantages"]
         returns = batch["returns"]
 
-        outputs = self.policy_model(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-        )
+        # 1. Forward Pass
+        outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
+        new_log_probs = self.get_log_probs(outputs, labels)
+        new_values = self.forward_value(input_ids, attention_mask, outputs)
 
-        log_probs = self.get_log_probs(outputs, labels)
-
-        ratio = torch.exp(log_probs - old_log_probs)
-
+        # 2. Policy Loss (Clipped Surrogate)
+        # log_probs shape: [B, T]
+        # Mask out padding/ignored tokens
         token_mask = labels != -100
 
-        adv_expanded = advantages.unsqueeze(1).expand_as(ratio)
-        surr_unclipped = ratio * adv_expanded
-        surr_clipped = (
-            torch.clamp(ratio, 1 - cfg.policy_clip, 1 + cfg.policy_clip) * adv_expanded
-        )
+        log_ratio = new_log_probs - old_log_probs
+        ratio = torch.exp(log_ratio)
 
-        surr_min = torch.min(surr_unclipped, surr_clipped)
-        num_tokens = token_mask.sum().float().clamp(min=1.0)
-        policy_loss = -surr_min[token_mask].sum() / num_tokens
+        surr1 = ratio * advantages
+        surr2 = torch.clamp(ratio, 1.0 - self.config.policy_clip, 1.0 + self.config.policy_clip) * advantages
 
-        logits = outputs["logits"] if isinstance(outputs, dict) else outputs
-        values = self._extract_values(logits).squeeze(-1)  # [B, S]
-        # Average values across sequence to match returns shape [B]
-        values_mean = (values * token_mask).sum(dim=1) / token_mask.sum(dim=1).clamp(
-            min=1.0
-        )
-        value_loss = F.smooth_l1_loss(values_mean, returns)
+        policy_loss = -torch.min(surr1, surr2)
+        policy_loss = (policy_loss * token_mask).sum() / token_mask.sum().clamp(min=1.0)
 
-        entropy_loss = torch.tensor(0.0, device=device)
-        if cfg.entropy_coeff > 0:
-            entropy = self._compute_entropy(logits, token_mask)
-            entropy_loss = -cfg.entropy_coeff * entropy
-
-        total_loss = policy_loss + cfg.value_coeff * value_loss + entropy_loss
-
-        with torch.no_grad():
-            metrics = self._compute_diagnostics(
-                ratio=ratio, advantages=advantages, token_mask=token_mask
+        # 3. Value Loss
+        # Optional clipping for value function (standard PPO trick)
+        if self.config.value_clip is not None:
+            v_clipped = old_values + torch.clamp(
+                new_values - old_values, -self.config.value_clip, self.config.value_clip
             )
+            v_loss1 = (new_values - returns) ** 2
+            v_loss2 = (v_clipped - returns) ** 2
+            value_loss = torch.max(v_loss1, v_loss2)
+        else:
+            value_loss = (new_values - returns) ** 2
+
+        value_loss = (value_loss * token_mask).sum() / token_mask.sum().clamp(min=1.0)
+
+        # 4. Entropy Bonus
+        # Approximate entropy from logits (categorical)
+        logits = outputs["logits"] if isinstance(outputs, dict) else outputs
+        # Calculate entropy only on valid tokens
+        entropy = self._compute_entropy(logits, token_mask)
+        entropy_loss = -self.config.entropy_coeff * entropy
+
+        # 5. Total Loss
+        total_loss = policy_loss + self.config.value_coeff * value_loss + entropy_loss
+
+        # Diagnostics
+        with torch.no_grad():
+            clip_frac = ((ratio < 1.0 - self.config.policy_clip) | (ratio > 1.0 + self.config.policy_clip)).float()
+            clip_frac = (clip_frac * token_mask).sum() / token_mask.sum().clamp(min=1.0)
+            approx_kl = 0.5 * (log_ratio**2).mean()
 
         return {
             "loss": total_loss,
-            "policy_loss": policy_loss.detach(),
-            "value_loss": value_loss.detach(),
-            "entropy_loss": entropy_loss.detach(),
-            **metrics,
+            "policy_loss": policy_loss,
+            "value_loss": value_loss,
+            "entropy_loss": entropy_loss,
+            "clip_frac": clip_frac,
+            "approx_kl": approx_kl,
+            "mean_advantage": advantages.mean(),
+            "mean_return": returns.mean(),
+            "mean_value": new_values.mean(),
         }
 
-    def _extract_values(self, logits: torch.Tensor) -> torch.Tensor:
-        """Extract value estimates from logits using proper value head projection"""
-        # Use mean pooling over vocabulary dimension as value estimate
-        # This is more stable than max and represents expected value better
-        probs = F.softmax(logits, dim=-1)
-        values = (probs * torch.arange(logits.size(-1), device=logits.device)).sum(
-            dim=-1
-        )
-        # Normalize by vocabulary size for stability
-        values = values / logits.size(-1)
-        return values.unsqueeze(-1)
-
-    def _compute_entropy(
-        self,
-        logits: torch.Tensor,
-        mask: torch.Tensor,
-    ) -> torch.Tensor:
-        """Compute mean entropy over valid tokens."""
+    def _compute_entropy(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+        """Compute masked entropy."""
         probs = F.softmax(logits, dim=-1)
         log_probs = F.log_softmax(logits, dim=-1)
         entropy = -(probs * log_probs).sum(dim=-1)
         return (entropy * mask).sum() / mask.sum().clamp(min=1.0)
 
-    def _compute_diagnostics(
-        self,
-        ratio: torch.Tensor,
-        advantages: torch.Tensor,
-        token_mask: torch.Tensor,
-    ) -> dict[str, torch.Tensor]:
-        """Compute training diagnostics"""
+    def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, float]:
+        """Single training update with handling for separate/unified optimizers."""
 
-        cfg = self.config
-
-        clipped = (ratio < (1 - cfg.policy_clip)) | (ratio > (1 + cfg.policy_clip))
-        valid_tokens = token_mask.sum().float().clamp(min=1.0)
-        clip_frac = clipped[token_mask].float().sum() / valid_tokens
-
-        ratio_masked = ratio[token_mask]
-
-        return {
-            "clip_frac": clip_frac,
-            "ratio_mean": ratio_masked.mean(),
-            "ratio_std": (
-                ratio_masked.std() if ratio_masked.numel() > 1 else torch.tensor(0.0)
-            ),
-            "ratio_max": ratio_masked.max(),
-            "ratio_min": ratio_masked.min(),
-        }
-
-    def training_step(
-        self,
-        batch: dict[str, torch.Tensor],
-    ) -> dict[str, float]:
-        """
-        Execute single training step
-
-        Args:
-            batch: training batch
-
-        Returns:
-            Dictionary of metrics
-
-        """
-
-        if self.use_separate_value_network:
-            assert self.actor is not None, "Actor network not initialized"
-            assert self.critic is not None, "Critic network not initialized"
-            self.actor.train()
-            self.critic.train()
-            self.actor.optimizer.zero_grad()
-            self.critic.optimizer.zero_grad()
-        else:
-            assert self.optimizer is not None, "Optimizer not initialized"
-            self.policy_model.train()
+        # Zero Grads
+        if self.optimizer:
             self.optimizer.zero_grad()
+        if self.value_optimizer:
+            self.value_optimizer.zero_grad()
 
+        # Forward & Loss
         loss_dict = self.compute_loss(batch)
         loss = loss_dict["loss"]
-
         loss.backward()
 
-        grad_norm: float = 0.0
-        if self.use_separate_value_network:
-            assert self.actor is not None, "Actor network not initialized"
-            assert self.critic is not None, "Critic network not initialized"
-            # Apply gradient clipping to both networks
-            _ = torch.nn.utils.clip_grad_norm_(
-                self.actor.parameters(), self.config.clip_grad_norm
-            )
-            _ = torch.nn.utils.clip_grad_norm_(
-                self.critic.parameters(), self.config.clip_grad_norm
-            )
-            self.actor.optimizer.step()
-            self.critic.optimizer.step()
-
-        else:
-            assert self.optimizer is not None, "Optimizer not initialized"
-            grad_norm_tensor = torch.nn.utils.clip_grad_norm_(
-                self.policy_model.parameters(), self.config.clip_grad_norm
-            )
-            grad_norm = float(grad_norm_tensor.item())
+        # Clipping & Stepping
+        # Policy
+        if self.optimizer:
+            if self.config.clip_grad_norm > 0:
+                torch.nn.utils.clip_grad_norm_(self.policy_model.parameters(), self.config.clip_grad_norm)
             self.optimizer.step()
 
-        metrics: dict[str, float] = {
-            k: float(v.item()) if isinstance(v, torch.Tensor) else float(v)
-            for k, v in loss_dict.items()
-        }
-        if not self.use_separate_value_network:
-            metrics["grad_norm"] = grad_norm
+        # Value (if separate)
+        if self.value_optimizer and self.value_model:
+            if self.config.clip_grad_norm > 0:
+                torch.nn.utils.clip_grad_norm_(self.value_model.parameters(), self.config.clip_grad_norm)
+            self.value_optimizer.step()
 
-        return metrics
-
-    def learn(self):
-        """
-        Multi-epoch training using stored rollouts,
-
-        This implements the core PPO learning loop with mini-batch updates.
-        """
-
-        all_metrics = []
-
-        for epoch in range(self.config.n_epochs):
-            (
-                state_arr,
-                action_arr,
-                old_prob_arr,
-                val_arr,
-                reward_arr,
-                done_arr,
-                batches,
-            ) = self.memory.generate_batches()
-            if self.use_separate_value_network:
-                assert self.actor is not None, "Actor network not initialized"
-                device = self.actor.device
-            else:
-                device = next(self.policy_model.parameters()).device
-
-            values = val_arr.to(device)
-            reward_arr = reward_arr.to(device)
-            dones = done_arr.to(device)
-
-            advantages = self.compute_gae_advantages(reward_arr, values, dones=dones)
-            returns = advantages + values
-
-            for batch_indices in batches:
-                batch_indices = batch_indices.to(device)
-
-                batch_advantages = advantages[batch_indices]
-                batch_returns = returns[batch_indices]
-
-                # Normalize advantages per batch if enabled
-                if self.config.normalize_advantages:
-                    adv_mean = batch_advantages.mean()
-                    adv_std = batch_advantages.std()
-                    # Ensure std is not too small to avoid division issues
-                    if adv_std.item() < 1e-8:
-                        adv_std = torch.tensor(1.0, device=batch_advantages.device)
-                    batch_advantages = (batch_advantages - adv_mean) / (adv_std + 1e-8)
-
-                batch = {
-                    "states": state_arr[batch_indices].to(device),
-                    "actions": action_arr[batch_indices].to(device),
-                    "old_probs": old_prob_arr[batch_indices].to(device),
-                    "advantages": batch_advantages,
-                    "returns": batch_returns,
-                }
-
-                metrics = self.training_step(batch)
-                metrics["epoch"] = epoch
-                all_metrics.append(metrics)
-
-        self.memory.clear_memory()
-        return all_metrics
-
-    def state_dict(self) -> dict[str, Any]:
-        """Override base state_dict to handle PPOConfig dataclass."""
-        from dataclasses import asdict
-
-        assert self.optimizer is not None, "Optimizer not initialized"
-
-        state: dict[str, Any] = {
-            "policy_model": self.policy_model.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
-            "config": {
-                "learning_rate": self.learning_rate,
-                "kl_coeff": self.kl_coeff,
-                "gamma": self.gamma,
-                "lambda_": self.lambda_,
-                "normalize_rewards": self.normalize_rewards,
-                "normalize_advantages": self.normalize_advantages,
-                "clip_grad_norm": self.clip_grad_norm,
-                **asdict(self.config),
-            },
-        }
-
-        if self.ref_model is not None:
-            state["ref_model"] = self.ref_model.state_dict()
-
-        if self.use_separate_value_network:
-            assert self.actor is not None, "Actor network not initialized"
-            assert self.critic is not None, "Critic network not initialized"
-            state["actor"] = self.actor.state_dict()
-            state["critic"] = self.critic.state_dict()
-
-        return state
+        return {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in loss_dict.items()}
 
 
 def create_ppo(
     policy_model: nn.Module,
+    value_model: nn.Module | None = None,
     optimizer: Optimizer | None = None,
+    value_optimizer: Optimizer | None = None,
     learning_rate: float = 3e-4,
-    policy_clip: float = 0.2,
-    n_epochs: int = 10,
+    n_epochs: int = 4,
     batch_size: int = 64,
     **kwargs,
 ) -> PPOAlgorithm:
@@ -788,41 +392,30 @@ def create_ppo(
     Factory function to create PPOAlgorithm instance.
 
     Args:
-        policy_model: The policy model to be optimized
-        optimizer: Optional optimizer, defaults to Adam
-        learning_rate: Learning rate for optimizer
-        policy_clip: Clipping parameter for PPO
-        n_epochs: Number of training epochs per rollout
-        batch_size: Mini-batch size for training
-        **kwargs: Additional arguments for PPOAlgorithm
+        policy_model: The policy model to optimize
+        value_model: Optional separate value model
+        optimizer: Optional optimizer for policy
+        value_optimizer: Optional optimizer for value model
+        learning_rate: Learning rate
+        n_epochs: Number of PPO epochs per rollout
+        batch_size: Mini-batch size
+        **kwargs: Additional args for PPOConfig
 
     Returns:
-        Configured PPOAlgorithm instance
+        Configured PPOAlgorithm
     """
+    config = PPOConfig(learning_rate=learning_rate, n_epochs=n_epochs, batch_size=batch_size, **kwargs)
 
-    config = PPOConfig(
-        learning_rate=learning_rate,
-        policy_clip=policy_clip,
-        n_epochs=n_epochs,
-        batch_size=batch_size,
-        **kwargs,
-    )
-
-    if optimizer is None:
-        optimizer = torch.optim.Adam(policy_model.parameters(), lr=learning_rate)
+    # If optimizer is None, BaseRLHFAlgorithm handles policy optimizer creation.
+    # We pass it through.
 
     return PPOAlgorithm(
         policy_model=policy_model,
+        value_model=value_model,
         optimizer=optimizer,
+        value_optimizer=value_optimizer,
         config=config,
     )
 
 
-__all__ = [
-    "PPOAlgorithm",
-    "PPOConfig",
-    "PPOMemory",
-    "ActorNetwork",
-    "CriticNetwork",
-    "create_ppo",
-]
+__all__ = ["PPOAlgorithm", "PPOConfig", "create_ppo"]

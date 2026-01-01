@@ -1,838 +1,333 @@
+"""
+Test Suite for ThinkRL PPO Algorithm (Infra-Grade)
+==================================================
+
+Tests for the refactored PPO implementation focusing on:
+- RLHF/Token-level PPO logic
+- Unified vs Separate Policy/Value models
+- PPO Loss correctness (clipping, entropy, value loss)
+- Training loop mechanics (train_on_rollout)
+- Gradient flow
+
+Author: EllanorAI
+"""
+
 from unittest.mock import patch
 
 import pytest
 import torch
 import torch.nn as nn
 
+# Explicitly import create_ppo to avoid NameError
 from thinkrl.algorithms.ppo import (
-    ActorNetwork,
-    CriticNetwork,
     PPOAlgorithm,
     PPOConfig,
-    PPOMemory,
     create_ppo,
 )
 
 
-class SimplePolicy(nn.Module):
-    def __init__(self, vocab_size=10, hidden_dim=8):
+# --- Helper Classes ---
+
+
+class SimplePolicyUnified(nn.Module):
+    """Simple policy model that also outputs values (Unified architecture)."""
+
+    def __init__(self, vocab_size=20, hidden_dim=16):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, hidden_dim)
-        self.head = nn.Linear(hidden_dim, vocab_size)
+        self.policy_head = nn.Linear(hidden_dim, vocab_size)
+        self.value_head = nn.Linear(hidden_dim, 1)
 
     def forward(self, input_ids, attention_mask=None):
         embeds = self.embedding(input_ids)
-        logits = self.head(embeds)
+        logits = self.policy_head(embeds)
+        values = self.value_head(embeds).squeeze(-1)
+        return {"logits": logits, "values": values}
+
+
+class SimplePolicySeparate(nn.Module):
+    """Simple policy model (Actor only)."""
+
+    def __init__(self, vocab_size=20, hidden_dim=16):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, hidden_dim)
+        self.policy_head = nn.Linear(hidden_dim, vocab_size)
+
+    def forward(self, input_ids, attention_mask=None):
+        embeds = self.embedding(input_ids)
+        logits = self.policy_head(embeds)
         return {"logits": logits}
 
 
-@pytest.fixture
-def policy_model():
-    return SimplePolicy()
+class SimpleValueModel(nn.Module):
+    """Simple value model (Critic only)."""
+
+    def __init__(self, vocab_size=20, hidden_dim=16):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, hidden_dim)
+        self.value_head = nn.Linear(hidden_dim, 1)
+
+    def forward(self, input_ids, attention_mask=None):
+        embeds = self.embedding(input_ids)
+        # Output [B, T, 1] -> [B, T]
+        return self.value_head(embeds).squeeze(-1)
+
+
+# --- Fixtures ---
 
 
 @pytest.fixture
 def ppo_config():
     return PPOConfig(
-        learning_rate=3e-4,
-        gamma=0.99,
-        gae_lambda=0.95,
+        learning_rate=1e-4,
+        batch_size=4,
+        n_epochs=2,
         policy_clip=0.2,
-        value_coeff=0.5,
-        entropy_coeff=0.01,
-        n_epochs=4,
-        batch_size=8,
+        value_clip=0.2,
     )
 
 
 @pytest.fixture
-def ppo_algo(policy_model, ppo_config):
-    return PPOAlgorithm(policy_model=policy_model, config=ppo_config)
+def unified_model():
+    return SimplePolicyUnified()
 
 
 @pytest.fixture
-def actor_critic_networks():
-    """Fixture for Actor and Critic networks."""
-    n_actions = 4
-    input_dims = (8,)
-    actor = ActorNetwork(n_actions, input_dims, alpha=3e-4)
-    critic = CriticNetwork(input_dims, alpha=3e-4)
-    return actor, critic
+def separate_models():
+    return SimplePolicySeparate(), SimpleValueModel()
 
 
-# Test for configuration
+@pytest.fixture
+def rollout_batch():
+    """Create a sample rollout batch."""
+    batch_size = 8
+    seq_len = 10
+    vocab_size = 20
+
+    return {
+        "input_ids": torch.randint(0, vocab_size, (batch_size, seq_len)),
+        # FIX: Explicitly use torch.long for masks to avoid indexing errors
+        "attention_mask": torch.ones(batch_size, seq_len, dtype=torch.long),
+        "labels": torch.randint(0, vocab_size, (batch_size, seq_len)),
+        # Dense rewards for testing [B, T]
+        "rewards": torch.randn(batch_size, seq_len),
+    }
+
+
+# --- PPOConfig Tests ---
+
+
 def test_ppo_config_defaults():
     config = PPOConfig()
     assert config.learning_rate == 3e-4
     assert config.gamma == 0.99
-    assert config.gae_lambda == 0.95
-    assert config.policy_clip == 0.2
-    assert config.n_epochs == 10
+    assert config.n_epochs == 4
     assert config.batch_size == 64
 
 
 def test_ppo_config_validation():
     with pytest.raises(AssertionError):
-        PPOConfig(policy_clip=-0.1)
-    with pytest.raises(AssertionError):
-        PPOConfig(gamma=1.5)
-    with pytest.raises(AssertionError):
-        PPOConfig(gae_lambda=-0.1)
-    with pytest.raises(AssertionError):
         PPOConfig(n_epochs=0)
     with pytest.raises(AssertionError):
-        PPOConfig(batch_size=0)
+        PPOConfig(policy_clip=1.5)
 
 
-def test_ppo_config_custom_values():
-    config = PPOConfig(
-        learning_rate=1e-3, gamma=0.95, policy_clip=0.3, n_epochs=5, batch_size=32
-    )
+# --- PPOAlgorithm Tests ---
 
-    assert config.learning_rate == 1e-3
-    assert config.gamma == 0.95
-    assert config.policy_clip == 0.3
-    assert config.n_epochs == 5
-    assert config.batch_size == 32
 
+def test_init_unified_model(unified_model, ppo_config):
+    """Test initialization with a unified actor-critic model."""
+    algo = PPOAlgorithm(policy_model=unified_model, config=ppo_config)
 
-# Test for PPOMemory
-def test_memory_store_and_retrieve():
-    memory = PPOMemory(batch_size=4)
+    assert algo.value_model is None
+    assert algo.value_optimizer is None
+    # Base class handles the main optimizer
+    assert algo.optimizer is not None
 
-    for i in range(8):
-        state = [float(i)] * 4
-        action = i
-        prob = float(i) * 0.1
-        val = float(i) * 0.5
-        reward = float(i)
-        done = float(i % 2)
 
-        memory.store_memory(state, action, prob, val, reward, done)
+def test_init_separate_models(separate_models, ppo_config):
+    """Test initialization with separate actor and critic models."""
+    policy, value = separate_models
+    algo = PPOAlgorithm(policy_model=policy, value_model=value, config=ppo_config)
 
-    assert len(memory.states) == 8
-    assert len(memory.actions) == 8
-    assert len(memory.rewards) == 8
+    assert algo.value_model is value
+    assert algo.value_optimizer is not None
+    assert algo.value_optimizer is not algo.optimizer
 
 
-def test_memory_generate_batches():
-    memory = PPOMemory(batch_size=4)
+def test_forward_value_unified(unified_model, ppo_config):
+    """Test value estimation using unified model."""
+    algo = PPOAlgorithm(policy_model=unified_model, config=ppo_config)
+    input_ids = torch.randint(0, 20, (2, 5))
+    mask = torch.ones(2, 5, dtype=torch.long)
 
-    for i in range(8):
-        memory.store_memory(
-            state=[float(i)] * 4,
-            action=i,
-            probs=float(i) * 0.1,
-            vals=float(i) * 0.5,
-            reward=float(i),
-            done=0.0,
-        )
+    values = algo.forward_value(input_ids, mask)
 
-    states, actions, probs, vals, rewards, dones, batches = memory.generate_batches()
+    assert values.shape == (2, 5)
+    assert values.requires_grad
 
-    assert states.shape == (8, 4)
-    assert actions.shape == (8,)
-    assert probs.shape == (8,)
-    assert vals.shape == (8,)
-    assert rewards.shape == (8,)
-    assert dones.shape == (8,)
 
-    assert len(batches) == 2
-    assert all(len(batch) <= 4 for batch in batches)
+def test_forward_value_separate(separate_models, ppo_config):
+    """Test value estimation using separate critic model."""
+    policy, value = separate_models
+    algo = PPOAlgorithm(policy_model=policy, value_model=value, config=ppo_config)
+    input_ids = torch.randint(0, 20, (2, 5))
+    mask = torch.ones(2, 5, dtype=torch.long)
 
+    values = algo.forward_value(input_ids, mask)
 
-def test_memory_clear():
-    memory = PPOMemory(batch_size=4)
+    assert values.shape == (2, 5)
+    assert values.requires_grad
 
-    memory.store_memory([1.0], 0, 0.1, 0.5, 1.0, 0.0)
 
-    assert len(memory.states) == 1
+def test_forward_value_missing_head(separate_models, ppo_config):
+    """Test error when unified model is expected but 'values' missing."""
+    policy, _ = separate_models  # separate policy has no value head
+    algo = PPOAlgorithm(policy_model=policy, config=ppo_config)
 
-    memory.clear_memory()
-    assert len(memory.states) == 0
-    assert len(memory.actions) == 0
-    assert len(memory.rewards) == 0
+    input_ids = torch.randint(0, 20, (2, 5))
+    mask = torch.ones(2, 5, dtype=torch.long)
 
+    with pytest.raises(ValueError, match="did not return 'values'"):
+        algo.forward_value(input_ids, mask)
 
-def test_actor_network_initialization():
-    n_actions = 4
-    input_dims = (8,)
-    actor = ActorNetwork(n_actions, input_dims, alpha=3e-4, fc1_dims=128, fc2_dims=64)
 
-    assert actor.input_layer.in_features == 8
-    assert actor.input_layer.out_features == 128
-    assert actor.hidden_layer.out_features == 64
-    assert actor.output_layer.out_features == 4
+def test_train_on_rollout_execution(unified_model, ppo_config, rollout_batch):
+    """Test the full training loop execution (integration test)."""
+    algo = PPOAlgorithm(policy_model=unified_model, config=ppo_config)
 
+    metrics = algo.train_on_rollout(rollout_batch)
 
-def test_actor_network_forward():
-    n_actions = 4
-    input_dims = (8,)
-    actor = ActorNetwork(n_actions, input_dims, alpha=3e-4)
-    state = torch.randn(2, 8)
-    dist = actor(state)
+    # Check output structure
+    assert isinstance(metrics, list)
+    assert len(metrics) == ppo_config.n_epochs
+    assert "loss" in metrics[0]
+    assert "epoch" in metrics[0]
+    assert metrics[0]["epoch"] == 0
 
-    assert hasattr(dist, "sample")
-    assert hasattr(dist, "log_prob")
 
-    actions = dist.sample()
-    assert actions.shape == (2,)
-    assert all(0 <= action < n_actions for action in actions)
+def test_train_on_rollout_separate_models(separate_models, ppo_config, rollout_batch):
+    """Test training loop with separate actor/critic."""
+    policy, value = separate_models
+    algo = PPOAlgorithm(policy_model=policy, value_model=value, config=ppo_config)
 
+    metrics = algo.train_on_rollout(rollout_batch)
 
-def test_actor_network_device():
-    n_actions = 4
-    input_dims = (8,)
-    actor = ActorNetwork(n_actions, input_dims, alpha=3e-4)
+    assert len(metrics) == ppo_config.n_epochs
+    assert "value_loss" in metrics[0]
 
-    expected_device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    assert str(actor.device) == expected_device
 
+def test_compute_loss_components(unified_model, ppo_config):
+    """Test individual loss components computation."""
+    algo = PPOAlgorithm(policy_model=unified_model, config=ppo_config)
 
-# Test for CriticNetwork
-def test_critic_network_initialization():
-    input_dims = (8,)
+    batch_size, seq_len = 4, 10
 
-    critic = CriticNetwork(input_dims, alpha=3e-4, fc1_dims=128, fc2_dims=64)
-    assert critic.input_layer.in_features == 8
-    assert critic.input_layer.out_features == 128
-    assert critic.hidden_layer.out_features == 64
-    assert critic.value_head.out_features == 1
-
-
-def test_critic_network_forward():
-    input_dims = (8,)
-    critic = CriticNetwork(input_dims, alpha=3e-4)
-
-    state = torch.randn(2, 8)
-    value = critic(state)
-
-    assert value.shape == (2, 1)
-    assert value.dtype == torch.float32
-
-
-def test_critic_network_device():
-    input_dims = (8,)
-    critic = CriticNetwork(input_dims, alpha=3e-4)
-
-    expected_device = "cuda:0" if torch.cuda.is_available() else "cpu"
-    assert str(critic.device) == expected_device
-
-
-def test_compute_gae_advantages(ppo_algo):
-    """Test Generalised Advantage Estimation computation."""
-
-    rewards = torch.tensor([1.0, 2.0, 3.0, 4.0])
-    values = torch.tensor([0.5, 1.0, 1.5, 2.0])
-    dones = torch.tensor([0.0, 0.0, 0.0, 1.0])
-
-    advantages = ppo_algo.compute_gae_advantages(rewards, values, dones)
-
-    assert advantages.shape == (4,)
-    assert advantages.dtype == torch.float32
-
-    assert not torch.isnan(advantages).any()
-
-
-def test_get_log_probs_with_dict_output(ppo_algo):
-    """Test log probability extraction from dict outputs"""
-    batch_size = 2
-    seq_len = 5
-    vocab_size = 10
-    logits = torch.randn(batch_size, seq_len, vocab_size)
-    labels = torch.randint(0, vocab_size, (batch_size, seq_len))
-
-    outputs = {"logits": logits}
-    log_probs = ppo_algo.get_log_probs(outputs, labels)
-
-    assert log_probs.shape == (batch_size, seq_len)
-    assert not torch.isnan(log_probs).any()
-
-
-def test_get_log_probs_with_tensor_output(ppo_algo):
-    """Test log probability extraction from raw tensor"""
-    batch_size = 2
-    seq_len = 5
-    vocab_size = 10
-
-    logits = torch.randn(batch_size, seq_len, vocab_size)
-    labels = torch.randint(0, vocab_size, (batch_size, seq_len))
-
-    log_probs = ppo_algo.get_log_probs(logits, labels)
-
-    assert log_probs.shape == (batch_size, seq_len)
-
-
-def test_get_log_probs_with_masking(
-    ppo_algo,
-):
-    """Test the masked positions get zero log probs"""
-
-    batch_size = 2
-    seq_len = 5
-    vocab_size = 10
-
-    logits = torch.randn(batch_size, seq_len, vocab_size)
-    labels = torch.randint(0, vocab_size, (batch_size, seq_len))
-
-    labels[:, 2:] = -100
-
-    log_probs = ppo_algo.get_log_probs(logits, labels)
-    assert torch.allclose(log_probs[:, 3:], torch.zeros(batch_size, 2))
-
-
-def test_extract_values(ppo_algo):
-    """Test value extraction from logits"""
-
-    batch_size = 2
-    seq_len = 5
-    vocab_size = 10
-
-    logits = torch.randn(batch_size, seq_len, vocab_size)
-    values = ppo_algo._extract_values(logits)
-
-    assert values.shape == (batch_size, seq_len, 1)
-    assert not torch.isnan(values).any()
-
-
-def test_compute_entropy(ppo_algo):
-    """Test entropy computation"""
-    batch_size = 2
-    seq_len = 5
-    vocab_size = 10
-
-    logits = torch.randn(batch_size, seq_len, vocab_size)
-    mask = torch.ones(batch_size, seq_len, dtype=torch.bool)
-
-    entropy = ppo_algo._compute_entropy(logits, mask)
-
-    assert entropy.item() >= 0.0
-    assert not torch.isnan(entropy)
-
-
-def test_compute_entropy_with_masking(ppo_algo):
-    """Test entropy computation with masked tokens"""
-    batch_size = 2
-    seq_len = 5
-    vocab_size = 10
-
-    logits = torch.randn(batch_size, seq_len, vocab_size)
-    mask = torch.ones(batch_size, seq_len, dtype=torch.bool)
-
-    mask[:, 2:] = False
-
-    entropy = ppo_algo._compute_entropy(logits, mask)
-
-    assert entropy.item() >= 0.0
-    assert not torch.isnan(entropy)
-
-
-def test_compute_loss_unified_model(ppo_algo):
-    """Test loss computation with unified policy model"""
-    batch_size = 4
-    seq_len = 5
-    vocab_size = 10
-
+    # Mock batch data similar to what train_on_rollout produces
     batch = {
-        "input_ids": torch.randint(0, vocab_size, (batch_size, seq_len)),
-        "attention_mask": torch.ones((batch_size, seq_len)),
-        "labels": torch.randint(0, vocab_size, (batch_size, seq_len)),
+        "input_ids": torch.randint(0, 20, (batch_size, seq_len)),
+        "attention_mask": torch.ones(batch_size, seq_len, dtype=torch.long),
+        "labels": torch.randint(0, 20, (batch_size, seq_len)),
         "old_log_probs": torch.randn(batch_size, seq_len),
-        "advantages": torch.randn(batch_size),
-        "returns": torch.randn(batch_size),
+        "old_values": torch.randn(batch_size, seq_len),
+        "advantages": torch.randn(batch_size, seq_len),
+        "returns": torch.randn(batch_size, seq_len),
     }
 
-    loss_dict = ppo_algo.compute_loss(batch)
+    loss_dict = algo.compute_loss(batch)
 
     assert "loss" in loss_dict
     assert "policy_loss" in loss_dict
     assert "value_loss" in loss_dict
     assert "entropy_loss" in loss_dict
 
-    assert "clip_frac" in loss_dict
-    assert "ratio_mean" in loss_dict
-    assert "ratio_std" in loss_dict
+    # Check gradients
+    loss_dict["loss"].backward()
+    for param in unified_model.parameters():
+        assert param.grad is not None
 
 
-def test_compute_loss_separate_networks():
-    """Test loss computation with separate actor-critic networks"""
+def test_value_clipping(unified_model, ppo_config):
+    """Test that value clipping logic is active."""
+    ppo_config.value_clip = 0.1
+    algo = PPOAlgorithm(policy_model=unified_model, config=ppo_config)
 
-    n_actions = 4
-    input_dims = (8,)
-
-    config = PPOConfig(
-        learning_rate=3e-4,
-        policy_clip=0.2,
-        n_epochs=4,
-        batch_size=8,
-        use_separate_value_network=True,
-    )
-
-    policy_model = nn.Linear(8, 8)
-
-    ppo = PPOAlgorithm(
-        policy_model=policy_model,
-        config=config,
-        n_actions=n_actions,
-        input_dims=input_dims,
-    )
-
-    batch_size = 8
+    # Create batch where new values diverge significantly from old values
     batch = {
-        "states": torch.randn(batch_size, 8),
-        "actions": torch.randint(0, n_actions, (batch_size,)),
-        "old_probs": torch.randn(batch_size),
-        "advantages": torch.randn(batch_size),
-        "returns": torch.randn(batch_size),
+        "input_ids": torch.randint(0, 20, (2, 5)),
+        "attention_mask": torch.ones(2, 5, dtype=torch.long),
+        "labels": torch.randint(0, 20, (2, 5)),
+        "old_log_probs": torch.randn(2, 5),
+        "old_values": torch.zeros(2, 5),  # Old values are 0
+        "advantages": torch.zeros(2, 5),
+        "returns": torch.ones(2, 5) * 10,  # Returns are far away (10)
     }
 
-    loss_dict = ppo._compute_loss_separate_networks(batch)
+    # Force model to output something large
+    with patch.object(algo, "forward_value", return_value=torch.ones(2, 5) * 5):
+        with patch.object(algo, "get_log_probs", return_value=torch.randn(2, 5)):
+            loss_dict = algo.compute_loss(batch)
 
-    assert "loss" in loss_dict
-    assert "actor_loss" in loss_dict
-    assert "critic_loss" in loss_dict
-    assert "entropy_loss" in loss_dict
-    assert "entropy" in loss_dict
+            # Since clipping is active and diff is large, value loss should be non-zero
+            assert loss_dict["value_loss"] > 0
 
 
-def test_compute_diagnostics(ppo_algo):
-    """Test diagnostic metrics computation"""
+def test_training_step_gradients(separate_models, ppo_config):
+    """Test that training step advances separate optimizers."""
+    policy, value = separate_models
+    algo = PPOAlgorithm(policy_model=policy, value_model=value, config=ppo_config)
+
+    # Create mock batch
+    batch = {
+        "input_ids": torch.randint(0, 20, (2, 5)),
+        "attention_mask": torch.ones(2, 5, dtype=torch.long),
+        "labels": torch.randint(0, 20, (2, 5)),
+        "old_log_probs": torch.randn(2, 5),
+        "old_values": torch.randn(2, 5),
+        "advantages": torch.randn(2, 5),
+        "returns": torch.randn(2, 5),
+    }
+
+    # Take a step
+    # Assign to _ to avoid unused variable warning (metrics)
+    # This call uses 'algo' and 'batch', preventing F841 errors for them
+    _ = algo.training_step(batch)
+
+    # Check if params updated (naively check if grad was computed)
+    has_policy_grad = any(p.grad is not None for p in policy.parameters())
+    has_value_grad = any(p.grad is not None for p in value.parameters())
+
+    assert has_policy_grad
+    assert has_value_grad
+
+
+def test_create_ppo_factory(unified_model):
+    """Test factory function."""
+    algo = create_ppo(unified_model, learning_rate=1e-5, n_epochs=3)
+
+    assert isinstance(algo, PPOAlgorithm)
+    assert algo.config.learning_rate == 1e-5
+    assert algo.config.n_epochs == 3
+
+
+def test_sparse_rewards_handling(unified_model, ppo_config):
+    """Test train_on_rollout with sequence-level scalar rewards."""
+    algo = PPOAlgorithm(policy_model=unified_model, config=ppo_config)
 
     batch_size = 4
     seq_len = 5
 
-    ratio = torch.tensor([0.8, 1.0, 1.2, 1.5]).unsqueeze(1).expand(batch_size, seq_len)
-    advantages = torch.randn(batch_size, seq_len)
-    token_mask = torch.ones(batch_size, seq_len, dtype=torch.bool)
-
-    diagnostics = ppo_algo._compute_diagnostics(ratio, advantages, token_mask)
-
-    assert "clip_frac" in diagnostics
-    assert "ratio_mean" in diagnostics
-    assert "ratio_std" in diagnostics
-    assert "ratio_max" in diagnostics
-    assert "ratio_min" in diagnostics
-
-    assert 0 <= diagnostics["clip_frac"].item() <= 1.0
-
-
-def test_training_step_unified_model(ppo_algo):
-    """Test single training step with unified model"""
-
-    batch_size = 4
-    seq_len = 5
-    vocab_size = 10
-
     batch = {
-        "input_ids": torch.randint(0, vocab_size, (batch_size, seq_len)),
-        "attention_mask": torch.ones((batch_size, seq_len)),
-        "labels": torch.randint(0, vocab_size, (batch_size, seq_len)),
-        "old_log_probs": torch.randn(batch_size, seq_len),
-        "advantages": torch.randn(batch_size),
-        "returns": torch.randn(batch_size),
+        "input_ids": torch.randint(0, 20, (batch_size, seq_len)),
+        # FIX: dtype=torch.long is required for proper indexing in sparse reward assignment
+        "attention_mask": torch.ones(batch_size, seq_len, dtype=torch.long),
+        # Rewards are scalars [B]
+        "rewards": torch.randn(batch_size),
     }
 
-    metrics = ppo_algo.training_step(batch)
-
-    assert "loss" in metrics
-    assert "policy_loss" in metrics
-    assert "value_loss" in metrics
-    assert "grad_norm" in metrics
-
-    assert all(isinstance(v, float) for v in metrics.values())
-
-
-def test_training_step_backward_pass(ppo_algo):
-    """Test the gradients are computed during training step"""
-
-    batch_size = 4
-    seq_len = 5
-    vocab_size = 10
-
-    batch = {
-        "input_ids": torch.randint(0, vocab_size, (batch_size, seq_len)),
-        "attention_mask": torch.ones((batch_size, seq_len)),
-        "labels": torch.randint(0, vocab_size, (batch_size, seq_len)),
-        "old_log_probs": torch.randn(batch_size, seq_len),
-        "advantages": torch.randn(batch_size),
-        "returns": torch.randn(batch_size),
-    }
-
-    ppo_algo.optimizer.zero_grad()
-
-    metrics = ppo_algo.training_step(batch)
-    assert "loss" in metrics
-
-    has_grad = False
-    for param in ppo_algo.policy_model.parameters():
-        if param.grad is not None and param.grad.abs().sum() > 0:
-            has_grad = True
-            break
-
-    assert has_grad, "No gradient computed during training step"
-
-
-def test_learn_multi_epoch(ppo_algo):
-    """test multi-epoch learning loop"""
-
-    for i in range(16):
-        state = [float(i)] * 4
-        action = i % 4
-        prob = 0.1
-        value = 0.5
-        reward = float(i)
-        done = 0.0
-
-        ppo_algo.remember(state, action, prob, value, reward, done)
-
-    ppo_algo.config.n_epochs = 2
-    metrics = ppo_algo.learn()
-
+    # This should run without error and internally map scalars to dense rewards
+    metrics = algo.train_on_rollout(batch)
     assert len(metrics) > 0
-    assert all("epoch" in m for m in metrics)
-
-    epochs = [m["epoch"] for m in metrics]
-    assert 0 in epochs
-    assert 1 in epochs
-
-    assert len(ppo_algo.memory.states) == 0
-
-
-def test_learn_advantage_normalization(ppo_algo):
-    """Test that advantages are normalized during learning"""
-
-    ppo_algo.config.normalize_advantages = True
-    for i in range(16):
-        ppo_algo.remember([float(i)] * 4, i % 4, 0.1, 0.5, float(i), 0.0)
-
-    with patch.object(ppo_algo, "training_step") as mock_step:
-        mock_step.return_value = {"loss": 0.5}
-        ppo_algo.learn()
-
-        assert mock_step.call_count > 0
-
-        first_call_batch = mock_step.call_args_list[0][0][0]
-
-        advantages = first_call_batch["advantages"]
-        assert torch.abs(advantages.mean()) < 0.1
-        assert torch.abs(advantages.std() - 1.0) < 0.2
-
-
-def test_choose_action_separate_networks():
-    """Test action selection with separate networks"""
-
-    n_actions = 4
-    input_dims = (8,)
-
-    config = PPOConfig(use_separate_value_network=True)
-    policy_model = nn.Linear(8, 8)
-
-    ppo = PPOAlgorithm(
-        policy_model=policy_model,
-        config=config,
-        n_actions=n_actions,
-        input_dims=input_dims,
-    )
-
-    observation = torch.randn(8).numpy()
-    action, prob, value = ppo.choose_action(observation)
-
-    assert isinstance(action, (int, float))
-    assert isinstance(prob, float)
-    assert isinstance(value, float)
-    assert 0 <= action < n_actions
-
-
-def test_remember_functionality(ppo_algo):
-    """Test remember stores transitions correctly"""
-
-    state = [1.0, 2.0, 3.0]
-    action = 2
-    prob = 0.25
-    value = 1.5
-    reward = 10.0
-    done = 0.0
-
-    ppo_algo.remember(state, action, prob, value, reward, done)
-
-    assert len(ppo_algo.memory.states) == 1
-    assert ppo_algo.memory.states[0] == state
-    assert ppo_algo.memory.actions[0] == action
-    assert ppo_algo.memory.probs[0] == prob
-    assert ppo_algo.memory.vals[0] == value
-    assert ppo_algo.memory.rewards[0] == reward
-    assert ppo_algo.memory.dones[0] == done
-
-
-# test for factory functions
-def test_create_ppo_default():
-    """Test PPO creation with default"""
-
-    policy_model = SimplePolicy()
-    ppo = create_ppo(policy_model)
-
-    assert isinstance(ppo, PPOAlgorithm)
-    assert ppo.config.learning_rate == 3e-4
-    assert ppo.config.policy_clip == 0.2
-    assert ppo.config.n_epochs == 10
-    assert ppo.config.batch_size == 64
-
-
-def test_create_ppo_custom():
-    """Test PPO creation with custom parameters"""
-
-    policy_model = SimplePolicy()
-    ppo = create_ppo(
-        policy_model, learning_rate=1e-3, policy_clip=0.3, n_epochs=5, batch_size=32
-    )
-
-    assert ppo.config.learning_rate == 1e-3
-    assert ppo.config.policy_clip == 0.3
-    assert ppo.config.n_epochs == 5
-    assert ppo.config.batch_size == 32
-
-
-def test_create_ppo_with_optimizer():
-    """Test PPO creation with custom optimizer"""
-
-    policy_model = SimplePolicy()
-    custom_optimizer = torch.optim.SGD(policy_model.parameters(), lr=1e-2)
-
-    ppo = create_ppo(policy_model, optimizer=custom_optimizer)
-
-    assert ppo.optimizer is custom_optimizer
-
-
-def test_full_training_loop_integration():
-    """Integration test for full training workflow"""
-
-    n_actions = 4
-    input_dims = (8,)
-
-    config = PPOConfig(
-        learning_rate=1e-3,
-        n_epochs=2,
-        batch_size=4,
-        use_separate_value_network=True,
-    )
-
-    policy_model = nn.Linear(8, 8)
-    ppo = PPOAlgorithm(
-        policy_model=policy_model,
-        config=config,
-        n_actions=n_actions,
-        input_dims=input_dims,
-    )
-
-    for _ in range(16):
-        observation = torch.randn(8).numpy()
-        action, prob, value = ppo.choose_action(observation)
-        reward = torch.randn(1).item()
-        done = 0.0
-
-        ppo.remember(observation, action, prob, value, reward, done)
-
-    metrics = ppo.learn()
-
-    assert len(metrics) > 0
-    assert all("loss" in m for m in metrics)
-    assert all("actor_loss" in m for m in metrics)
-    assert all("critic_loss" in m for m in metrics)
-
-
-def test_ppo_state_dict():
-    """Test state dict saving and loading"""
-
-    policy_model = SimplePolicy()
-    config = PPOConfig()
-    ppo1 = PPOAlgorithm(policy_model=policy_model, config=config)
-
-    state = ppo1.state_dict()
-
-    assert "config" in state
-    assert "policy_model" in state
-    assert state["config"]["policy_clip"] == 0.2
-
-    ppo2 = PPOAlgorithm(policy_model=SimplePolicy(), config=config)
-    ppo2.load_state_dict(state)
-
-    assert ppo2.config.policy_clip == 0.2
-
-
-def test_ppo_with_different_clip_ratios():
-    """Test PPO behaviour with the different clip ratios"""
-    policy_model = SimplePolicy()
-
-    for clip_ratio in [0.1, 0.2, 0.3]:
-        config = PPOConfig(policy_clip=clip_ratio)
-        ppo = PPOAlgorithm(policy_model=policy_model, config=config)
-
-        assert ppo.config.policy_clip == clip_ratio
-
-
-def test_empty_memory_buffer():
-    """Test handling of empty memory buffer (Issue #10)"""
-    memory = PPOMemory(batch_size=4)
-
-    # Empty memory should raise ValueError when generating batches
-    with pytest.raises(
-        ValueError, match="Cannot generate batches from empty memory buffer"
-    ):
-        memory.generate_batches()
-
-
-def test_single_sample_memory():
-    """Test handling of single sample in memory (Issue #11)"""
-    memory = PPOMemory(batch_size=4)
-
-    # Store single sample
-    memory.store_memory(
-        state=[1.0, 2.0], action=0, probs=-0.5, vals=1.0, reward=1.0, done=False
-    )
-
-    states, actions, old_probs, vals, rewards, dones, batches = (
-        memory.generate_batches()
-    )
-
-    assert len(states) == 1
-    assert len(batches) == 1
-    assert len(batches[0]) == 1
-
-
-def test_large_rollout_stress():
-    """Test performance with large rollout buffer (Issue #12)"""
-    memory = PPOMemory(batch_size=64)
-
-    # Store 10,000 samples
-    n_samples = 10000
-    for i in range(n_samples):
-        memory.store_memory(
-            state=[float(i), float(i + 1)],
-            action=i % 4,
-            probs=-0.5,
-            vals=1.0,
-            reward=1.0,
-            done=(i % 100 == 0),
-        )
-
-    states, actions, old_probs, vals, rewards, dones, batches = (
-        memory.generate_batches()
-    )
-
-    assert len(states) == n_samples
-    assert len(batches) > 0
-    # Verify all samples are covered in batches
-    total_samples_in_batches = sum(len(batch) for batch in batches)
-    assert total_samples_in_batches == n_samples
-
-
-def test_compute_gae_with_episode_boundaries(ppo_algo):
-    """Test GAE correctly handles episode boundaries via dones tensor.
-
-    This test verifies that:
-    1. The dones parameter is properly passed to compute_gae_advantages
-    2. Episode boundaries reset the advantage accumulation
-    """
-    # Two episodes: [0,1] and [2,3]
-    rewards = torch.tensor([1.0, 2.0, 3.0, 4.0])
-    values = torch.tensor([0.5, 1.0, 1.5, 2.0])
-    dones = torch.tensor([0.0, 1.0, 0.0, 1.0])  # Episodes end at t=1 and t=3
-
-    advantages_with_dones = ppo_algo.compute_gae_advantages(
-        rewards, values, dones=dones
-    )
-    advantages_no_dones = ppo_algo.compute_gae_advantages(rewards, values, dones=None)
-
-    # Advantages should be different when dones are properly handled
-    # because episode boundaries reset the GAE accumulation
-    assert advantages_with_dones.shape == (4,)
-    assert not torch.allclose(
-        advantages_with_dones, advantages_no_dones
-    ), "Dones tensor should affect GAE computation"
-
-
-def test_learn_respects_episode_boundaries():
-    """Integration test: verify learn() passes dones correctly to GAE computation.
-
-    This regression test ensures the dones tensor flows through the learn() method
-    to compute_gae_advantages.
-    """
-    n_actions = 4
-    input_dims = (8,)
-
-    config = PPOConfig(
-        learning_rate=1e-3,
-        n_epochs=1,
-        batch_size=8,
-        use_separate_value_network=True,
-    )
-
-    policy_model = nn.Linear(8, 8)
-    ppo = PPOAlgorithm(
-        policy_model=policy_model,
-        config=config,
-        n_actions=n_actions,
-        input_dims=input_dims,
-    )
-
-    # Create rollout with clear episode boundaries
-    for i in range(16):
-        observation = torch.randn(8).numpy()
-        action, prob, value = ppo.choose_action(observation)
-        reward = 1.0
-        done = 1.0 if (i + 1) % 4 == 0 else 0.0  # Episode ends every 4 steps
-
-        ppo.remember(observation, action, prob, value, reward, done)
-
-    # Patch compute_gae_advantages to verify dones is passed
-    original_gae = ppo.compute_gae_advantages
-    gae_calls = []
-
-    def tracking_gae(*args, **kwargs):
-        gae_calls.append(kwargs)
-        return original_gae(*args, **kwargs)
-
-    ppo.compute_gae_advantages = tracking_gae
-
-    metrics = ppo.learn()
-
-    assert len(metrics) > 0
-    assert len(gae_calls) > 0
-    # Verify that dones was passed as a keyword argument
-    assert "dones" in gae_calls[0], "dones must be passed to compute_gae_advantages"
-    assert gae_calls[0]["dones"] is not None, "dones tensor should not be None"
-
-
-def test_compute_loss_unified_with_simple_states(policy_model, ppo_config):
-    """Test _compute_loss_unified_model with simple state-action batches (non-LLM case)."""
-
-    # Create a simple MLP policy without embeddings
-    class SimpleMLP(nn.Module):
-        def __init__(self):
-            super().__init__()
-            self.fc = nn.Linear(4, 8)
-
-        def forward(self, x):
-            return self.fc(x)
-
-    simple_policy = SimpleMLP()
-    ppo = PPOAlgorithm(policy_model=simple_policy, config=ppo_config)
-
-    batch = {
-        "states": torch.randn(4, 4),
-        "actions": torch.randint(0, 8, (4,)),
-        "old_probs": torch.randn(4),
-        "advantages": torch.randn(4),
-        "returns": torch.randn(4),
-    }
-
-    loss_dict = ppo.compute_loss(batch)
-
-    assert "loss" in loss_dict
-    assert "policy_loss" in loss_dict
-    assert "value_loss" in loss_dict
-    assert "entropy_loss" in loss_dict
-    assert not torch.isnan(loss_dict["loss"])
 
 
 if __name__ == "__main__":

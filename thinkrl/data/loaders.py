@@ -24,9 +24,7 @@ def create_rlhf_collate_fn(tokenizer, padding_side="right"):
         keys = batch[0].keys()
         collated = {}
 
-        padding_value = (
-            tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
-        )
+        padding_value = tokenizer.pad_token_id if tokenizer.pad_token_id is not None else 0
 
         for key in keys:
             if key in ["prompt_text", "prompt"]:  # Pass through strings
@@ -41,14 +39,10 @@ def create_rlhf_collate_fn(tokenizer, padding_side="right"):
                 if padding_side == "left":
                     # Reverse, pad, reverse back for left padding
                     tensors_rev = [t.flip(0) for t in tensors]
-                    padded_rev = pad_sequence(
-                        tensors_rev, batch_first=True, padding_value=padding_value
-                    )
+                    padded_rev = pad_sequence(tensors_rev, batch_first=True, padding_value=padding_value)
                     collated[key] = padded_rev.flip(1)
                 else:
-                    collated[key] = pad_sequence(
-                        tensors, batch_first=True, padding_value=padding_value
-                    )
+                    collated[key] = pad_sequence(tensors, batch_first=True, padding_value=padding_value)
             else:
                 # Fallback for other types
                 collated[key] = [item[key] for item in batch]
