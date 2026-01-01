@@ -328,7 +328,3 @@ def test_sparse_rewards_handling(unified_model, ppo_config):
     # This should run without error and internally map scalars to dense rewards
     metrics = algo.train_on_rollout(batch)
     assert len(metrics) > 0
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
