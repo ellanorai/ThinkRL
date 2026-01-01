@@ -21,7 +21,6 @@ Author: Archit Sood @ EllanorAI
 """
 
 from dataclasses import dataclass
-from typing import Optional, Union
 
 import torch
 import torch.nn as nn
@@ -144,7 +143,7 @@ class DynamicSamplingBuffer:
         """Check if buffer has enough samples for training."""
         return len(self.buffer) * self.config.group_size >= self.config.min_batch_size
 
-    def get_batch(self, batch_size: int) -> Optional[dict[str, torch.Tensor]]:
+    def get_batch(self, batch_size: int) -> dict[str, torch.Tensor] | None:
         """
         Extract a batch from buffer.
 
@@ -195,9 +194,9 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
     def __init__(
         self,
         policy_model: nn.Module,
-        ref_model: Optional[nn.Module] = None,
-        optimizer: Optional[Optimizer] = None,
-        config: Optional[DAPOConfig] = None,
+        ref_model: nn.Module | None = None,
+        optimizer: Optimizer | None = None,
+        config: DAPOConfig | None = None,
         **kwargs,
     ):
         config = config or DAPOConfig()
@@ -223,7 +222,7 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
 
     def get_log_probs(
         self,
-        outputs: Union[dict[str, torch.Tensor], torch.Tensor],
+        outputs: dict[str, torch.Tensor] | torch.Tensor,
         labels: torch.Tensor,
     ) -> torch.Tensor:
         """
@@ -541,7 +540,7 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
     def training_step(
         self,
         batch: dict[str, torch.Tensor],
-        old_log_probs: Optional[torch.Tensor] = None,
+        old_log_probs: torch.Tensor | None = None,
     ) -> dict[str, float]:
         """
         Execute single training step.
@@ -617,7 +616,7 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
         self,
         sample_fn,
         batch_size: int,
-    ) -> Optional[dict[str, torch.Tensor]]:
+    ) -> dict[str, torch.Tensor] | None:
         """
         Implements proper dynamic sampling (Section 3.2).
 
@@ -668,7 +667,7 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
 # Convenience function for creating configured DAPO
 def create_dapo(
     policy_model: nn.Module,
-    optimizer: Optional[Optimizer] = None,
+    optimizer: Optimizer | None = None,
     learning_rate: float = 1e-6,
     epsilon_low: float = 0.2,
     epsilon_high: float = 0.28,

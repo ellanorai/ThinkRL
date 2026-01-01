@@ -15,8 +15,10 @@ All RLHF algorithms (PPO, VAPO, DAPO, GRPO, etc.) inherit from this base class.
 Author: Archit Sood @ EllanorAI
 """
 
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any
 
 import torch
 import torch.distributed as dist
@@ -138,7 +140,7 @@ class BaseRLHFAlgorithm(ABC):
 
         # vLLM integration
         self.use_vllm = use_vllm
-        self.vllm_client: Optional["VLLMClient"] = None
+        self.vllm_client: VLLMClient | None = None
         if use_vllm:
             if not _VLLM_AVAILABLE:
                 raise ImportError("vLLM is required for generation. Install with: pip install vllm")
