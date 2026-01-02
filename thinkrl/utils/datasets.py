@@ -3,6 +3,9 @@ ThinkRL Dataset Utilities
 =========================
 
 Helper functions for data processing, padding, masking, and batch preparation.
+Aligned with OpenRLHF patterns for RLHF training.
+
+Author: Archit Sood @ EllanorAI
 """
 
 from typing import Any
@@ -212,3 +215,193 @@ def to_device(batch: dict[str, Any], device: str | torch.device) -> dict[str, An
 def prepare_batch_for_training(batch: dict[str, Any], device: str | torch.device) -> dict[str, Any]:
     """Prepare batch for training (move to device, etc.)."""
     return to_device(batch, device)
+
+
+def zero_pad_sequences(
+    sequences: list[torch.Tensor],
+    side: str = "left",
+    value: int = 0,
+    stack: bool = False,
+) -> torch.Tensor:
+    """
+    Pad sequences to uniform length with zeros (or specified value).
+
+    Aligned with OpenRLHF's zero_pad_sequences utility.
+
+    Args:
+        sequences: List of tensors to pad
+        side: "left" or "right" padding
+        value: Padding value (default: 0)
+        stack: If True, stack tensors; if False, concatenate
+
+    Returns:
+        Padded tensor
+
+    Example:
+        ```python
+        seqs = [torch.tensor([1, 2]), torch.tensor([3, 4, 5])]
+        padded = zero_pad_sequences(seqs, side="left", value=0)
+        # tensor([[0, 1, 2],
+        #         [3, 4, 5]])
+        ```
+    """
+    if not sequences:
+        return torch.tensor([])
+
+    max_len = max(seq.size(0) for seq in sequences)
+    padded = []
+
+    for seq in sequences:
+        pad_len = max_len - seq.size(0)
+        if pad_len > 0:
+            if side == "left":
+                pad_tensor = torch.full((pad_len,), value, dtype=seq.dtype, device=seq.device)
+                padded_seq = torch.cat([pad_tensor, seq], dim=0)
+            else:  # right
+                pad_tensor = torch.full((pad_len,), value, dtype=seq.dtype, device=seq.device)
+                padded_seq = torch.cat([seq, pad_tensor], dim=0)
+        else:
+            padded_seq = seq
+        padded.append(padded_seq)
+
+    if stack:
+        return torch.stack(padded, dim=0)
+    else:
+        return torch.cat([p.unsqueeze(0) for p in padded], dim=0)
+
+
+def remove_pad_token(
+    input_ids: torch.Tensor,
+    attention_mask: torch.Tensor,
+) -> list[torch.Tensor]:
+    """
+    Remove padding tokens from input sequences.
+
+    Aligned with OpenRLHF's remove_pad_token utility.
+
+    Args:
+        input_ids: Input token IDs [batch_size, seq_len]
+        attention_mask: Attention mask [batch_size, seq_len]
+
+    Returns:
+        List of unpadded token tensors
+
+    Example:
+        ```python
+        input_ids = torch.tensor([[0, 0, 1, 2], [3, 4, 5, 6]])
+        attention_mask = torch.tensor([[0, 0, 1, 1], [1, 1, 1, 1]])
+        unpadded = remove_pad_token(input_ids, attention_mask)
+        # [tensor([1, 2]), tensor([3, 4, 5, 6])]
+        ```
+    """
+    result = []
+    for i in range(input_ids.size(0)):
+        mask = attention_mask[i].bool()
+        unpadded = input_ids[i][mask]
+        result.append(unpadded)
+    return result
+
+
+def convert_token_to_id(token: str, tokenizer: Any) -> int:
+    """
+    Convert a token string to its corresponding ID.
+
+    Aligned with OpenRLHF's convert_token_to_id utility.
+
+    Args:
+        token: Token string
+        tokenizer: Tokenizer instance
+
+    Returns:
+        Token ID
+
+    Raises:
+        ValueError: If token encodes to multiple IDs
+
+    Example:
+        ```python
+        tokenizer = get_tokenizer("gpt2")
+        eos_id = convert_token_to_id("<|endoftext|>", tokenizer)
+        ```
+    """
+    encoded = tokenizer.encode(token, add_special_tokens=False)
+    if len(encoded) != 1:
+        raise ValueError(
+            f"Token '{token}' encodes to {len(encoded)} tokens, expected 1. "
+            f"Encoded IDs: {encoded}"
+        )
+    return encoded[0]
+
+
+def get_strategy(args: Any) -> Any:
+    """
+    Create a DeepSpeed strategy from arguments.
+
+    Placeholder for OpenRLHF compatibility. The actual implementation
+    depends on your training framework (DeepSpeed, Accelerate, etc.).
+
+    Args:
+        args: Configuration arguments
+
+    Returns:
+        Strategy instance
+    """
+    # This is a placeholder - actual implementation depends on your setup
+    try:
+        from thinkrl.training.distributed import get_deepspeed_strategy
+        return get_deepspeed_strategy(args)
+    except ImportError:
+        return None
+
+
+def apply_chat_template(
+    messages: list[dict[str, str]],
+    tokenizer: Any,
+    add_generation_prompt: bool = False,
+    tokenize: bool = False,
+    **kwargs,
+) -> str | dict[str, Any]:
+    """
+    Apply chat template to messages.
+
+    Args:
+        messages: List of message dicts with "role" and "content"
+        tokenizer: Tokenizer with chat_template
+        add_generation_prompt: Whether to add assistant prompt at end
+        tokenize: Whether to return tokens instead of text
+        **kwargs: Additional tokenizer arguments
+
+    Returns:
+        Formatted text or tokenized output
+
+    Example:
+        ```python
+        messages = [
+            {"role": "user", "content": "Hello!"},
+            {"role": "assistant", "content": "Hi there!"},
+        ]
+        text = apply_chat_template(messages, tokenizer)
+        ```
+    """
+    if hasattr(tokenizer, "apply_chat_template"):
+        return tokenizer.apply_chat_template(
+            messages,
+            add_generation_prompt=add_generation_prompt,
+            tokenize=tokenize,
+            **kwargs,
+        )
+
+    # Fallback: simple formatting
+    formatted = []
+    for msg in messages:
+        role = msg.get("role", "user")
+        content = msg.get("content", "")
+        formatted.append(f"{role.capitalize()}: {content}")
+
+    text = "\n".join(formatted)
+    if add_generation_prompt:
+        text += "\nAssistant:"
+
+    if tokenize:
+        return tokenizer(text, **kwargs)
+    return text

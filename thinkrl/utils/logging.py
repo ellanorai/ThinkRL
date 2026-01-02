@@ -62,6 +62,45 @@ class Colors:
     BG_WHITE = "\033[47m"
 
 
+class NewLineFormatter(logging.Formatter):
+    """
+    Formatter that handles multi-line messages properly.
+
+    Aligned with OpenRLHF's logging pattern. Ensures that newlines in log
+    messages are properly formatted with the logging prefix for alignment.
+    """
+
+    def __init__(self, fmt: str | None = None, datefmt: str | None = None):
+        """
+        Initialize the formatter.
+
+        Args:
+            fmt: Log message format string
+            datefmt: Date format string
+        """
+        super().__init__(fmt, datefmt)
+
+    def format(self, record: logging.LogRecord) -> str:
+        """
+        Format the log record, handling newlines properly.
+
+        Args:
+            record: Log record to format
+
+        Returns:
+            Formatted log message with aligned newlines
+        """
+        msg = super().format(record)
+        # Replace newlines with carriage return + newline + prefix spacing
+        # This ensures multi-line messages are properly aligned
+        if "\n" in record.getMessage():
+            # Get the prefix length for alignment
+            prefix = msg.split(record.getMessage())[0] if record.getMessage() in msg else ""
+            indent = " " * len(prefix)
+            msg = msg.replace("\n", f"\r\n{indent}")
+        return msg
+
+
 class ColoredFormatter(logging.Formatter):
     """
     Custom formatter that adds colors to log messages based on log level.
@@ -517,6 +556,84 @@ def disable_external_loggers(level: int = logging.WARNING):
 # Module-level logger
 _module_logger: logging.Logger | None = None
 
+# Default logging format (aligned with OpenRLHF)
+_DEFAULT_FORMAT = "%(levelname)s %(asctime)s %(filename)s:%(lineno)d] %(message)s"
+_DEFAULT_DATE_FORMAT = "%m-%d %H:%M:%S"
+
+# Root logger name
+_ROOT_LOGGER_NAME = "thinkrl"
+
+# Default handler (set during setup)
+_default_handler: logging.Handler | None = None
+
+
+def _setup_root_logger() -> None:
+    """
+    Set up the root thinkrl logger with default configuration.
+
+    Aligned with OpenRLHF's logging initialization pattern.
+    """
+    global _default_handler
+
+    root_logger = logging.getLogger(_ROOT_LOGGER_NAME)
+    root_logger.setLevel(logging.DEBUG)
+
+    # Create default handler if not exists
+    if _default_handler is None:
+        _default_handler = logging.StreamHandler(sys.stdout)
+        _default_handler.setLevel(logging.DEBUG)
+
+        formatter = NewLineFormatter(
+            fmt=_DEFAULT_FORMAT,
+            datefmt=_DEFAULT_DATE_FORMAT,
+        )
+        _default_handler.setFormatter(formatter)
+        root_logger.addHandler(_default_handler)
+
+    root_logger.propagate = False
+
+
+def init_logger(name: str) -> logging.Logger:
+    """
+    Initialize a named logger with default configuration.
+
+    Aligned with OpenRLHF's init_logger pattern.
+
+    Args:
+        name: Logger name (will be prefixed with 'thinkrl.')
+
+    Returns:
+        Configured logger instance
+
+    Example:
+        ```python
+        logger = init_logger(__name__)
+        logger.info("Training started")
+        ```
+    """
+    global _default_handler
+
+    # Ensure root logger is set up
+    if _default_handler is None:
+        _setup_root_logger()
+
+    # Create logger under thinkrl namespace
+    if not name.startswith(_ROOT_LOGGER_NAME):
+        full_name = f"{_ROOT_LOGGER_NAME}.{name}"
+    else:
+        full_name = name
+
+    logger = logging.getLogger(full_name)
+    logger.setLevel(logging.DEBUG)
+
+    # Add default handler if not already present
+    if _default_handler not in logger.handlers:
+        logger.addHandler(_default_handler)
+
+    logger.propagate = False
+
+    return logger
+
 
 def get_module_logger() -> logging.Logger:
     """
@@ -531,13 +648,19 @@ def get_module_logger() -> logging.Logger:
     return _module_logger
 
 
+# Initialize root logger on module import
+_setup_root_logger()
+
+
 # Public API
 __all__ = [
     "setup_logger",
     "get_logger",
+    "init_logger",
     "configure_logging_for_distributed",
     "disable_external_loggers",
     "ColoredFormatter",
+    "NewLineFormatter",
     "ThinkRLLogger",
     "Colors",
 ]
