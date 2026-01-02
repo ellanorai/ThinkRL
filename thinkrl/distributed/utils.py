@@ -67,17 +67,11 @@ def reduce_tensor(
 
     Returns:
         Reduced tensor
+
+    Raises:
+        ValueError: If reduce_op is not one of "mean", "sum", "max", "min"
     """
-    if not dist.is_initialized():
-        return tensor
-
-    if world_size is None:
-        world_size = dist.get_world_size()
-
-    # Clone to avoid modifying original
-    tensor = tensor.clone()
-
-    # Map string op to torch op
+    # Map string op to torch op - validate before checking dist
     op_map = {
         "mean": dist.ReduceOp.SUM,  # Will divide after
         "sum": dist.ReduceOp.SUM,
@@ -86,7 +80,16 @@ def reduce_tensor(
     }
 
     if reduce_op not in op_map:
-        raise ValueError(f"Unknown reduce_op: {reduce_op}")
+        raise ValueError(f"Unknown reduce_op: {reduce_op}. Must be one of: {list(op_map.keys())}")
+
+    if not dist.is_initialized():
+        return tensor
+
+    if world_size is None:
+        world_size = dist.get_world_size()
+
+    # Clone to avoid modifying original
+    tensor = tensor.clone()
 
     dist.all_reduce(tensor, op=op_map[reduce_op])
 

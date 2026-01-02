@@ -166,12 +166,23 @@ class LoRAConfig:
         """
         arch_lower = architecture.lower()
 
-        # Find matching architecture
+        # Find matching architecture - prioritize exact matches first
         target_modules = None
-        for arch_name, modules in ARCHITECTURE_TARGETS.items():
-            if arch_name in arch_lower:
-                target_modules = modules
-                break
+
+        # First try exact match
+        if arch_lower in ARCHITECTURE_TARGETS:
+            target_modules = ARCHITECTURE_TARGETS[arch_lower]
+        else:
+            # Then try substring matching, prioritizing longer matches
+            matches = []
+            for arch_name, modules in ARCHITECTURE_TARGETS.items():
+                if arch_name in arch_lower or arch_lower in arch_name:
+                    matches.append((arch_name, modules))
+
+            # Sort by length descending to prioritize more specific matches
+            if matches:
+                matches.sort(key=lambda x: len(x[0]), reverse=True)
+                target_modules = matches[0][1]
 
         if target_modules is None:
             target_modules = ARCHITECTURE_TARGETS["default"]
@@ -386,32 +397,34 @@ def get_lora_config_for_model(model: nn.Module, r: int = 8, **kwargs) -> LoRACon
         config = model.config
 
         # Check model type
-        if hasattr(config, "model_type"):
+        if hasattr(config, "model_type") and config.model_type is not None:
             model_type = config.model_type.lower()
 
-            # Map common model types
-            arch_map = {
-                "llama": "llama",
-                "mistral": "mistral",
-                "mixtral": "mistral",
-                "qwen": "qwen",
-                "qwen2": "qwen2",
-                "phi": "phi",
-                "phi3": "phi",
-                "gemma": "gemma",
-                "gemma2": "gemma",
-                "gpt2": "gpt2",
-                "bloom": "bloom",
-            }
+            # Map common model types - order matters for specificity
+            arch_map = [
+                ("qwen2", "qwen2"),  # Check qwen2 before qwen
+                ("qwen", "qwen"),
+                ("llama", "llama"),
+                ("mistral", "mistral"),
+                ("mixtral", "mistral"),
+                ("phi3", "phi"),
+                ("phi", "phi"),
+                ("gemma2", "gemma"),
+                ("gemma", "gemma"),
+                ("gpt2", "gpt2"),
+                ("bloom", "bloom"),
+            ]
 
-            for key, arch in arch_map.items():
+            for key, arch in arch_map:
                 if key in model_type:
                     return LoRAConfig.for_architecture(arch, r=r, **kwargs)
 
         # Check architectures list
         if hasattr(config, "architectures") and config.architectures:
             arch_name = config.architectures[0].lower()
-            for key in ARCHITECTURE_TARGETS:
+            # Sort keys by length descending for more specific matches first
+            sorted_keys = sorted(ARCHITECTURE_TARGETS.keys(), key=len, reverse=True)
+            for key in sorted_keys:
                 if key in arch_name:
                     return LoRAConfig.for_architecture(key, r=r, **kwargs)
 
