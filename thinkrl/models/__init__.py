@@ -29,6 +29,22 @@ from .loss import (
     LogExpLoss,
 )
 
+from .utils import (
+    create_reference_model,
+    update_reference_model,
+    share_model_weights,
+    freeze_model,
+    unfreeze_model,
+    freeze_layers,
+    EMAModel,
+    count_parameters,
+    get_model_device,
+    get_model_dtype,
+    model_memory_footprint,
+    enable_gradient_checkpointing,
+    disable_gradient_checkpointing,
+)
+
 
 __all__ = [
     # Models
@@ -45,4 +61,18 @@ __all__ = [
     "KTOLoss",
     "SFTLoss",
     "LogExpLoss",
+    # Utils
+    "create_reference_model",
+    "update_reference_model",
+    "share_model_weights",
+    "freeze_model",
+    "unfreeze_model",
+    "freeze_layers",
+    "EMAModel",
+    "count_parameters",
+    "get_model_device",
+    "get_model_dtype",
+    "model_memory_footprint",
+    "enable_gradient_checkpointing",
+    "disable_gradient_checkpointing",
 ]
