@@ -251,7 +251,7 @@ class TestLogSeqlenUnbalance:
         partitions = [[0], [1]]
 
         with caplog.at_level(logging.INFO):
-            metrics = log_seqlen_unbalance(
+            log_seqlen_unbalance(
                 seqlen_list,
                 partitions,
                 prefix="Batch 0: ",
@@ -303,7 +303,7 @@ class TestGetMinimumNumMicroBatchSize:
         total_lengths = [3000, 500]
 
         with caplog.at_level(logging.WARNING):
-            min_batches = get_minimum_num_micro_batch_size(
+            get_minimum_num_micro_batch_size(
                 total_lengths,
                 max_tokens_per_gpu=2048,
             )

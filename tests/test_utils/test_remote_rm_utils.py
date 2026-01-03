@@ -17,7 +17,6 @@ from thinkrl.utils.remote_rm_utils import (
     create_reward_server_handler,
     request_api_wrapper,
     _REQUESTS_AVAILABLE,
-    _RAY_AVAILABLE,
 )
 
 
@@ -111,7 +110,7 @@ class TestRemoteRewardModel:
         """Test warning when no source is provided."""
         import logging
         with caplog.at_level(logging.WARNING):
-            rm = RemoteRewardModel()
+            RemoteRewardModel()
 
         assert "No remote URLs or reward function specified" in caplog.text
 

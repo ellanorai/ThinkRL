@@ -6,12 +6,10 @@ Tests for:
 - thinkrl.utils.agent (AgentState, AgentInstanceBase, AgentExecutorBase, etc.)
 """
 
-import asyncio
 import logging
 import os
 import tempfile
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -78,6 +76,7 @@ class ConcreteAgent(AgentInstanceBase):
     """Concrete implementation for testing."""
 
     def __init__(self, env_name: str = "test"):
+        super().__init__()
         self.env_name = env_name
         self.step_count = 0
 
