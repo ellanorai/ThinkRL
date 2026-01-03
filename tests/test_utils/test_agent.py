@@ -133,7 +133,7 @@ class TestAgentInstanceBase:
         # Create a minimal subclass that doesn't override reset
         class MinimalAgent(AgentInstanceBase):
             def __init__(self):
-                pass
+                super().__init__()
             def step(self, state_dict, **kwargs):
                 return {}
 
