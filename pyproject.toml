@@ -65,7 +65,8 @@ markers = [
     "gpu: marks tests as requiring a CUDA device (deselect with '-m \"not gpu\"')",
     "integration: end-to-end training or inference tests",
     "unit: isolated unit tests",
-    "distributed: tests requiring multi-GPU setup"
+    "distributed: tests requiring multi-GPU setup",
+    "asyncio: marks tests as async (requires pytest-asyncio)"
 ]
 
 filterwarnings = [

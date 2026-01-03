@@ -2,7 +2,8 @@
 ThinkRL Training Module
 ========================
 
-Training utilities including KL control, mixed precision, and RL helpers.
+Training utilities including KL control, mixed precision, RL helpers,
+and trainers for SFT, reward modeling, etc.
 
 Author: EllanorAI
 """
@@ -14,6 +15,12 @@ from .kl_controller import (
     AdaptiveKLController,
     FixedKLController,
     create_kl_controller,
+)
+
+from .sft_trainer import (
+    SFTConfig,
+    SFTTrainer,
+    create_sft_trainer,
 )
 
 from .mixed_precision import (
@@ -54,6 +61,10 @@ from .rl_utils import (
 
 
 __all__ = [
+    # SFT Trainer
+    "SFTConfig",
+    "SFTTrainer",
+    "create_sft_trainer",
     # KL Controller
     "KLControllerType",
     "KLControllerConfig",
