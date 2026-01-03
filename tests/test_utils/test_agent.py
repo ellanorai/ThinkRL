@@ -14,13 +14,13 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from thinkrl.utils.agent import (
+    _RAY_AVAILABLE,
+    _VLLM_AVAILABLE,
     AgentExecutorBase,
     AgentInstanceBase,
     AgentState,
-    load_agent_class,
     create_agent_remote,
-    _RAY_AVAILABLE,
-    _VLLM_AVAILABLE,
+    load_agent_class,
 )
 
 
@@ -129,10 +129,12 @@ class TestAgentInstanceBase:
 
     def test_base_reset_default(self):
         """Test that base class reset returns states unchanged."""
+
         # Create a minimal subclass that doesn't override reset
         class MinimalAgent(AgentInstanceBase):
             def __init__(self):
                 super().__init__()
+
             def step(self, state_dict, **kwargs):
                 return {}
 
@@ -197,6 +199,36 @@ class TestAgentExecutorBase:
             tokenizer=mock_tokenizer,
         )
         # This test would require vLLM to be installed
+
+    @pytest.mark.asyncio
+    async def test_generate_mock_vllm(self, mock_llm_engine, mock_tokenizer):
+        """Test generate method with mocked vLLM engine."""
+        with patch("thinkrl.utils.agent._VLLM_AVAILABLE", True):
+            with patch("thinkrl.utils.agent.TokensPrompt", MagicMock()) as MockTokensPrompt:
+                # Mock the async generator returned by add_request
+                async def mock_async_generator():
+                    mock_output = MagicMock()
+                    mock_output.outputs = [MagicMock(token_ids=[4, 5], text="response", logprobs=[])]
+                    yield mock_output
+
+                # We need to mock add_request to return our async generator
+                # But add_request is awaited, so it should return the generator or an awaitable that returns it
+                # In the code: request = await self.llm_engine.add_request(...)
+                # So add_request should be an async function or return a Future
+
+                async def mock_add_request(*args, **kwargs):
+                    return mock_async_generator()
+
+                mock_llm_engine.add_request.side_effect = mock_add_request
+
+                executor = AgentExecutorBase(
+                    llm_engine=mock_llm_engine,
+                    tokenizer=mock_tokenizer,
+                )
+
+                result = await executor.generate([1, 2, 3], MagicMock())
+                assert result["output_ids"] == [4, 5]
+                assert result["text"] == "response"
 
     @pytest.mark.asyncio
     async def test_generate_without_vllm(self, mock_llm_engine, mock_tokenizer):
@@ -280,6 +312,52 @@ class TestAgentExecutorBase:
                     assert len(state.observations) > 0
 
     @pytest.mark.asyncio
+    async def test_execute_mock_ray(self, mock_llm_engine, mock_tokenizer):
+        """Test execute with Ray mocked."""
+        with patch("thinkrl.utils.agent._VLLM_AVAILABLE", True):
+            with patch("thinkrl.utils.agent._RAY_AVAILABLE", True):
+                with patch("thinkrl.utils.agent.ray") as mock_ray:
+                    # Mock remote actor
+                    mock_actor_handle = MagicMock()
+
+                    # ray.remote(cls).remote() -> returns actor handle
+                    mock_ray.remote.return_value.remote.return_value = mock_actor_handle
+
+                    # Mock ray.get behavior (identity for simplicity in this mock structure)
+                    # The code calls ray.get(agent.reset.remote(...))
+                    # So calling .remote() returns a ref, and ray.get(ref) returns the value
+                    # We can make .remote() return the value directly if we mock ray.get to be identity
+
+                    mock_ray.get.side_effect = lambda x: x
+
+                    # Mock agent methods
+                    mock_actor_handle.reset.remote.return_value = {"reset_done": True}
+                    mock_actor_handle.step.remote.return_value = {"observation": "obs", "reward": 1.0, "done": True}
+
+                    # Mock generate to return immediately
+                    # We patch the generate method on the instance or class
+                    with patch.object(AgentExecutorBase, "generate") as mock_generate:
+                        mock_generate.return_value = {
+                            "output_ids": [4],
+                            "text": "action",
+                            "log_probs": [],
+                        }
+
+                        executor = AgentExecutorBase(
+                            llm_engine=mock_llm_engine,
+                            tokenizer=mock_tokenizer,
+                            agent_class=ConcreteAgent,
+                        )
+
+                        state = await executor.execute([1, 2, 3], MagicMock())
+
+                        assert state.done is True
+                        # Check observations
+                        assert "obs" in state.observations
+                        # Check cleanup
+                        mock_ray.kill.assert_called_with(mock_actor_handle)
+
+    @pytest.mark.asyncio
     async def test_run_batch(self, mock_llm_engine, mock_tokenizer):
         """Test batch execution."""
         with patch.object(AgentExecutorBase, "execute") as mock_execute:
@@ -325,7 +403,8 @@ class TestLoadAgentClass:
     def temp_agent_file(self):
         """Create a temporary Python file with an agent class."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write("""
+            f.write(
+                """
 from thinkrl.utils.agent import AgentInstanceBase
 
 class TestAgentFromFile(AgentInstanceBase):
@@ -334,7 +413,8 @@ class TestAgentFromFile(AgentInstanceBase):
 
     def step(self, state_dict, **kwargs):
         return {"observation": "obs", "reward": 1.0, "done": True}
-""")
+"""
+            )
             f.flush()
             yield f.name
         os.unlink(f.name)
@@ -343,14 +423,16 @@ class TestAgentFromFile(AgentInstanceBase):
     def temp_agent_file_not_subclass(self):
         """Create a temp file with a non-subclass agent."""
         with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-            f.write("""
+            f.write(
+                """
 class NotAnAgent:
     def __init__(self):
         pass
 
     def step(self, state_dict):
         return {}
-""")
+"""
+            )
             f.flush()
             yield f.name
         os.unlink(f.name)
@@ -376,6 +458,13 @@ class NotAnAgent:
         with pytest.raises(AttributeError, match="not found"):
             load_agent_class(temp_agent_file, "NonexistentClass")
 
+    def test_load_agent_class_import_error(self, temp_agent_file):
+        """Test error when module cannot be loaded."""
+        with patch("importlib.util.spec_from_file_location") as mock_spec:
+            mock_spec.return_value = None
+            with pytest.raises(ImportError, match="Could not load module"):
+                load_agent_class(temp_agent_file, "TestAgentFromFile")
+
     def test_load_agent_class_not_subclass_warning(self, temp_agent_file_not_subclass, caplog):
         """Test warning when class is not a subclass of AgentInstanceBase."""
         with caplog.at_level(logging.WARNING, logger="thinkrl.utils.agent"):
@@ -400,3 +489,14 @@ class TestCreateAgentRemote:
         """Test creating remote agent with Ray."""
         RemoteAgent = create_agent_remote(ConcreteAgent, num_cpus=0.5, num_gpus=0.0)
         assert RemoteAgent is not None
+
+    def test_create_agent_remote_forced_mock(self):
+        """Test creating remote agent with forced Ray mock."""
+        with patch("thinkrl.utils.agent._RAY_AVAILABLE", True):
+            with patch("thinkrl.utils.agent.ray") as mock_ray:
+                mock_ray.remote.return_value = lambda cls: cls  # Decorator mock
+
+                RemoteAgent = create_agent_remote(ConcreteAgent, num_cpus=0.5, num_gpus=0.0)
+
+                assert RemoteAgent is ConcreteAgent
+                mock_ray.remote.assert_called_with(num_cpus=0.5, num_gpus=0.0)

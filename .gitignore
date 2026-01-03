@@ -29,3 +29,4 @@ build/
 thinkrl.egg-info/not-zip-safe
 coverage.xml
 .vs/
+*.txt

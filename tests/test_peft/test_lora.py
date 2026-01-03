@@ -5,17 +5,18 @@ Tests for LoRA Configuration and Utilities
 Comprehensive tests for PEFT/LoRA integration.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 import torch
 import torch.nn as nn
-from unittest.mock import patch, MagicMock
 
 from thinkrl.peft.lora import (
-    LoRAConfig,
     ARCHITECTURE_TARGETS,
-    is_peft_available,
-    get_trainable_parameters,
+    LoRAConfig,
     get_lora_config_for_model,
+    get_trainable_parameters,
+    is_peft_available,
 )
 
 
@@ -313,3 +314,112 @@ class TestLoRAConfigIntegration:
         # Llama uses q_proj, gpt2 uses c_attn
         assert "q_proj" in llama_config.target_modules
         assert "c_attn" in gpt2_config.target_modules
+
+
+class TestLoRAUtilities:
+    """Tests for LoRA utility functions."""
+
+    def test_inject_lora_peft_missing(self):
+        """Test inject_lora raises ImportError when PEFT is missing."""
+        with patch("thinkrl.peft.lora.PEFT_AVAILABLE", False):
+            with pytest.raises(ImportError, match="peft library is required"):
+                from thinkrl.peft.lora import inject_lora
+
+                inject_lora(MagicMock(), MagicMock())
+
+    def test_merge_lora_weights_peft_missing(self):
+        """Test merge_lora_weights raises ImportError when PEFT is missing."""
+        with patch("thinkrl.peft.lora.PEFT_AVAILABLE", False):
+            with pytest.raises(ImportError, match="peft library is required"):
+                from thinkrl.peft.lora import merge_lora_weights
+
+                merge_lora_weights(MagicMock())
+
+    def test_merge_lora_weights_no_method(self):
+        """Test merge_lora_weights returns model as-is if no merge_and_unload."""
+        with patch("thinkrl.peft.lora.PEFT_AVAILABLE", True):
+            model = MagicMock()
+            del model.merge_and_unload  # Ensure attribute doesn't exist
+
+            # Need to patch hasattr to return False for merge_and_unload
+            # Or just rely on MagicMock behavior if we didn't add it.
+            # MagicMock usually creates attributes on access.
+            # We can use a real object or spec.
+            class SimpleModel:
+                pass
+
+            model = SimpleModel()
+
+            from thinkrl.peft.lora import merge_lora_weights
+
+            result = merge_lora_weights(model)
+            assert result is model
+
+    def test_unload_lora_peft_missing(self):
+        """Test unload_lora raises ImportError when PEFT is missing."""
+        with patch("thinkrl.peft.lora.PEFT_AVAILABLE", False):
+            with pytest.raises(ImportError, match="peft library is required"):
+                from thinkrl.peft.lora import unload_lora
+
+                unload_lora(MagicMock())
+
+    def test_unload_lora_fallback(self):
+        """Test unload_lora fallback when unload() is missing."""
+        with patch("thinkrl.peft.lora.PEFT_AVAILABLE", True):
+            # Model with base_model but no unload
+            class MockPeftModel:
+                def __init__(self):
+                    self.base_model = MagicMock()
+                    self.base_model.model = "inner_model"
+
+            model = MockPeftModel()
+            from thinkrl.peft.lora import unload_lora
+
+            result = unload_lora(model)
+            assert result == "inner_model"
+
+    def test_prepare_model_for_deepspeed_lora_zero3(self):
+        """Test prepare_model_for_deepspeed_lora with ZeRO-3."""
+        with patch("thinkrl.peft.lora.inject_lora") as mock_inject:
+            mock_inject.return_value = "injected_model"
+            from thinkrl.peft.lora import prepare_model_for_deepspeed_lora
+
+            result = prepare_model_for_deepspeed_lora(MagicMock(), MagicMock(), zero_stage=3)
+            assert result == "injected_model"
+
+
+class TestLoRAConfigCoverage:
+    """Extra coverage tests for LoRAConfig."""
+
+    def test_task_types(self):
+        """Test mapping of different task types."""
+        with patch("thinkrl.peft.lora.PEFT_AVAILABLE", True):
+            with patch("thinkrl.peft.lora.PeftLoraConfig") as MockPeftConfig:
+                with patch("thinkrl.peft.lora.TaskType") as MockTaskType:
+                    # Setup MockTaskType attributes
+                    MockTaskType.CAUSAL_LM = "CAUSAL_LM"
+                    MockTaskType.SEQ_CLS = "SEQ_CLS"
+                    MockTaskType.SEQ_2_SEQ_LM = "SEQ_2_SEQ_LM"
+                    MockTaskType.TOKEN_CLS = "TOKEN_CLS"
+
+                    types = ["SEQ_CLS", "SEQ_2_SEQ_LM", "TOKEN_CLS"]
+                    for t in types:
+                        config = LoRAConfig(task_type=t)
+                        config.to_peft_config()
+
+    def test_architecture_substring_match(self):
+        """Test fuzzy matching for architecture."""
+        # "mistral-7b" should match "mistral"
+        config = LoRAConfig.for_architecture("mistral-7b-v0.1")
+        assert "q_proj" in config.target_modules
+
+    def test_get_lora_config_architectures_list(self):
+        """Test getting config from model.config.architectures list."""
+        from thinkrl.peft.lora import get_lora_config_for_model
+
+        model = MagicMock()
+        del model.config.model_type  # Ensure fallback to architectures
+        model.config.architectures = ["MistralForCausalLM"]
+
+        config = get_lora_config_for_model(model)
+        assert "q_proj" in config.target_modules

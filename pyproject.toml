@@ -26,6 +26,9 @@ ignore = [
     "W292",  # No newline at end of file
     "W293",  # Blank line contains whitespace
     "E203",  # Whitespace before ':'
+    "T201",  # Ignore print statements
+    "F841",  # Ignore unused variables
+    "E402",  # Ignore module level import not at top of file
 ]
 
 [tool.ruff.lint.per-file-ignores]

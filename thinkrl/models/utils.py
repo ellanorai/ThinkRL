@@ -17,6 +17,7 @@ from typing import Any
 import torch
 import torch.nn as nn
 
+
 logger = logging.getLogger(__name__)
 
 
@@ -78,9 +79,7 @@ def update_reference_model(
         tau < 1.0 creates a Polyak average, which can improve stability.
     """
     with torch.no_grad():
-        for ref_param, policy_param in zip(
-            ref_model.parameters(), policy_model.parameters()
-        ):
+        for ref_param, policy_param in zip(ref_model.parameters(), policy_model.parameters()):
             if tau == 1.0:
                 ref_param.data.copy_(policy_param.data)
             else:
@@ -168,7 +167,8 @@ def freeze_layers(
             if "layer" in name.lower() or "block" in name.lower():
                 # Extract layer number
                 import re
-                match = re.search(r"(?:layer|block)[._]?(\d+)", name.lower())
+
+                match = re.search(r"(?:layers?|blocks?)[._]?(\d+)", name.lower())
                 if match:
                     layer_idx = int(match.group(1))
                     if layer_idx < num_layers:
@@ -364,12 +364,8 @@ def model_memory_footprint(model: nn.Module) -> dict[str, float]:
     Returns:
         Dictionary with memory estimates
     """
-    param_bytes = sum(
-        p.numel() * p.element_size() for p in model.parameters()
-    )
-    buffer_bytes = sum(
-        b.numel() * b.element_size() for b in model.buffers()
-    )
+    param_bytes = sum(p.numel() * p.element_size() for p in model.parameters())
+    buffer_bytes = sum(b.numel() * b.element_size() for b in model.buffers())
 
     return {
         "parameters_mb": param_bytes / (1024 * 1024),
@@ -389,9 +385,7 @@ def enable_gradient_checkpointing(model: nn.Module) -> bool:
         True if gradient checkpointing was enabled
     """
     if hasattr(model, "gradient_checkpointing_enable"):
-        model.gradient_checkpointing_enable(
-            gradient_checkpointing_kwargs={"use_reentrant": False}
-        )
+        model.gradient_checkpointing_enable(gradient_checkpointing_kwargs={"use_reentrant": False})
         logger.info("Enabled gradient checkpointing")
         return True
 

@@ -170,3 +170,81 @@ class TestProcessAudio:
             assert result is None
             mock_logger.error.assert_called_once()
             assert "Error processing audio" in mock_logger.error.call_args[0][0]
+
+
+# --- Processor Class Tests ---
+
+from thinkrl.data.processors import AudioProcessor, DataProcessor, ImageProcessor, TextProcessor, get_data_processor
+
+
+class TestTextProcessor:
+    def test_init(self):
+        processor = TextProcessor(max_length=1024)
+        assert processor.max_length == 1024
+        assert processor.tokenizer is None
+
+    def test_process_no_tokenizer(self):
+        processor = TextProcessor()
+        data = "hello world"
+        result = processor.process(data)
+        assert result == {"text": "hello world"}
+
+    def test_process_with_tokenizer(self):
+        mock_tokenizer = MagicMock(return_value={"input_ids": [1, 2, 3]})
+        processor = TextProcessor(tokenizer=mock_tokenizer, max_length=128)
+
+        data = "hello world"
+        result = processor.process(data)
+
+        mock_tokenizer.assert_called_with(data, max_length=128, truncation=True, return_tensors="pt")
+        assert result == {"input_ids": [1, 2, 3]}
+
+    def test_batch_process(self):
+        # Test inherited batch_process
+        processor = TextProcessor()
+        batch = ["a", "b"]
+        result = processor.batch_process(batch)
+        assert result == [{"text": "a"}, {"text": "b"}]
+
+
+class TestImageProcessor:
+    @patch("thinkrl.data.processors.process_image")
+    def test_process_calls_fn(self, mock_fn):
+        processor = ImageProcessor()
+        data = "img.jpg"
+        processor.process(data)
+        mock_fn.assert_called_with(data, transform=None)
+
+    @patch("thinkrl.data.processors.process_image")
+    def test_process_with_transform(self, mock_fn):
+        mock_transform = MagicMock()
+        processor = ImageProcessor(transform=mock_transform)
+        processor.process("img.jpg")
+        mock_fn.assert_called_with("img.jpg", transform=mock_transform)
+
+
+class TestAudioProcessor:
+    @patch("thinkrl.data.processors.process_audio")
+    def test_process_calls_fn(self, mock_fn):
+        processor = AudioProcessor(sample_rate=48000)
+        processor.process("audio.wav")
+        mock_fn.assert_called_with("audio.wav", sr=48000, transform=None)
+
+
+class TestGetDataProcessorFactory:
+    def test_get_text(self):
+        p = get_data_processor("text", max_length=512)
+        assert isinstance(p, TextProcessor)
+        assert p.max_length == 512
+
+    def test_get_image(self):
+        p = get_data_processor("image")
+        assert isinstance(p, ImageProcessor)
+
+    def test_get_audio(self):
+        p = get_data_processor("audio")
+        assert isinstance(p, AudioProcessor)
+
+    def test_invalid_type(self):
+        with pytest.raises(ValueError, match="Unknown processor type"):
+            get_data_processor("invalid")
