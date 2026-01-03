@@ -11,6 +11,15 @@ Available algorithms:
 - DAPO: Decoupled clip and dynamic sampling Policy Optimization
 - VAPO: Value-model-based Augmented PPO (for reasoning)
 - REINFORCE: Classic Monte Carlo policy gradient
+- REINFORCE++: REINFORCE with PPO tricks (no critic)
+- RLOO: REINFORCE Leave-One-Out
+- PRIME: Process Reinforcement through Implicit Rewards
+- DrGRPO: Doctor GRPO (global normalization)
+- IPO: Identity Preference Optimization
+- KTO: Kahneman-Tversky Optimization
+- OnlineDPO: Iterative/Online DPO
+- STaR: Self-Taught Reasoner
+- ORPO: Odds Ratio Preference Optimization
 
 Author: EllanorAI
 """
@@ -23,6 +32,17 @@ from thinkrl.algorithms.ppo import PPOAlgorithm, PPOConfig, create_ppo
 from thinkrl.algorithms.reinforce import REINFORCEAlgorithm, REINFORCEConfig, create_reinforce
 from thinkrl.algorithms.vapo import VAPOAlgorithm, VAPOConfig
 
+# New algorithms (stubs)
+from thinkrl.algorithms.reinforce_pp import REINFORCEPPAlgorithm, REINFORCEPPConfig, create_reinforce_pp
+from thinkrl.algorithms.rloo import RLOOAlgorithm, RLOOConfig, create_rloo
+from thinkrl.algorithms.prime import PRIMEAlgorithm, PRIMEConfig, create_prime
+from thinkrl.algorithms.dr_grpo import DrGRPOAlgorithm, DrGRPOConfig, create_dr_grpo
+from thinkrl.algorithms.ipo import IPOAlgorithm, IPOConfig, create_ipo
+from thinkrl.algorithms.kto import KTOAlgorithm, KTOConfig, create_kto
+from thinkrl.algorithms.online_dpo import OnlineDPOAlgorithm, OnlineDPOConfig, create_online_dpo
+from thinkrl.algorithms.star import STaRAlgorithm, STaRConfig, create_star
+from thinkrl.algorithms.orpo import ORPOAlgorithm, ORPOConfig, create_orpo
+
 
 # Algorithm registry for factory pattern
 ALGORITHMS = {
@@ -32,6 +52,19 @@ ALGORITHMS = {
     "dapo": DAPOAlgorithm,
     "vapo": VAPOAlgorithm,
     "reinforce": REINFORCEAlgorithm,
+    # New algorithms
+    "reinforce_pp": REINFORCEPPAlgorithm,
+    "reinforce++": REINFORCEPPAlgorithm,
+    "rloo": RLOOAlgorithm,
+    "prime": PRIMEAlgorithm,
+    "dr_grpo": DrGRPOAlgorithm,
+    "drgrpo": DrGRPOAlgorithm,
+    "ipo": IPOAlgorithm,
+    "kto": KTOAlgorithm,
+    "online_dpo": OnlineDPOAlgorithm,
+    "iterative_dpo": OnlineDPOAlgorithm,
+    "star": STaRAlgorithm,
+    "orpo": ORPOAlgorithm,
 }
 
 CONFIGS = {
@@ -41,6 +74,19 @@ CONFIGS = {
     "dapo": DAPOConfig,
     "vapo": VAPOConfig,
     "reinforce": REINFORCEConfig,
+    # New configs
+    "reinforce_pp": REINFORCEPPConfig,
+    "reinforce++": REINFORCEPPConfig,
+    "rloo": RLOOConfig,
+    "prime": PRIMEConfig,
+    "dr_grpo": DrGRPOConfig,
+    "drgrpo": DrGRPOConfig,
+    "ipo": IPOConfig,
+    "kto": KTOConfig,
+    "online_dpo": OnlineDPOConfig,
+    "iterative_dpo": OnlineDPOConfig,
+    "star": STaRConfig,
+    "orpo": ORPOConfig,
 }
 
 
@@ -85,6 +131,42 @@ __all__ = [
     "REINFORCEAlgorithm",
     "REINFORCEConfig",
     "create_reinforce",
+    # REINFORCE++
+    "REINFORCEPPAlgorithm",
+    "REINFORCEPPConfig",
+    "create_reinforce_pp",
+    # RLOO
+    "RLOOAlgorithm",
+    "RLOOConfig",
+    "create_rloo",
+    # PRIME
+    "PRIMEAlgorithm",
+    "PRIMEConfig",
+    "create_prime",
+    # DrGRPO
+    "DrGRPOAlgorithm",
+    "DrGRPOConfig",
+    "create_dr_grpo",
+    # IPO
+    "IPOAlgorithm",
+    "IPOConfig",
+    "create_ipo",
+    # KTO
+    "KTOAlgorithm",
+    "KTOConfig",
+    "create_kto",
+    # Online DPO
+    "OnlineDPOAlgorithm",
+    "OnlineDPOConfig",
+    "create_online_dpo",
+    # STaR
+    "STaRAlgorithm",
+    "STaRConfig",
+    "create_star",
+    # ORPO
+    "ORPOAlgorithm",
+    "ORPOConfig",
+    "create_orpo",
     # Registry
     "ALGORITHMS",
     "CONFIGS",

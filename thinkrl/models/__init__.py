@@ -18,6 +18,12 @@ from .actor import Actor
 from .critic import Critic
 from .reward_model import RewardModel
 from .model import get_llm_for_sequence_regression
+from .prm import (
+    PRMConfig,
+    ProcessRewardModel,
+    PRMTrainer,
+    create_prm,
+)
 from .loss import (
     GPTLMLoss,
     PolicyLoss,
@@ -52,6 +58,11 @@ __all__ = [
     "Critic",
     "RewardModel",
     "get_llm_for_sequence_regression",
+    # Process Reward Model
+    "PRMConfig",
+    "ProcessRewardModel",
+    "PRMTrainer",
+    "create_prm",
     # Losses
     "GPTLMLoss",
     "PolicyLoss",
