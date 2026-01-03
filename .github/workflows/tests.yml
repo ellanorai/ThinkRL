@@ -41,7 +41,7 @@ jobs:
           pip install datasets>=2.14.0 pyyaml>=6.0 tqdm>=4.65.0
           pip install scipy>=1.10.0 cupy-cuda12x  # CuPy for metrics (will work on CPU too)
           # Install dev dependencies
-          pip install pytest>=7.4.0 pytest-cov>=4.1.0 pytest-xdist>=3.3.0 pytest-mock>=3.11.0
+          pip install pytest>=7.4.0 pytest-cov>=4.1.0 pytest-xdist>=3.3.0 pytest-mock>=3.11.0 pytest-asyncio>=0.23.0
           # Install package in editable mode
           pip install -e .
 
@@ -93,7 +93,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cpu
           pip install transformers>=4.35.0 accelerate>=0.24.0
-          pip install pytest>=7.4.0 pytest-cov>=4.1.0
+          pip install pytest>=7.4.0 pytest-cov>=4.1.0 pytest-asyncio>=0.23.0
           pip install -e .
 
       - name: Run compatibility tests

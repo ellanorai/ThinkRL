@@ -179,6 +179,7 @@ DEV_REQUIREMENTS = {
         "pytest-cov>=4.1.0,<5.0.0",
         "pytest-xdist>=3.3.0",
         "pytest-mock>=3.11.0",
+        "pytest-asyncio>=0.23.0",
     ],
     "format": [
         "black>=23.9.0,<24.0.0",
@@ -244,6 +245,7 @@ CI_REQUIREMENTS = {
         "pytest-cov>=4.1.0,<5.0.0",
         "pytest-xdist>=3.3.0",
         "pytest-mock>=3.11.0",
+        "pytest-asyncio>=0.23.0",
         # Linting
         "ruff>=0.1.0",
         "mypy>=1.5.0,<2.0.0",
