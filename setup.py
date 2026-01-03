@@ -18,7 +18,7 @@ def read_readme():
         with open("README.md", encoding="utf-8") as fh:
             return fh.read()
     except FileNotFoundError:
-        return __doc__
+        return __doc__ or "ThinkRL: Universal RLHF Training Library"
 
 
 # Read version from __init__.py

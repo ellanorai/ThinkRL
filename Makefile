@@ -6,8 +6,8 @@ PYTHON := python3
 PIP := pip
 PYTEST := pytest
 
-# PyTorch CUDA 12.1 Index URL (Matches requirements.txt)
-TORCH_INDEX := https://download.pytorch.org/whl/cu121
+# PyTorch Index URL (Updated for CUDA 12.8 - using Nightly channel)
+TORCH_INDEX := https://download.pytorch.org/whl/nightly/cu128
 
 .PHONY: install dev-install clean check test format lint
 
