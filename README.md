@@ -1,4 +1,3 @@
-
 ---
 
 <div align="center">
@@ -30,6 +29,12 @@ ThinkRL is a modular, high-performance open-source library for large-scale reinf
 
 ## 🎉 Latest Updates
 
+### January 2026
+
+* **Reasoning & Verification**: Added **Self-Taught Reasoner (STaR)** for bootstrapping reasoning and **Process Reward Models (PRM)** for step-by-step verification.
+* **Preference Suite**: Full support for **Online DPO**, **KTO**, **IPO**, and **ORPO**, expanding alignment capabilities beyond standard RLHF.
+* **Advanced Policy Optimization**: Introduced **PRIME**, **RLOO**, **REINFORCE++**, and **DR-GRPO** for robust and efficient training.
+
 ### December 2025
 
 * **Algorithms**: Added **Direct Preference Optimization (DPO)** and **Decoupled Clip and Dynamic Sampling Policy Optimization (DAPO)** for preference alignment and long-horizon reasoning.
@@ -49,31 +54,42 @@ ThinkRL is a modular, high-performance open-source library for large-scale reinf
 
 ### 🧠 Algorithms
 
+**Policy Optimization**
 * **VAPO** — Value-model-based Augmented PPO with length-adaptive GAE
 * **DAPO** — Decoupled Clip and Dynamic Sampling Policy Optimization
-* **GRPO** — Group Relative Policy Optimization
+* **GRPO / DR-GRPO** — Group Relative Policy Optimization (Standard & Distributionally Robust)
 * **PPO** — Enhanced Proximal Policy Optimization
-* **REINFORCE** — Policy gradient with variance reduction
+* **REINFORCE / REINFORCE++** — Advanced policy gradient with variance reduction
+* **PRIME** — Policy optimization for reasoning tasks
+* **RLOO** — REINFORCE Leave-One-Out estimator
+
+**Preference Optimization**
+* **DPO / Online DPO** — Direct Preference Optimization
+* **KTO** — Kahneman-Tversky Optimization
+* **ORPO** — Odds Ratio Preference Optimization
+* **IPO** — Identity Preference Optimization
 
 ### 🤔 Reasoning
 
-* Chain-of-Thought (CoT)
+* **STaR** — Self-Taught Reasoner (Bootstrapping)
+* Chain-of-Thought (CoT) & Long-CoT
 * Tree-of-Thought (ToT)
-* Long-CoT for extended reasoning
-* Self-verification for consistency
+* Self-verification & Step-by-step Reward Modeling
 
 ### 🌐 Model Support
 
+* **Process Reward Models (PRM)**
 * GPT-style autoregressive models
 * LLaMA 3 / 4 and Code LLaMA
 * Qwen 2.5+
 * T5 / BART
-* Multimodal models (CLIP, BLIP)
+* Multimodal models (CLIP, BLIP and ViT)
 
 ### ⚡ Training & Optimization
 
 * LoRA / QLoRA (PEFT)
-* DeepSpeed (ZeRO)
+* Singular Value Decomposition (SVD) for finetuning
+* DeepSpeed (ZeRO-2 / ZeRO-3)
 * Hugging Face integration
 * Mixed precision (FP16 / BF16)
 
@@ -85,6 +101,7 @@ ThinkRL is a modular, high-performance open-source library for large-scale reinf
 
 ```bash
 pip install thinkrl
+
 ```
 
 ### Optional Features
@@ -97,6 +114,7 @@ pip install thinkrl[deepspeed]
 pip install thinkrl[reasoning]
 pip install thinkrl[wandb]
 pip install thinkrl[all]
+
 ```
 
 ---
@@ -116,6 +134,7 @@ config = ModelConfig(
 
 trainer = RLHFTrainer(config)
 trainer.train()
+
 ```
 
 ### Chain-of-Thought Training
@@ -131,6 +150,7 @@ config = ReasoningConfig(
 
 trainer = CoTTrainer(config)
 trainer.train()
+
 ```
 
 ---
@@ -139,15 +159,16 @@ trainer.train()
 
 ```text
 ThinkRL/
-├── algorithms/
-├── models/
-├── reasoning/
-├── training/
-├── data/
-├── peft/
-├── utils/
-├── configs/
-└── logs/
+├── algorithms/       # PPO, DPO, GRPO, STaR, PRIME, etc.
+├── models/           # Actor, Critic, PRM, Reward Models
+├── reasoning/        # CoT, ToT, Verification logic
+├── training/         # Trainers (SFT, RLHF) and Loops
+├── data/             # Datasets, Processors, Packing
+├── peft/             # LoRA/QLoRA integration
+├── distributed/      # DeepSpeed Strategies
+├── utils/            # Metrics, Logging, Checkpointing
+└── configs/          # YAML Configuration
+
 ```
 
 ---
@@ -159,8 +180,12 @@ Apache License 2.0
 ---
 
 <div align="center">
-  ⭐ <strong>Star us on <a href="https://github.com/ellanorai/ThinkRL">GitHub</a> to support ThinkRL</strong><br/>
-  Crafted by <a href="https://ellanorai.org">EllanorAI</a>
+⭐ <strong>Star us on <a href="https://github.com/ellanorai/ThinkRL">GitHub</a> to support ThinkRL</strong>
+
+
+
+
+Crafted by <a href="https://ellanorai.org">EllanorAI</a>
 </div>
 
 ---
