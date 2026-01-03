@@ -4,6 +4,7 @@ pytest-cov>=4.1.0        # Coverage reporting
 pytest-xdist>=3.3.0      # Parallel testing (crucial for slow RL runs)
 pytest-benchmark>=4.0.0  # Performance benchmarking (for VAPO/GRPO latency)
 pytest-mock>=3.11.0      # Mocking for distributed components
+pytest-asyncio>=0.23.0
 
 # Code Formatting & Linting
 ruff>=0.1.0  # Replaces black, isort, flake8
