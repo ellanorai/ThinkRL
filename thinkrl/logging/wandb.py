@@ -67,11 +67,13 @@ class WandBLogger(Logger):
             resume: Resume from run ID
             **kwargs: Additional wandb.init kwargs
         """
+        # Initialize _run before potential ImportError so __del__ works
+        self._run = None
+
         if not WANDB_AVAILABLE:
             raise ImportError("wandb is not installed. Install with: pip install wandb")
 
         self.project = project
-        self._run = None
 
         try:
             self._run = wandb.init(

@@ -109,7 +109,7 @@ class TestRemoteRewardModel:
     def test_init_no_source_warning(self, caplog):
         """Test warning when no source is provided."""
         import logging
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger="thinkrl.utils.remote_rm_utils"):
             RemoteRewardModel()
 
         assert "No remote URLs or reward function specified" in caplog.text
@@ -125,7 +125,7 @@ class TestRemoteRewardModel:
         import logging
         rm = RemoteRewardModel()
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger="thinkrl.utils.remote_rm_utils"):
             result = rm.get_rewards(["query1", "query2"])
 
         assert result == [0.0, 0.0]

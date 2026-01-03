@@ -346,7 +346,7 @@ class TestLogging:
             content = f.read()
 
         assert "Epoch 1" in content
-        assert "100%" in content
+        assert "100.0%" in content
 
     def test_get_logger_returns_existing(self):
         """Test that get_logger returns existing configured logger."""

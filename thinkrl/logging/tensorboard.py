@@ -53,6 +53,9 @@ class TensorBoardLogger(Logger):
             comment: Comment to append to log directory
             flush_secs: How often to flush to disk
         """
+        # Initialize _writer before potential ImportError so __del__ works
+        self._writer = None
+
         if not TENSORBOARD_AVAILABLE:
             raise ImportError(
                 "TensorBoard is not installed. Install with: pip install tensorboard"

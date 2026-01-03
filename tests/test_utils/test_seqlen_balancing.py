@@ -250,7 +250,7 @@ class TestLogSeqlenUnbalance:
         seqlen_list = [100, 50]
         partitions = [[0], [1]]
 
-        with caplog.at_level(logging.INFO):
+        with caplog.at_level(logging.INFO, logger="thinkrl.utils.seqlen_balancing"):
             log_seqlen_unbalance(
                 seqlen_list,
                 partitions,
@@ -302,7 +302,7 @@ class TestGetMinimumNumMicroBatchSize:
 
         total_lengths = [3000, 500]
 
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger="thinkrl.utils.seqlen_balancing"):
             get_minimum_num_micro_batch_size(
                 total_lengths,
                 max_tokens_per_gpu=2048,

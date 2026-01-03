@@ -159,3 +159,140 @@ class TestWandBLoggerMocked:
 
         call_kwargs = mock_wandb.init.call_args[1]
         assert call_kwargs["mode"] == "offline"
+
+    @patch("thinkrl.logging.wandb.wandb")
+    def test_log_artifact(self, mock_wandb):
+        """Test log_artifact method."""
+        mock_run = MagicMock()
+        mock_wandb.init.return_value = mock_run
+        mock_artifact = MagicMock()
+        mock_wandb.Artifact.return_value = mock_artifact
+
+        logger = WandBLogger(project="test")
+        logger.log_artifact(
+            name="my_model",
+            artifact_type="model",
+            path="/path/to/model.pt",
+            metadata={"accuracy": 0.95},
+        )
+
+        mock_wandb.Artifact.assert_called_once_with(
+            name="my_model",
+            type="model",
+            metadata={"accuracy": 0.95},
+        )
+        mock_artifact.add_file.assert_called_once_with("/path/to/model.pt")
+        mock_run.log_artifact.assert_called_once_with(mock_artifact)
+
+    @patch("thinkrl.logging.wandb.wandb")
+    def test_log_model(self, mock_wandb):
+        """Test log_model method (wraps log_artifact)."""
+        mock_run = MagicMock()
+        mock_wandb.init.return_value = mock_run
+        mock_artifact = MagicMock()
+        mock_wandb.Artifact.return_value = mock_artifact
+
+        logger = WandBLogger(project="test")
+        logger.log_model(
+            path="/path/to/model.pt",
+            name="checkpoint",
+            metadata={"epoch": 10},
+        )
+
+        mock_wandb.Artifact.assert_called_once_with(
+            name="checkpoint",
+            type="model",
+            metadata={"epoch": 10},
+        )
+
+    @patch("thinkrl.logging.wandb.wandb")
+    def test_run_property(self, mock_wandb):
+        """Test run property returns the run object."""
+        mock_run = MagicMock()
+        mock_run.name = "test-run"
+        mock_wandb.init.return_value = mock_run
+
+        logger = WandBLogger(project="test")
+        assert logger.run is mock_run
+
+    @patch("thinkrl.logging.wandb.wandb")
+    def test_log_hyperparams_without_run(self, mock_wandb):
+        """Test log_hyperparams does nothing when run failed."""
+        mock_wandb.init.side_effect = Exception("Failed")
+
+        logger = WandBLogger(project="test")
+        # Should not raise
+        logger.log_hyperparams({"lr": 1e-4})
+
+    @patch("thinkrl.logging.wandb.wandb")
+    def test_log_text_without_run(self, mock_wandb):
+        """Test log_text does nothing when run failed."""
+        mock_wandb.init.side_effect = Exception("Failed")
+
+        logger = WandBLogger(project="test")
+        # Should not raise
+        logger.log_text("key", "value", step=1)
+
+    @patch("thinkrl.logging.wandb.wandb")
+    def test_log_table_without_run(self, mock_wandb):
+        """Test log_table does nothing when run failed."""
+        mock_wandb.init.side_effect = Exception("Failed")
+
+        logger = WandBLogger(project="test")
+        # Should not raise
+        logger.log_table("key", ["a", "b"], [[1, 2]], step=1)
+
+    @patch("thinkrl.logging.wandb.wandb")
+    def test_log_artifact_without_run(self, mock_wandb):
+        """Test log_artifact does nothing when run failed."""
+        mock_wandb.init.side_effect = Exception("Failed")
+
+        logger = WandBLogger(project="test")
+        # Should not raise
+        logger.log_artifact("name", "type", "/path")
+
+    @patch("thinkrl.logging.wandb.wandb")
+    def test_finish_without_run(self, mock_wandb):
+        """Test finish does nothing when run failed."""
+        mock_wandb.init.side_effect = Exception("Failed")
+
+        logger = WandBLogger(project="test")
+        # Should not raise
+        logger.finish()
+
+    @patch("thinkrl.logging.wandb.wandb")
+    def test_init_with_all_params(self, mock_wandb):
+        """Test initialization with all parameters."""
+        mock_run = MagicMock()
+        mock_wandb.init.return_value = mock_run
+
+        WandBLogger(
+            project="test-project",
+            name="test-run",
+            config={"lr": 0.01},
+            tags=["tag1", "tag2"],
+            entity="my-team",
+            group="experiment-group",
+            notes="Test notes",
+            mode="online",
+            resume="allow",
+        )
+
+        call_kwargs = mock_wandb.init.call_args[1]
+        assert call_kwargs["project"] == "test-project"
+        assert call_kwargs["name"] == "test-run"
+        assert call_kwargs["entity"] == "my-team"
+        assert call_kwargs["group"] == "experiment-group"
+        assert call_kwargs["notes"] == "Test notes"
+        assert call_kwargs["resume"] == "allow"
+
+    @patch("thinkrl.logging.wandb.wandb")
+    def test_finish_sets_run_to_none(self, mock_wandb):
+        """Test finish sets _run to None."""
+        mock_run = MagicMock()
+        mock_wandb.init.return_value = mock_run
+
+        logger = WandBLogger(project="test")
+        assert logger._run is not None
+        logger.finish()
+        assert logger._run is None

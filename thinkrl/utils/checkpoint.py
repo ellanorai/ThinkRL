@@ -349,6 +349,50 @@ class CheckpointManager:
 
         return metadata
 
+    def load_latest_checkpoint(
+        self,
+        model: nn.Module,
+        optimizer: Optimizer | None = None,
+        scheduler: _LRScheduler | None = None,
+        device: torch.device | None = None,
+    ) -> dict[str, Any] | None:
+        """
+        Load the most recent checkpoint based on timestamp.
+
+        Args:
+            model: Model to load state into
+            optimizer: Optimizer to load state into (optional)
+            scheduler: Scheduler to load state into (optional)
+            device: Device to load tensors to
+
+        Returns:
+            Checkpoint metadata or None if no checkpoints exist
+        """
+        if not self.checkpoints:
+            logger.warning("No checkpoints available")
+            return None
+
+        # Sort by timestamp to find most recent
+        sorted_checkpoints = sorted(
+            self.checkpoints,
+            key=lambda x: x["timestamp"],
+            reverse=True,
+        )
+
+        latest = sorted_checkpoints[0]
+        checkpoint_path = latest["path"]
+
+        metadata = self.load_checkpoint(
+            checkpoint_path=checkpoint_path,
+            model=model,
+            optimizer=optimizer,
+            scheduler=scheduler,
+            device=device,
+        )
+
+        logger.info(f"Loaded latest checkpoint: {checkpoint_path}")
+        return metadata
+
     def _update_best_checkpoint(self, checkpoint_info: dict[str, Any], metric_value: float):
         """Update the best checkpoint based on metric value."""
         if self.best_checkpoint is None:
@@ -663,7 +707,16 @@ def save_config(config: dict[str, Any], save_path: str | Path):
     save_path = Path(save_path)
     save_path.parent.mkdir(parents=True, exist_ok=True)
 
-    if save_path.suffix in [".yaml", ".yml"] and _YAML_AVAILABLE:
+    supported_extensions = [".json", ".yaml", ".yml"]
+    if save_path.suffix not in supported_extensions:
+        raise ValueError(
+            f"Unsupported config format: {save_path.suffix}. "
+            f"Supported formats: {supported_extensions}"
+        )
+
+    if save_path.suffix in [".yaml", ".yml"]:
+        if not _YAML_AVAILABLE:
+            raise ImportError("PyYAML is required to save YAML configs. Install with: pip install pyyaml")
         with open(save_path, "w") as f:
             yaml.dump(config, f, default_flow_style=False)
     else:
@@ -694,7 +747,16 @@ def load_config(config_path: str | Path) -> dict[str, Any]:
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
 
-    if config_path.suffix in [".yaml", ".yml"] and _YAML_AVAILABLE:
+    supported_extensions = [".json", ".yaml", ".yml"]
+    if config_path.suffix not in supported_extensions:
+        raise ValueError(
+            f"Unsupported config format: {config_path.suffix}. "
+            f"Supported formats: {supported_extensions}"
+        )
+
+    if config_path.suffix in [".yaml", ".yml"]:
+        if not _YAML_AVAILABLE:
+            raise ImportError("PyYAML is required to load YAML configs. Install with: pip install pyyaml")
         with open(config_path) as f:
             config = yaml.safe_load(f)
     else:
