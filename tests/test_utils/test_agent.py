@@ -378,7 +378,7 @@ class NotAnAgent:
 
     def test_load_agent_class_not_subclass_warning(self, temp_agent_file_not_subclass, caplog):
         """Test warning when class is not a subclass of AgentInstanceBase."""
-        with caplog.at_level(logging.WARNING):
+        with caplog.at_level(logging.WARNING, logger="thinkrl.utils.agent"):
             AgentClass = load_agent_class(temp_agent_file_not_subclass, "NotAnAgent")
 
         assert AgentClass is not None

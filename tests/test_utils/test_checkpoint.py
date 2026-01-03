@@ -253,12 +253,12 @@ class TestCheckpointEdgeCases:
         """Test saving checkpoint with extra state dictionary."""
         path = temp_dir / "extra_state.pt"
 
-        extra_state = {"custom_key": "custom_value", "step": 100}
-        save_checkpoint(path, simple_model, epoch=1, extra_state=extra_state)
+        # Extra kwargs are passed directly and saved at top level
+        save_checkpoint(path, simple_model, epoch=1, custom_key="custom_value", custom_step=100)
 
         loaded = load_checkpoint(path, simple_model)
         assert loaded.get("custom_key") == "custom_value"
-        assert loaded.get("step") == 100
+        assert loaded.get("custom_step") == 100
 
     def test_checkpoint_manager_mode_max(self, temp_dir, simple_model):
         """Test checkpoint manager with max mode."""
