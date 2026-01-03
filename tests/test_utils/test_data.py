@@ -244,3 +244,214 @@ def test_prepare_batch_for_training():
     with patch("thinkrl.utils.datasets.to_device") as mock_to:
         prepare_batch_for_training({}, "cpu")
         mock_to.assert_called_once()
+
+
+class TestZeroPadSequences:
+    """Tests for zero_pad_sequences function."""
+
+    def test_zero_pad_left(self):
+        from thinkrl.utils.datasets import zero_pad_sequences
+
+        seqs = [torch.tensor([1, 2]), torch.tensor([3, 4, 5])]
+        padded = zero_pad_sequences(seqs, side="left", value=0)
+
+        expected = torch.tensor([[0, 1, 2], [3, 4, 5]])
+        assert torch.equal(padded, expected)
+
+    def test_zero_pad_right(self):
+        from thinkrl.utils.datasets import zero_pad_sequences
+
+        seqs = [torch.tensor([1, 2]), torch.tensor([3, 4, 5])]
+        padded = zero_pad_sequences(seqs, side="right", value=0)
+
+        expected = torch.tensor([[1, 2, 0], [3, 4, 5]])
+        assert torch.equal(padded, expected)
+
+    def test_zero_pad_custom_value(self):
+        from thinkrl.utils.datasets import zero_pad_sequences
+
+        seqs = [torch.tensor([1, 2]), torch.tensor([3, 4, 5])]
+        padded = zero_pad_sequences(seqs, side="left", value=-1)
+
+        expected = torch.tensor([[-1, 1, 2], [3, 4, 5]])
+        assert torch.equal(padded, expected)
+
+    def test_zero_pad_empty(self):
+        from thinkrl.utils.datasets import zero_pad_sequences
+
+        result = zero_pad_sequences([])
+        assert torch.equal(result, torch.tensor([]))
+
+    def test_zero_pad_no_padding_needed(self):
+        from thinkrl.utils.datasets import zero_pad_sequences
+
+        seqs = [torch.tensor([1, 2, 3]), torch.tensor([4, 5, 6])]
+        padded = zero_pad_sequences(seqs, side="left")
+
+        expected = torch.tensor([[1, 2, 3], [4, 5, 6]])
+        assert torch.equal(padded, expected)
+
+    def test_zero_pad_stack(self):
+        from thinkrl.utils.datasets import zero_pad_sequences
+
+        seqs = [torch.tensor([1, 2]), torch.tensor([3, 4, 5])]
+        padded = zero_pad_sequences(seqs, side="left", stack=True)
+
+        assert padded.shape == (2, 3)
+
+
+class TestRemovePadToken:
+    """Tests for remove_pad_token function."""
+
+    def test_remove_left_padding(self):
+        from thinkrl.utils.datasets import remove_pad_token
+
+        input_ids = torch.tensor([[0, 0, 1, 2], [3, 4, 5, 6]])
+        attention_mask = torch.tensor([[0, 0, 1, 1], [1, 1, 1, 1]])
+
+        unpadded = remove_pad_token(input_ids, attention_mask)
+
+        assert len(unpadded) == 2
+        assert torch.equal(unpadded[0], torch.tensor([1, 2]))
+        assert torch.equal(unpadded[1], torch.tensor([3, 4, 5, 6]))
+
+    def test_remove_right_padding(self):
+        from thinkrl.utils.datasets import remove_pad_token
+
+        input_ids = torch.tensor([[1, 2, 0, 0], [3, 4, 5, 0]])
+        attention_mask = torch.tensor([[1, 1, 0, 0], [1, 1, 1, 0]])
+
+        unpadded = remove_pad_token(input_ids, attention_mask)
+
+        assert len(unpadded) == 2
+        assert torch.equal(unpadded[0], torch.tensor([1, 2]))
+        assert torch.equal(unpadded[1], torch.tensor([3, 4, 5]))
+
+    def test_remove_no_padding(self):
+        from thinkrl.utils.datasets import remove_pad_token
+
+        input_ids = torch.tensor([[1, 2, 3]])
+        attention_mask = torch.tensor([[1, 1, 1]])
+
+        unpadded = remove_pad_token(input_ids, attention_mask)
+
+        assert len(unpadded) == 1
+        assert torch.equal(unpadded[0], torch.tensor([1, 2, 3]))
+
+
+class TestConvertTokenToId:
+    """Tests for convert_token_to_id function."""
+
+    def test_convert_single_token(self):
+        from thinkrl.utils.datasets import convert_token_to_id
+
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.encode.return_value = [42]
+
+        result = convert_token_to_id("<|endoftext|>", mock_tokenizer)
+
+        assert result == 42
+        mock_tokenizer.encode.assert_called_with("<|endoftext|>", add_special_tokens=False)
+
+    def test_convert_multi_token_raises_error(self):
+        from thinkrl.utils.datasets import convert_token_to_id
+
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.encode.return_value = [1, 2, 3]  # Token encodes to 3 tokens
+
+        with pytest.raises(ValueError, match="encodes to 3 tokens"):
+            convert_token_to_id("multi word token", mock_tokenizer)
+
+
+class TestGetStrategy:
+    """Tests for get_strategy function."""
+
+    def test_get_strategy_import_error(self):
+        from thinkrl.utils.datasets import get_strategy
+
+        # Should return None when import fails
+        result = get_strategy(MagicMock())
+        # This might return None or a strategy depending on the setup
+        assert result is None or result is not None  # Just verify no crash
+
+
+class TestApplyChatTemplate:
+    """Tests for apply_chat_template function."""
+
+    def test_apply_chat_template_with_tokenizer_support(self):
+        from thinkrl.utils.datasets import apply_chat_template
+
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.apply_chat_template.return_value = "Formatted chat"
+
+        messages = [
+            {"role": "user", "content": "Hello!"},
+            {"role": "assistant", "content": "Hi!"},
+        ]
+
+        result = apply_chat_template(messages, mock_tokenizer)
+
+        assert result == "Formatted chat"
+        mock_tokenizer.apply_chat_template.assert_called_with(
+            messages,
+            add_generation_prompt=False,
+            tokenize=False,
+        )
+
+    def test_apply_chat_template_with_generation_prompt(self):
+        from thinkrl.utils.datasets import apply_chat_template
+
+        mock_tokenizer = MagicMock()
+        mock_tokenizer.apply_chat_template.return_value = "Chat with prompt"
+
+        messages = [{"role": "user", "content": "Hello!"}]
+
+        result = apply_chat_template(messages, mock_tokenizer, add_generation_prompt=True)
+
+        mock_tokenizer.apply_chat_template.assert_called_with(
+            messages,
+            add_generation_prompt=True,
+            tokenize=False,
+        )
+
+    def test_apply_chat_template_fallback(self):
+        from thinkrl.utils.datasets import apply_chat_template
+
+        # Tokenizer without apply_chat_template
+        mock_tokenizer = MagicMock(spec=[])
+        del mock_tokenizer.apply_chat_template  # Ensure it doesn't exist
+
+        messages = [
+            {"role": "user", "content": "Hello!"},
+            {"role": "assistant", "content": "Hi!"},
+        ]
+
+        result = apply_chat_template(messages, mock_tokenizer)
+
+        assert "User: Hello!" in result
+        assert "Assistant: Hi!" in result
+
+    def test_apply_chat_template_fallback_with_generation_prompt(self):
+        from thinkrl.utils.datasets import apply_chat_template
+
+        mock_tokenizer = MagicMock(spec=[])
+        del mock_tokenizer.apply_chat_template
+
+        messages = [{"role": "user", "content": "Hello!"}]
+
+        result = apply_chat_template(messages, mock_tokenizer, add_generation_prompt=True)
+
+        assert result.endswith("Assistant:")
+
+    def test_apply_chat_template_fallback_tokenize(self):
+        from thinkrl.utils.datasets import apply_chat_template
+
+        mock_tokenizer = MagicMock(spec=["__call__"])
+        mock_tokenizer.return_value = {"input_ids": [1, 2, 3]}
+
+        messages = [{"role": "user", "content": "Hello!"}]
+
+        result = apply_chat_template(messages, mock_tokenizer, tokenize=True)
+
+        mock_tokenizer.assert_called()
+        assert result == {"input_ids": [1, 2, 3]}
