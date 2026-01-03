@@ -77,3 +77,44 @@ class RLHFDataLoader(DataLoader):
             drop_last=drop_last,
             **kwargs,
         )
+
+
+def create_rlhf_dataloader(
+    dataset,
+    tokenizer,
+    batch_size: int = 32,
+    shuffle: bool = True,
+    drop_last: bool = True,
+    padding_side: str = "right",
+    num_workers: int = 0,
+    pin_memory: bool = False,
+    **kwargs,
+) -> RLHFDataLoader:
+    """
+    Factory function to create an RLHF DataLoader with sensible defaults.
+
+    Args:
+        dataset: The dataset to load
+        tokenizer: Tokenizer for padding configuration
+        batch_size: Batch size for training
+        shuffle: Whether to shuffle the dataset
+        drop_last: Whether to drop the last incomplete batch
+        padding_side: Side to pad sequences ("left" or "right")
+        num_workers: Number of worker processes for data loading
+        pin_memory: Whether to pin memory for faster GPU transfer
+        **kwargs: Additional arguments passed to DataLoader
+
+    Returns:
+        RLHFDataLoader instance
+    """
+    return RLHFDataLoader(
+        dataset=dataset,
+        tokenizer=tokenizer,
+        batch_size=batch_size,
+        shuffle=shuffle,
+        drop_last=drop_last,
+        padding_side=padding_side,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
+        **kwargs,
+    )

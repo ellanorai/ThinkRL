@@ -192,3 +192,103 @@ class TestStandaloneFunctions:
         loaded = load_config(path)
 
         assert loaded == config
+
+
+class TestCheckpointEdgeCases:
+    """Test edge cases and additional functionality."""
+
+    def test_load_checkpoint_with_optimizer(self, temp_dir, simple_model, simple_optimizer):
+        """Test loading checkpoint with optimizer state."""
+        path = temp_dir / "checkpoint_with_opt.pt"
+
+        save_checkpoint(path, simple_model, optimizer=simple_optimizer, epoch=5)
+
+        loaded_metadata = load_checkpoint(path, simple_model, optimizer=simple_optimizer)
+        assert loaded_metadata["epoch"] == 5
+
+    def test_checkpoint_manager_auto_naming(self, temp_dir, simple_model):
+        """Test automatic checkpoint naming."""
+        manager = CheckpointManager(checkpoint_dir=temp_dir)
+
+        manager.save_checkpoint(simple_model, epoch=1)
+
+        # Should create a checkpoint with auto-generated name
+        checkpoints = list(temp_dir.glob("*"))
+        assert len(checkpoints) >= 1
+
+    def test_checkpoint_manager_load_latest(self, temp_dir, simple_model):
+        """Test loading the latest checkpoint."""
+        manager = CheckpointManager(checkpoint_dir=temp_dir)
+
+        manager.save_checkpoint(simple_model, epoch=1, checkpoint_name="ckpt_1")
+        manager.save_checkpoint(simple_model, epoch=2, checkpoint_name="ckpt_2")
+
+        metadata = manager.load_latest_checkpoint(simple_model)
+        assert metadata is not None
+        assert metadata["epoch"] == 2
+
+    def test_checkpoint_manager_no_checkpoints(self, temp_dir, simple_model):
+        """Test loading when no checkpoints exist."""
+        manager = CheckpointManager(checkpoint_dir=temp_dir)
+
+        metadata = manager.load_latest_checkpoint(simple_model)
+        assert metadata is None
+
+    def test_checkpoint_manager_metrics_only(self, temp_dir, simple_model):
+        """Test saving checkpoint with metrics only."""
+        manager = CheckpointManager(checkpoint_dir=temp_dir)
+
+        manager.save_checkpoint(
+            simple_model,
+            epoch=1,
+            metrics={"loss": 0.5, "accuracy": 0.9},
+            checkpoint_name="metrics_test",
+        )
+
+        loaded = manager.load_checkpoint(temp_dir / "metrics_test", simple_model)
+        assert loaded["metrics"]["loss"] == 0.5
+        assert loaded["metrics"]["accuracy"] == 0.9
+
+    def test_save_checkpoint_with_extra_state(self, temp_dir, simple_model):
+        """Test saving checkpoint with extra state dictionary."""
+        path = temp_dir / "extra_state.pt"
+
+        extra_state = {"custom_key": "custom_value", "step": 100}
+        save_checkpoint(path, simple_model, epoch=1, extra_state=extra_state)
+
+        loaded = load_checkpoint(path, simple_model)
+        assert loaded.get("custom_key") == "custom_value"
+        assert loaded.get("step") == 100
+
+    def test_checkpoint_manager_mode_max(self, temp_dir, simple_model):
+        """Test checkpoint manager with max mode."""
+        manager = CheckpointManager(
+            checkpoint_dir=temp_dir,
+            max_checkpoints=2,
+            metric_name="accuracy",
+            mode="max",
+        )
+
+        manager.save_checkpoint(simple_model, epoch=1, metrics={"accuracy": 0.7}, checkpoint_name="ckpt_1")
+        manager.save_checkpoint(simple_model, epoch=2, metrics={"accuracy": 0.9}, checkpoint_name="ckpt_2")
+        manager.save_checkpoint(simple_model, epoch=3, metrics={"accuracy": 0.8}, checkpoint_name="ckpt_3")
+
+        # Best should be ckpt_2 with accuracy 0.9
+        assert manager.best_checkpoint["name"] == "ckpt_2"
+        assert manager.best_checkpoint["metrics"]["accuracy"] == 0.9
+
+    def test_load_config_unsupported_format(self, temp_dir):
+        """Test loading config with unsupported format."""
+        path = temp_dir / "config.xyz"
+        path.write_text("some content")
+
+        with pytest.raises(ValueError, match="Unsupported config format"):
+            load_config(path)
+
+    def test_save_config_unsupported_format(self, temp_dir):
+        """Test saving config with unsupported format."""
+        config = {"key": "value"}
+        path = temp_dir / "config.xyz"
+
+        with pytest.raises(ValueError, match="Unsupported config format"):
+            save_config(config, path)

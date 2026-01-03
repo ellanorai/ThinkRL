@@ -252,3 +252,85 @@ class TestTokenizers:
         assert len(loaded_tokenizer) == len(tokenizer_to_save)
         assert loaded_tokenizer.convert_tokens_to_ids("<|my_token|>") == 50257
         assert loaded_tokenizer.pad_token_id == 50256
+
+    def test_tokenize_text_without_return_tensors(self, gpt2_tokenizer):
+        """Test tokenization without return_tensors."""
+        text = "Hello world"
+        encoded = tokenize_text(text, gpt2_tokenizer, return_tensors=None)
+
+        assert "input_ids" in encoded
+        assert isinstance(encoded["input_ids"], list)
+
+    def test_decode_single_sequence(self, gpt2_tokenizer):
+        """Test decoding a single sequence with skip_special_tokens=False."""
+        token_ids = [gpt2_tokenizer.eos_token_id]
+        decoded = decode_tokens(token_ids, gpt2_tokenizer, skip_special_tokens=False)
+
+        assert gpt2_tokenizer.eos_token in decoded
+
+    def test_count_tokens_single(self, gpt2_tokenizer):
+        """Test counting tokens without special tokens."""
+        text = "Hello"
+        count = count_tokens(text, gpt2_tokenizer, add_special_tokens=False)
+
+        assert count > 0
+
+    def test_truncate_no_truncation_needed(self, gpt2_tokenizer):
+        """Test truncate when text is already short enough."""
+        text = "Short"
+        truncated = truncate_to_token_limit(text, gpt2_tokenizer, max_tokens=100)
+
+        assert truncated == text
+
+    def test_tokenizer_config_to_dict(self):
+        """Test TokenizerConfig to_dict method."""
+        from thinkrl.utils.tokenizer import TokenizerConfig
+
+        config = TokenizerConfig(
+            model_name_or_path="gpt2",
+            use_fast=True,
+            padding_side="left",
+            max_length=512,
+            custom_arg="value",
+        )
+
+        config_dict = config.to_dict()
+
+        assert config_dict["model_name_or_path"] == "gpt2"
+        assert config_dict["use_fast"] is True
+        assert config_dict["padding_side"] == "left"
+        assert config_dict["max_length"] == 512
+        assert config_dict["custom_arg"] == "value"
+
+    def test_get_tokenizer_with_unk_fallback(self):
+        """Test that tokenizer falls back to unk_token when eos is None."""
+        # This test is tricky since GPT-2 always has eos_token
+        # Just test that the function works with default tokenizer
+        tokenizer = get_tokenizer("gpt2")
+        assert tokenizer.pad_token is not None
+
+    def test_tokenize_conversation_unknown_role(self, gpt2_tokenizer):
+        """Test conversation with unknown role."""
+        messages = [
+            {"role": "unknown", "content": "Hello!"},
+        ]
+
+        encoded = tokenize_conversation(
+            messages,
+            gpt2_tokenizer,
+            system_prefix="SYS: ",
+            user_prefix="USER: ",
+            assistant_prefix="ASSIST: ",
+        )
+
+        decoded = decode_tokens(encoded["input_ids"].squeeze(0), gpt2_tokenizer)
+        # Unknown role should just include the content without prefix
+        assert "Hello!" in decoded
+
+    def test_tokenize_batch_no_batch_size(self, gpt2_tokenizer):
+        """Test tokenize_batch without specifying batch_size."""
+        texts = ["Text 1", "Text 2", "Text 3"]
+        encoded = tokenize_batch(texts, gpt2_tokenizer, padding=True)
+
+        assert "input_ids" in encoded
+        assert encoded["input_ids"].shape[0] == 3

@@ -249,3 +249,112 @@ class TestLogging:
         # No log file should be created
         log_files = list(temp_dir.glob("thinkrl.rank5_*.log"))
         assert len(log_files) == 0
+
+    def test_colored_formatter_no_colors(self):
+        """Test colored formatter with colors disabled."""
+        formatter = ColoredFormatter(fmt="%(levelname)s - %(message)s", use_colors=False)
+
+        record = logging.LogRecord(
+            name="test",
+            level=logging.WARNING,
+            pathname="test.py",
+            lineno=1,
+            msg="Warning message",
+            args=(),
+            exc_info=None,
+        )
+
+        formatted = formatter.format(record)
+
+        # Should not contain color codes
+        assert "\033[" not in formatted
+        assert "Warning message" in formatted
+
+    def test_colored_formatter_different_levels(self):
+        """Test colored formatter with different log levels."""
+        formatter = ColoredFormatter(fmt="%(levelname)s - %(message)s", use_colors=True)
+
+        levels = [logging.DEBUG, logging.INFO, logging.WARNING, logging.ERROR, logging.CRITICAL]
+
+        for level in levels:
+            record = logging.LogRecord(
+                name="test",
+                level=level,
+                pathname="test.py",
+                lineno=1,
+                msg="Test message",
+                args=(),
+                exc_info=None,
+            )
+            formatted = formatter.format(record)
+            assert "Test message" in formatted
+
+    def test_setup_logger_with_rotation(self, temp_dir):
+        """Test logger setup with log rotation."""
+        logger = setup_logger(
+            "thinkrl.rotation",
+            log_dir=temp_dir,
+            max_bytes=1024,
+            backup_count=3,
+        )
+
+        assert logger is not None
+
+        # Log some messages
+        for i in range(10):
+            logger.info(f"Test message {i}")
+
+        # Close handlers for cleanup
+        for handler in logger.handlers[:]:
+            handler.close()
+            logger.removeHandler(handler)
+
+    def test_thinkrl_logger_log_dict(self, temp_dir):
+        """Test logging dictionary data."""
+        logger = setup_logger("thinkrl.dictlog", log_dir=temp_dir)
+
+        data = {"loss": 0.5, "accuracy": 0.9, "epoch": 10}
+        logger.info(f"Training stats: {data}")
+
+        log_file = list(temp_dir.glob("thinkrl.dictlog_*.log"))[0]
+        with open(log_file) as f:
+            content = f.read()
+
+        assert "Training stats:" in content
+        assert "loss" in content
+
+    def test_setup_logger_console_only(self):
+        """Test setting up logger without file logging."""
+        logger = setup_logger("thinkrl.console_only", log_dir=None)
+
+        assert logger is not None
+        # Should only have console handler
+        stream_handlers = [h for h in logger.handlers if isinstance(h, logging.StreamHandler) and not isinstance(h, logging.FileHandler)]
+        assert len(stream_handlers) >= 1
+
+    def test_thinkrl_logger_epoch_logging(self, temp_dir):
+        """Test epoch progress logging."""
+        logger = setup_logger("thinkrl.epoch", log_dir=temp_dir)
+
+        # Test progress method with different scenarios
+        logger.progress(0, 100, prefix="Epoch 1")
+        logger.progress(50, 100, prefix="Epoch 1")
+        logger.progress(100, 100, prefix="Epoch 1")
+
+        log_file = list(temp_dir.glob("thinkrl.epoch_*.log"))[0]
+        with open(log_file) as f:
+            content = f.read()
+
+        assert "Epoch 1" in content
+        assert "100%" in content
+
+    def test_get_logger_returns_existing(self):
+        """Test that get_logger returns existing configured logger."""
+        # First set up a logger
+        original = setup_logger("thinkrl.test_existing")
+
+        # Get the same logger
+        retrieved = get_logger("thinkrl.test_existing")
+
+        # Should be the same logger instance
+        assert retrieved.name == original.name
