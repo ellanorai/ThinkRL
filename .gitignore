@@ -30,3 +30,4 @@ thinkrl.egg-info/not-zip-safe
 coverage.xml
 .vs/
 *.txt
+test_errors.log
