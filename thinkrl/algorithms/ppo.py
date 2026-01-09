@@ -377,6 +377,34 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
 
         return {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in loss_dict.items()}
 
+    def state_dict(self) -> dict[str, Any]:
+        """
+        Get PPO state dictionary, including separate value model if present.
+        """
+        state = super().state_dict()
+
+        if self.value_model is not None:
+            state["value_model"] = self.value_model.state_dict()
+
+        if self.value_optimizer is not None:
+            state["value_optimizer"] = self.value_optimizer.state_dict()
+
+        return state
+
+    def load_state_dict(self, state: dict[str, Any], strict: bool = True):
+        """
+        Load PPO state dictionary.
+        """
+        super().load_state_dict(state, strict=strict)
+
+        if self.value_model is not None and "value_model" in state:
+            self.value_model.load_state_dict(state["value_model"], strict=strict)
+
+        if self.value_optimizer is not None and "value_optimizer" in state:
+            self.value_optimizer.load_state_dict(state["value_optimizer"])
+
+        logger.info("Loaded PPO state (including value model/optimizer if present)")
+
 
 def create_ppo(
     policy_model: nn.Module,

@@ -93,6 +93,7 @@ class BaseRLHFAlgorithm(ABC):
         use_vllm: bool = False,
         vllm_url: str = "http://localhost:8000",
         vllm_bridge_port: int = 51216,
+        tokenizer: Any | None = None,
         **kwargs,
     ):
         """
@@ -116,6 +117,7 @@ class BaseRLHFAlgorithm(ABC):
         """
         self.policy_model = policy_model
         self.ref_model = ref_model
+        self.tokenizer = tokenizer
 
         # Hyperparameters
         self.learning_rate = learning_rate
@@ -357,24 +359,45 @@ class BaseRLHFAlgorithm(ABC):
             )
             return {"text": texts, "token_ids": [], "log_probs": []}
 
-    def _generate_with_policy_model(
-        self,
-        prompts: list[str],
-        max_new_tokens: int = 128,
-        temperature: float = 1.0,
-        top_p: float = 0.9,
-        top_k: int = 50,
-        do_sample: bool = True,
-        num_return_sequences: int = 1,
-        **generation_kwargs,
-    ) -> list[str]:
         """
         Generate using the policy model directly (fallback when vLLM not used).
         """
-        raise NotImplementedError(
-            "Direct policy model generation requires tokenizer. "
-            "Either enable vLLM or implement _generate_with_policy_model in subclass."
-        )
+        if self.tokenizer is None:
+            raise ValueError(
+                "Direct policy model generation requires a tokenizer to be passed to the algorithm's constructor. "
+                "Either enable vLLM (use_vllm=True) or provide a 'tokenizer' argument."
+            )
+
+        device = next(self.policy_model.parameters()).device
+
+        # Tokenize prompts
+        inputs = self.tokenizer(prompts, return_tensors="pt", padding=True, truncation=True).to(device)
+
+        # Generation kwargs cleanup (vLLM specific keys)
+        if "n" in generation_kwargs:
+            del generation_kwargs["n"]
+
+        with torch.no_grad():
+            outputs = self.policy_model.generate(
+                **inputs,
+                max_new_tokens=max_new_tokens,
+                temperature=temperature,
+                top_p=top_p,
+                top_k=top_k,
+                do_sample=do_sample,
+                num_return_sequences=num_return_sequences,
+                pad_token_id=self.tokenizer.pad_token_id,
+                **generation_kwargs,
+            )
+
+        # Decode only the new tokens
+        # outputs contains [input_ids + generated_ids]
+        input_length = inputs["input_ids"].shape[1]
+        generated_tokens = outputs[:, input_length:]
+
+        texts = self.tokenizer.batch_decode(generated_tokens, skip_special_tokens=True)
+
+        return texts
 
     def sync_vllm_weights(self):
         """
