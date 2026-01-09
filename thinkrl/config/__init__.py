@@ -13,7 +13,6 @@ Author: EllanorAI
 """
 
 from thinkrl.config.base import (
-    AlgorithmConfig,
     DataConfig,
     DistributedConfig,
     LoggingConfig,
@@ -29,7 +28,6 @@ from thinkrl.config.base import (
 __all__ = [
     "ThinkRLConfig",
     "ModelConfig",
-    "AlgorithmConfig",
     "DistributedConfig",
     "DataConfig",
     "LoggingConfig",

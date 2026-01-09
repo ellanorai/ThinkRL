@@ -10,7 +10,7 @@ from thinkrl.models.prm import PRMConfig, ProcessRewardModel, create_prm
 
 class TestProcessRewardModel(unittest.TestCase):
     def setUp(self):
-        self.model_name = "gpt2"
+        self.model_name = "meta-llama/Llama-2-7b-hf"
         self.config = PRMConfig(model_name_or_path=self.model_name)
 
     @patch("thinkrl.models.prm.AutoModel")

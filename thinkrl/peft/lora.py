@@ -15,11 +15,10 @@ Author: EllanorAI
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 import logging
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
-import torch
 import torch.nn as nn
 
 
@@ -27,6 +26,8 @@ import torch.nn as nn
 try:
     from peft import (
         LoraConfig as PeftLoraConfig,
+    )
+    from peft import (
         PeftModel,
         TaskType,
         get_peft_model,
@@ -44,7 +45,7 @@ except ImportError:
 
 
 if TYPE_CHECKING:
-    from transformers import PreTrainedModel
+    pass
 
 
 logger = logging.getLogger(__name__)
@@ -102,11 +103,6 @@ ARCHITECTURE_TARGETS = {
         "up_proj",
         "down_proj",
     ],
-    "gpt2": [
-        "c_attn",
-        "c_proj",
-        "c_fc",
-    ],
     "bloom": [
         "query_key_value",
         "dense",
@@ -152,7 +148,7 @@ class LoRAConfig:
     prepare_for_kbit: bool = False
 
     @classmethod
-    def for_architecture(cls, architecture: str, r: int = 8, **kwargs) -> "LoRAConfig":
+    def for_architecture(cls, architecture: str, r: int = 8, **kwargs) -> LoRAConfig:
         """
         Create LoRA config for a specific architecture.
 
@@ -186,9 +182,7 @@ class LoRAConfig:
 
         if target_modules is None:
             target_modules = ARCHITECTURE_TARGETS["default"]
-            logger.warning(
-                f"Unknown architecture '{architecture}', using default targets: {target_modules}"
-            )
+            logger.warning(f"Unknown architecture '{architecture}', using default targets: {target_modules}")
 
         return cls(
             r=r,
@@ -198,31 +192,29 @@ class LoRAConfig:
         )
 
     @classmethod
-    def for_llama(cls, r: int = 8, **kwargs) -> "LoRAConfig":
+    def for_llama(cls, r: int = 8, **kwargs) -> LoRAConfig:
         """LoRA config for Llama models."""
         return cls.for_architecture("llama", r=r, **kwargs)
 
     @classmethod
-    def for_qwen(cls, r: int = 8, **kwargs) -> "LoRAConfig":
+    def for_qwen(cls, r: int = 8, **kwargs) -> LoRAConfig:
         """LoRA config for Qwen models."""
         return cls.for_architecture("qwen", r=r, **kwargs)
 
     @classmethod
-    def for_qwen2(cls, r: int = 8, **kwargs) -> "LoRAConfig":
+    def for_qwen2(cls, r: int = 8, **kwargs) -> LoRAConfig:
         """LoRA config for Qwen2 models."""
         return cls.for_architecture("qwen2", r=r, **kwargs)
 
     @classmethod
-    def for_mistral(cls, r: int = 8, **kwargs) -> "LoRAConfig":
+    def for_mistral(cls, r: int = 8, **kwargs) -> LoRAConfig:
         """LoRA config for Mistral models."""
         return cls.for_architecture("mistral", r=r, **kwargs)
 
-    def to_peft_config(self) -> "PeftLoraConfig":
+    def to_peft_config(self) -> PeftLoraConfig:
         """Convert to peft library LoraConfig."""
         if not PEFT_AVAILABLE:
-            raise ImportError(
-                "peft library is required. Install with: pip install peft"
-            )
+            raise ImportError("peft library is required. Install with: pip install peft")
 
         # Map task type string to enum
         task_type_map = {
@@ -272,9 +264,7 @@ def inject_lora(
         >>> print(get_trainable_parameters(model))
     """
     if not PEFT_AVAILABLE:
-        raise ImportError(
-            "peft library is required. Install with: pip install peft"
-        )
+        raise ImportError("peft library is required. Install with: pip install peft")
 
     # Prepare model for quantized training if needed
     if config.prepare_for_kbit and prepare_model_for_kbit_training is not None:
@@ -411,7 +401,6 @@ def get_lora_config_for_model(model: nn.Module, r: int = 8, **kwargs) -> LoRACon
                 ("phi", "phi"),
                 ("gemma2", "gemma"),
                 ("gemma", "gemma"),
-                ("gpt2", "gpt2"),
                 ("bloom", "bloom"),
             ]
 

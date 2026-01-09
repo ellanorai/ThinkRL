@@ -320,16 +320,13 @@ def convert_token_to_id(token: str, tokenizer: Any) -> int:
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
-        eos_id = convert_token_to_id("<|endoftext|>", tokenizer)
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
+        eos_id = convert_token_to_id("</s>", tokenizer)
         ```
     """
     encoded = tokenizer.encode(token, add_special_tokens=False)
     if len(encoded) != 1:
-        raise ValueError(
-            f"Token '{token}' encodes to {len(encoded)} tokens, expected 1. "
-            f"Encoded IDs: {encoded}"
-        )
+        raise ValueError(f"Token '{token}' encodes to {len(encoded)} tokens, expected 1. " f"Encoded IDs: {encoded}")
     return encoded[0]
 
 
@@ -349,6 +346,7 @@ def get_strategy(args: Any) -> Any:
     # This is a placeholder - actual implementation depends on your setup
     try:
         from thinkrl.training.distributed import get_deepspeed_strategy
+
         return get_deepspeed_strategy(args)
     except ImportError:
         return None

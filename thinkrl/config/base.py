@@ -9,11 +9,11 @@ Author: EllanorAI
 
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass, field
 import json
 import logging
-from dataclasses import dataclass, field, asdict
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any
 
 import torch
 
@@ -86,41 +86,6 @@ class PeftConfig:
 
     # Auto-detect architecture
     auto_target_modules: bool = True
-
-
-@dataclass
-class AlgorithmConfig:
-    """Algorithm configuration."""
-
-    name: str = "ppo"  # ppo, grpo, dpo, dapo, vapo, reinforce
-
-    # Common hyperparameters
-    learning_rate: float = 1e-5
-    kl_coeff: float = 0.1
-    gamma: float = 0.99
-    clip_grad_norm: float = 1.0
-
-    # PPO-specific
-    gae_lambda: float = 0.95
-    clip_epsilon: float = 0.2
-    value_coeff: float = 0.5
-    entropy_coeff: float = 0.01
-    n_epochs: int = 4
-
-    # GRPO/DAPO-specific
-    group_size: int = 16
-    beta: float = 0.04
-
-    # DPO-specific
-    label_smoothing: float = 0.0
-    loss_type: str = "sigmoid"
-
-    # DAPO-specific
-    epsilon_low: float = 0.2
-    epsilon_high: float = 0.28
-
-    # Additional kwargs
-    extra: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -217,7 +182,7 @@ class ThinkRLConfig:
     """Root configuration object."""
 
     model: ModelConfig = field(default_factory=ModelConfig)
-    algorithm: AlgorithmConfig = field(default_factory=AlgorithmConfig)
+    algorithm: Any = None  # Dynamically loaded config (e.g., PPOConfig)
     distributed: DistributedConfig = field(default_factory=DistributedConfig)
     data: DataConfig = field(default_factory=DataConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -230,7 +195,7 @@ class ThinkRLConfig:
     seed: int = 42
 
     @classmethod
-    def from_yaml(cls, path: str | Path) -> "ThinkRLConfig":
+    def from_yaml(cls, path: str | Path) -> ThinkRLConfig:
         """Load configuration from YAML file."""
         if not YAML_AVAILABLE:
             raise ImportError("PyYAML is required. Install with: pip install pyyaml")
@@ -242,7 +207,7 @@ class ThinkRLConfig:
         return cls.from_dict(data)
 
     @classmethod
-    def from_json(cls, path: str | Path) -> "ThinkRLConfig":
+    def from_json(cls, path: str | Path) -> ThinkRLConfig:
         """Load configuration from JSON file."""
         path = Path(path)
         with open(path) as f:
@@ -251,11 +216,49 @@ class ThinkRLConfig:
         return cls.from_dict(data)
 
     @classmethod
-    def from_dict(cls, data: dict[str, Any]) -> "ThinkRLConfig":
+    def from_dict(cls, data: dict[str, Any]) -> ThinkRLConfig:
         """Create config from dictionary."""
         # Parse nested configs
         model = ModelConfig(**data.get("model", {}))
-        algorithm = AlgorithmConfig(**data.get("algorithm", {}))
+        # Parse nested configs
+        model = ModelConfig(**data.get("model", {}))
+
+        # Dynamic Algorithm Config Loading
+        algo_data = data.get("algorithm", {})
+        # If algorithm is already an object, assume it's valid
+        if not isinstance(algo_data, dict):
+            algorithm = algo_data
+        else:
+            # Determine algorithm name
+            algo_name = algo_data.get("name", "ppo")
+
+            try:
+                # Lazy import to avoid circular dependency
+                from thinkrl.algorithms import get_config
+
+                ConfigClass = get_config(algo_name)
+                # Filter args that are valid for this config
+                # (Optional: specialized configs might accept **kwargs, but we can be safe)
+                # For now, we assume ConfigClass accepts relevant kwargs or we pass all
+                # if it uses **kwargs (most do via dataclass or explicit init)
+                # However, clean dataclasses don't take extra args by default unless __init__ is custom.
+                # All ours are dataclasses.
+                # Best practice: Filter keys against __annotations__
+                valid_keys = ConfigClass.__annotations__.keys()
+                # Also include fields if defined via dataclass field() (handled by annotations usually)
+
+                # Check if the class allows extra args (unlikely for pure dataclass)
+                # We will just pass what matches
+                filtered_args = {k: v for k, v in algo_data.items() if k in valid_keys}
+
+                # Special handling: some args might be passed that aren't in fields but handled by custom init?
+                # Our configs are pure dataclasses generally.
+                # Let's instantiate
+                algorithm = ConfigClass(**filtered_args)
+
+            except Exception as e:
+                logger.warning(f"Failed to load algorithm config for '{algo_name}': {e}. Falling back to dict.")
+                algorithm = algo_data
         distributed = DistributedConfig(**data.get("distributed", {}))
         data_config = DataConfig(**data.get("data", {}))
         logging_config = LoggingConfig(**data.get("logging", {}))
@@ -266,9 +269,7 @@ class ThinkRLConfig:
 
         # Get top-level fields
         top_level = {
-            k: v
-            for k, v in data.items()
-            if k not in ["model", "algorithm", "distributed", "data", "logging", "peft"]
+            k: v for k, v in data.items() if k not in ["model", "algorithm", "distributed", "data", "logging", "peft"]
         }
 
         return cls(
@@ -314,10 +315,20 @@ class ThinkRLConfig:
         errors = []
 
         # Check algorithm compatibility
-        if self.algorithm.name in ["ppo", "vapo"] and self.peft:
-            if self.peft.enabled and self.algorithm.value_coeff > 0:
-                # Value model with LoRA needs special handling
-                pass
+        if self.algorithm is not None:
+            # Handle both object and dict (fallback) configurations
+            is_dict = isinstance(self.algorithm, dict)
+            algo_name = self.algorithm.get("name", "ppo") if is_dict else getattr(self.algorithm, "name", "ppo")
+
+            if algo_name in ["ppo", "vapo"] and self.peft:
+                # Check value_coeff
+                value_coeff = (
+                    self.algorithm.get("value_coeff", 0.5) if is_dict else getattr(self.algorithm, "value_coeff", 0.5)
+                )
+
+                if self.peft.enabled and value_coeff > 0:
+                    # Value model with LoRA needs special handling
+                    pass
 
         # Check distributed settings
         if self.distributed.strategy.startswith("zero3"):
@@ -399,7 +410,7 @@ def merge_configs(base: ThinkRLConfig, overrides: dict[str, Any]) -> ThinkRLConf
         target = base_dict
 
         for part in parts[:-1]:
-            if part not in target:
+            if part not in target or target[part] is None:
                 target[part] = {}
             target = target[part]
 
@@ -411,7 +422,6 @@ def merge_configs(base: ThinkRLConfig, overrides: dict[str, Any]) -> ThinkRLConf
 __all__ = [
     "ThinkRLConfig",
     "ModelConfig",
-    "AlgorithmConfig",
     "DistributedConfig",
     "DataConfig",
     "LoggingConfig",

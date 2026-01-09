@@ -277,7 +277,7 @@ class CheckpointManager:
         if model_path.suffix == ".safetensors":
             state_dict = safetensors_load(str(model_path), device=str(device) if device else "cpu")
         else:
-            state_dict = torch.load(model_path, map_location=device)
+            state_dict = torch.load(model_path, map_location=device, weights_only=False)
 
         # Handle DataParallel/DistributedDataParallel wrapped models
         if isinstance(model, nn.DataParallel | nn.parallel.DistributedDataParallel):
@@ -290,14 +290,14 @@ class CheckpointManager:
         if optimizer is not None:
             optimizer_path = checkpoint_dir / "optimizer.pt"
             if optimizer_path.exists():
-                optimizer.load_state_dict(torch.load(optimizer_path, map_location=device))
+                optimizer.load_state_dict(torch.load(optimizer_path, map_location=device, weights_only=False))
                 logger.debug(f"Loaded optimizer from: {optimizer_path}")
 
         # Load scheduler
         if scheduler is not None:
             scheduler_path = checkpoint_dir / "scheduler.pt"
             if scheduler_path.exists():
-                scheduler.load_state_dict(torch.load(scheduler_path, map_location=device))
+                scheduler.load_state_dict(torch.load(scheduler_path, map_location=device, weights_only=False))
                 logger.debug(f"Loaded scheduler from: {scheduler_path}")
 
         # Load metadata
@@ -663,7 +663,7 @@ def load_checkpoint(
         else:
             checkpoint = {"model_state_dict": state_dict}
     else:
-        checkpoint = torch.load(checkpoint_path, map_location=device)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
 
     # Load model state
     if isinstance(model, nn.DataParallel | nn.parallel.DistributedDataParallel):
@@ -697,7 +697,7 @@ def save_config(config: dict[str, Any], save_path: str | Path):
     Example:
         ```python
         config = {
-            "model": "gpt2",
+            "model": "meta-llama/Llama-3.2-1B",
             "learning_rate": 1e-4,
             "batch_size": 32
         }
@@ -710,8 +710,7 @@ def save_config(config: dict[str, Any], save_path: str | Path):
     supported_extensions = [".json", ".yaml", ".yml"]
     if save_path.suffix not in supported_extensions:
         raise ValueError(
-            f"Unsupported config format: {save_path.suffix}. "
-            f"Supported formats: {supported_extensions}"
+            f"Unsupported config format: {save_path.suffix}. " f"Supported formats: {supported_extensions}"
         )
 
     if save_path.suffix in [".yaml", ".yml"]:
@@ -750,8 +749,7 @@ def load_config(config_path: str | Path) -> dict[str, Any]:
     supported_extensions = [".json", ".yaml", ".yml"]
     if config_path.suffix not in supported_extensions:
         raise ValueError(
-            f"Unsupported config format: {config_path.suffix}. "
-            f"Supported formats: {supported_extensions}"
+            f"Unsupported config format: {config_path.suffix}. " f"Supported formats: {supported_extensions}"
         )
 
     if config_path.suffix in [".yaml", ".yml"]:

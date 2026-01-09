@@ -188,7 +188,7 @@ class TestStandaloneFunctions:
         except ImportError:
             pytest.skip("PyYAML not installed")
 
-        config = {"lr": 0.01, "model": "gpt2"}
+        config = {"lr": 0.01, "model": "meta-llama/Llama-2-7b-hf"}
         path = temp_dir / "config.yaml"
 
         save_config(config, path)

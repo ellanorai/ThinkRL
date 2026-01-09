@@ -118,7 +118,7 @@ def get_tokenizer(
     Get a tokenizer from HuggingFace Hub or local path.
 
     Args:
-        model_name_or_path: Model name or path (e.g., "gpt2", "meta-llama/Llama-2-7b-hf")
+        model_name_or_path: Model name or path (e.g., "meta-llama/Llama-2-7b-hf")
         use_fast: Whether to use fast (Rust-based) tokenizer
         padding_side: "right" or "left" for padding
         truncation_side: "right" or "left" for truncation
@@ -131,8 +131,8 @@ def get_tokenizer(
 
     Example:
         ```python
-        # Get GPT-2 tokenizer
-        tokenizer = get_tokenizer("gpt2")
+        # Get Llama tokenizer
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
 
         # Get LLaMA tokenizer with left padding
         tokenizer = get_tokenizer(
@@ -217,7 +217,7 @@ def tokenize_text(
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
 
         # Tokenize single text
         encoded = tokenize_text(
@@ -280,7 +280,7 @@ def tokenize_batch(
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
 
         texts = ["Text 1", "Text 2", "Text 3", ...]
         encoded = tokenize_batch(
@@ -357,7 +357,7 @@ def decode_tokens(
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
 
         # Decode single sequence
         text = decode_tokens([1, 2, 3, 4], tokenizer)
@@ -397,7 +397,7 @@ def get_special_tokens(tokenizer: TokenizerType) -> dict[str, Any]:
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
         special_tokens = get_special_tokens(tokenizer)
         print(special_tokens["pad_token"])  # "<|endoftext|>"
         print(special_tokens["pad_token_id"])  # 50256
@@ -439,7 +439,7 @@ def add_special_tokens(
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
 
         # Add custom tokens
         num_added = add_special_tokens(
@@ -491,7 +491,7 @@ def tokenize_conversation(
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
 
         messages = [
             {"role": "system", "content": "You are a helpful assistant."},
@@ -563,7 +563,7 @@ def prepare_input_for_generation(
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
 
         inputs = prepare_input_for_generation(
             "Once upon a time",
@@ -611,7 +611,7 @@ def count_tokens(
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
 
         # Single text
         count = count_tokens("Hello, world!", tokenizer)
@@ -652,7 +652,7 @@ def truncate_to_token_limit(
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
 
         long_text = "..." # very long text
         truncated = truncate_to_token_limit(
@@ -692,7 +692,7 @@ def get_tokenizer_info(tokenizer: TokenizerType) -> dict[str, Any]:
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
         info = get_tokenizer_info(tokenizer)
 
         print(f"Vocab size: {info['vocab_size']}")
@@ -730,7 +730,7 @@ def save_tokenizer(tokenizer: TokenizerType, save_directory: str | Path, **kwarg
 
     Example:
         ```python
-        tokenizer = get_tokenizer("gpt2")
+        tokenizer = get_tokenizer("meta-llama/Llama-2-7b-hf")
 
         # Modify tokenizer...
         add_special_tokens(tokenizer, {"additional_special_tokens": ["<custom>"]})

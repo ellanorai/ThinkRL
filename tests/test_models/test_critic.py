@@ -56,14 +56,14 @@ class TestCritic:
         assert isinstance(critic.value_head, nn.Linear)
 
     def test_init_with_string(self, mock_transformers):
-        critic = Critic("gpt2")
+        _ = Critic("meta-llama/Llama-2-7b-hf")
         message = mock_transformers.from_pretrained.call_args[0][0]
-        assert message == "gpt2"
+        assert message == "meta-llama/Llama-2-7b-hf"
 
     def test_init_with_lora(self):
         with patch("thinkrl.models.critic._PEFT_AVAILABLE", True):
             with patch("thinkrl.models.critic.get_peft_model", create=True) as mock_get_peft:
-                with patch("thinkrl.models.critic.LoraConfig", create=True) as MockLoraConfig:
+                with patch("thinkrl.models.critic.LoraConfig", create=True) as _:
                     with patch("thinkrl.models.critic.TaskType", create=True) as MockTaskType:
                         model = MockModel()
                         # Mock named_parameters for bf16 cast loop
@@ -141,8 +141,8 @@ class TestCritic:
             with patch("torch.load") as mock_load:
                 mock_load.return_value = {"value_head": {}}
                 # We need to mock load_state_dict since we return empty dict for value_head
-                with patch.object(nn.Linear, "load_state_dict") as mock_load_sd:
-                    critic = Critic.from_pretrained("gpt2")
+                with patch.object(nn.Linear, "load_state_dict"):
+                    critic = Critic.from_pretrained("meta-llama/Llama-2-7b-hf")
                     assert isinstance(critic, Critic)
                     mock_load.assert_called()
 

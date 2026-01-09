@@ -38,6 +38,16 @@ class MockModel(nn.Module):
         pass
 
 
+class ModelConfig:
+    def __init__(self, name_or_path):
+        self.name_or_path = name_or_path
+
+
+@pytest.fixture
+def model_config():
+    return ModelConfig(name_or_path="meta-llama/Llama-2-7b-hf")
+
+
 @pytest.fixture
 def mock_transformers():
     with patch("thinkrl.models.reward_model.AutoConfig") as MockAutoConfig:
@@ -56,9 +66,9 @@ class TestRewardModel:
         assert isinstance(rm.reward_head, nn.Linear)
 
     def test_init_with_string(self, mock_transformers):
-        rm = RewardModel("gpt2")
+        _ = RewardModel("meta-llama/Llama-2-7b-hf")
         message = mock_transformers.from_pretrained.call_args[0][0]
-        assert message == "gpt2"
+        assert message == "meta-llama/Llama-2-7b-hf"
 
     def test_init_with_normalization(self):
         model = MockModel()
@@ -69,7 +79,7 @@ class TestRewardModel:
     def test_init_with_lora(self):
         with patch("thinkrl.models.reward_model._PEFT_AVAILABLE", True):
             with patch("thinkrl.models.reward_model.get_peft_model", create=True) as mock_get_peft:
-                with patch("thinkrl.models.reward_model.LoraConfig", create=True) as MockLoraConfig:
+                with patch("thinkrl.models.reward_model.LoraConfig", create=True) as _:
                     with patch("thinkrl.models.reward_model.TaskType", create=True) as MockTaskType:
                         model = MockModel()
                         # Mock named_parameters for bf16 cast loop
@@ -156,8 +166,8 @@ class TestRewardModel:
                     "reward_std": torch.tensor([1.0]),
                 }
                 # We need to mock load_state_dict since we return empty dict
-                with patch.object(nn.Linear, "load_state_dict") as mock_load_sd:
-                    rm = RewardModel.from_pretrained("gpt2")
+                with patch.object(nn.Linear, "load_state_dict"):
+                    rm = RewardModel.from_pretrained("meta-llama/Llama-2-7b-hf")
                     assert isinstance(rm, RewardModel)
                     assert hasattr(rm, "reward_mean")
 

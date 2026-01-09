@@ -130,11 +130,11 @@ class TestLegacyCompatibility(unittest.TestCase):
     def test_get_actor_model_compatibility(self, mock_load_hf):
         from thinkrl.models import get_actor_model
 
-        get_actor_model("gpt2", lora_rank=8)
+        get_actor_model("llama", lora_rank=8)
 
         mock_load_hf.assert_called()
         args, kwargs = mock_load_hf.call_args
-        assert args[0] == "gpt2"
+        assert args[0] == "llama"
         assert args[1] == "actor"
         assert kwargs["lora_rank"] == 8
 
@@ -142,7 +142,7 @@ class TestLegacyCompatibility(unittest.TestCase):
     def test_get_llm_compatibility(self, mock_load_hf):
         from thinkrl.models import get_llm_for_sequence_regression
 
-        get_llm_for_sequence_regression("gpt2", model_type="critic")
+        get_llm_for_sequence_regression("meta-llama/Llama-2-7b-hf", model_type="critic")
 
         mock_load_hf.assert_called()
         args, kwargs = mock_load_hf.call_args
@@ -153,7 +153,7 @@ class TestLegacyCompatibility(unittest.TestCase):
         from thinkrl.models.model import create_reference_model
 
         # Should force lora_rank=0 and model_type='ref'
-        create_reference_model("gpt2")
+        create_reference_model("meta-llama/Llama-2-7b-hf")
 
         mock_load_hf.assert_called()
         args, kwargs = mock_load_hf.call_args

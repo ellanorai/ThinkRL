@@ -22,9 +22,10 @@ from __future__ import annotations
 
 import json
 import logging
-import sys
 from pathlib import Path
+import sys
 from typing import Annotated, Optional
+
 
 # Optional typer support
 try:
@@ -45,7 +46,7 @@ logger = logging.getLogger(__name__)
 def _check_typer():
     """Check if typer is available."""
     if not TYPER_AVAILABLE:
-        print("Error: typer is required for CLI. Install with: pip install typer")
+        logger.error("Error: typer is required for CLI. Install with: pip install typer")
         sys.exit(1)
 
 
@@ -202,6 +203,7 @@ if TYPER_AVAILABLE:
 
         try:
             from transformers import AutoModelForCausalLM, AutoTokenizer
+
             from peft import PeftModel
 
             # Load base model
@@ -237,7 +239,7 @@ if TYPER_AVAILABLE:
 
         except Exception as e:
             typer.echo(f"Error: {e}")
-            raise typer.Exit(1)
+            raise typer.Exit(1) from e
 
     @app.command()
     def info(
@@ -370,7 +372,7 @@ if TYPER_AVAILABLE:
 
         Example:
             thinkrl sft --model meta-llama/Llama-3.1-8B --dataset tatsu-lab/alpaca
-            thinkrl sft -m gpt2 -d imdb --epochs 1 --lora-r 8
+            thinkrl sft -m meta-llama/Llama-3.2-1B -d imdb --epochs 1 --lora-r 8
         """
         typer.echo("=" * 60)
         typer.echo("ThinkRL Supervised Fine-Tuning (SFT)")
@@ -442,7 +444,7 @@ if TYPER_AVAILABLE:
 
         Example:
             thinkrl dpo --model meta-llama/Llama-3.1-8B --dataset Anthropic/hh-rlhf
-            thinkrl dpo -m gpt2 -d argilla/dpo-mix-7k --beta 0.1 --lora-r 8
+            thinkrl dpo -m meta-llama/Llama-3.2-1B -d argilla/dpo-mix-7k --beta 0.1 --lora-r 8
         """
         typer.echo("=" * 60)
         typer.echo("ThinkRL Direct Preference Optimization (DPO)")
@@ -804,6 +806,12 @@ if TYPER_AVAILABLE:
         typer.echo("Note: KTO training implementation pending")
         typer.echo("This will use thinkrl.algorithms.KTOAlgorithm")
 
+    def _check_typer():
+        """Check if typer is available."""
+        if not TYPER_AVAILABLE:
+            logger.error("Error: typer is required for CLI. Install with: pip install typer")
+            sys.exit(1)
+
     @app.callback()
     def callback():
         """ThinkRL: RLHF Training Framework for Reasoning Models"""
@@ -814,10 +822,10 @@ else:
     app = None
 
     def _train_fallback():
-        print("Train command requires typer. Install with: pip install typer")
+        sys.exit("Train command requires typer. Install with: pip install typer")
 
     def _generate_fallback():
-        print("Generate command requires typer. Install with: pip install typer")
+        sys.exit("Generate command requires typer. Install with: pip install typer")
 
 
 def main():
@@ -825,8 +833,7 @@ def main():
     if TYPER_AVAILABLE:
         app()
     else:
-        print("ThinkRL CLI requires typer. Install with: pip install typer")
-        sys.exit(1)
+        sys.exit("ThinkRL CLI requires typer. Install with: pip install typer")
 
 
 if __name__ == "__main__":

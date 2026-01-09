@@ -27,21 +27,20 @@ Author: EllanorAI
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
 from thinkrl.algorithms.dapo import DAPOAlgorithm, DAPOConfig, create_dapo
 from thinkrl.algorithms.dpo import DPOAlgorithm, DPOConfig, create_dpo
+from thinkrl.algorithms.dr_grpo import DrGRPOAlgorithm, DrGRPOConfig, create_dr_grpo
 from thinkrl.algorithms.grpo import GRPOAlgorithm, GRPOConfig
+from thinkrl.algorithms.ipo import IPOAlgorithm, IPOConfig, create_ipo
+from thinkrl.algorithms.kto import KTOAlgorithm, KTOConfig, create_kto
+from thinkrl.algorithms.orpo import ORPOAlgorithm, ORPOConfig, create_orpo
 from thinkrl.algorithms.ppo import PPOAlgorithm, PPOConfig, create_ppo
+from thinkrl.algorithms.prime import PRIMEAlgorithm, PRIMEConfig, create_prime
 from thinkrl.algorithms.reinforce import REINFORCEAlgorithm, REINFORCEConfig, create_reinforce
-from thinkrl.algorithms.vapo import VAPOAlgorithm, VAPOConfig
 
 # New algorithms (stubs)
 from thinkrl.algorithms.reinforce_pp import REINFORCEPPAlgorithm, REINFORCEPPConfig, create_reinforce_pp
 from thinkrl.algorithms.rloo import RLOOAlgorithm, RLOOConfig, create_rloo
-from thinkrl.algorithms.prime import PRIMEAlgorithm, PRIMEConfig, create_prime
-from thinkrl.algorithms.dr_grpo import DrGRPOAlgorithm, DrGRPOConfig, create_dr_grpo
-from thinkrl.algorithms.ipo import IPOAlgorithm, IPOConfig, create_ipo
-from thinkrl.algorithms.kto import KTOAlgorithm, KTOConfig, create_kto
-from thinkrl.algorithms.online_dpo import OnlineDPOAlgorithm, OnlineDPOConfig, create_online_dpo
 from thinkrl.algorithms.star import STaRAlgorithm, STaRConfig, create_star
-from thinkrl.algorithms.orpo import ORPOAlgorithm, ORPOConfig, create_orpo
+from thinkrl.algorithms.vapo import VAPOAlgorithm, VAPOConfig
 
 
 # Algorithm registry for factory pattern
@@ -61,8 +60,6 @@ ALGORITHMS = {
     "drgrpo": DrGRPOAlgorithm,
     "ipo": IPOAlgorithm,
     "kto": KTOAlgorithm,
-    "online_dpo": OnlineDPOAlgorithm,
-    "iterative_dpo": OnlineDPOAlgorithm,
     "star": STaRAlgorithm,
     "orpo": ORPOAlgorithm,
 }
@@ -83,8 +80,6 @@ CONFIGS = {
     "drgrpo": DrGRPOConfig,
     "ipo": IPOConfig,
     "kto": KTOConfig,
-    "online_dpo": OnlineDPOConfig,
-    "iterative_dpo": OnlineDPOConfig,
     "star": STaRConfig,
     "orpo": ORPOConfig,
 }
@@ -155,10 +150,6 @@ __all__ = [
     "KTOAlgorithm",
     "KTOConfig",
     "create_kto",
-    # Online DPO
-    "OnlineDPOAlgorithm",
-    "OnlineDPOConfig",
-    "create_online_dpo",
     # STaR
     "STaRAlgorithm",
     "STaRConfig",

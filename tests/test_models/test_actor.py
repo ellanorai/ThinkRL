@@ -37,6 +37,16 @@ class MockModel(nn.Module):
         pass
 
 
+class ModelConfig:
+    def __init__(self, name_or_path):
+        self.name_or_path = name_or_path
+
+
+@pytest.fixture
+def model_config():
+    return ModelConfig(name_or_path="meta-llama/Llama-2-7b-hf")
+
+
 @pytest.fixture
 def mock_transformers():
     with patch("thinkrl.models.actor.AutoConfig") as MockAutoConfig:
@@ -54,14 +64,14 @@ class TestActor:
         assert actor.lora_rank == 0
 
     def test_init_with_string(self, mock_transformers):
-        actor = Actor("gpt2")
+        _ = Actor("meta-llama/Llama-2-7b-hf")
         message = mock_transformers.from_pretrained.call_args[0][0]
-        assert message == "gpt2"
+        assert message == "meta-llama/Llama-2-7b-hf"
 
     def test_init_with_lora(self):
         with patch("thinkrl.models.actor._PEFT_AVAILABLE", True):
             with patch("thinkrl.models.actor.get_peft_model", create=True) as mock_get_peft:
-                with patch("thinkrl.models.actor.LoraConfig", create=True) as MockLoraConfig:
+                with patch("thinkrl.models.actor.LoraConfig", create=True) as _:
                     with patch("thinkrl.models.actor.TaskType", create=True) as MockTaskType:
                         model = MockModel()
                         # Mock named_parameters for bf16 cast loop
@@ -143,7 +153,7 @@ class TestActor:
         actor.model.save_pretrained.assert_called_with("path")
 
     def test_from_pretrained(self, mock_transformers):
-        actor = Actor.from_pretrained("gpt2")
+        actor = Actor.from_pretrained("meta-llama/Llama-2-7b-hf")
         assert isinstance(actor, Actor)
 
     def test_print_trainable(self, caplog):

@@ -138,7 +138,7 @@ class TestArchitectureTargets:
 
     def test_all_architectures_have_targets(self):
         """Test all defined architectures have target modules."""
-        for arch, targets in ARCHITECTURE_TARGETS.items():
+        for _, targets in ARCHITECTURE_TARGETS.items():
             assert isinstance(targets, list)
             assert len(targets) > 0
 
@@ -309,11 +309,11 @@ class TestLoRAConfigIntegration:
     def test_multiple_architectures_have_unique_targets(self):
         """Test different architectures have appropriate targets."""
         llama_config = LoRAConfig.for_architecture("llama")
-        gpt2_config = LoRAConfig.for_architecture("gpt2")
+        bloom_config = LoRAConfig.for_architecture("bloom")
 
-        # Llama uses q_proj, gpt2 uses c_attn
+        # Llama uses q_proj, bloom uses query_key_value
         assert "q_proj" in llama_config.target_modules
-        assert "c_attn" in gpt2_config.target_modules
+        assert "query_key_value" in bloom_config.target_modules
 
 
 class TestLoRAUtilities:
@@ -391,10 +391,18 @@ class TestLoRAUtilities:
 class TestLoRAConfigCoverage:
     """Extra coverage tests for LoRAConfig."""
 
+    def test_all_architectures_have_targets(self):
+        """Test all defined architectures have target modules."""
+        from thinkrl.peft.lora import ARCHITECTURE_TARGETS
+
+        for _, targets in ARCHITECTURE_TARGETS.items():
+            assert isinstance(targets, list)
+            assert len(targets) > 0
+
     def test_task_types(self):
         """Test mapping of different task types."""
         with patch("thinkrl.peft.lora.PEFT_AVAILABLE", True):
-            with patch("thinkrl.peft.lora.PeftLoraConfig") as MockPeftConfig:
+            with patch("thinkrl.peft.lora.PeftLoraConfig") as _:
                 with patch("thinkrl.peft.lora.TaskType") as MockTaskType:
                     # Setup MockTaskType attributes
                     MockTaskType.CAUSAL_LM = "CAUSAL_LM"

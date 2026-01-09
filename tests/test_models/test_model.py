@@ -19,6 +19,16 @@ class MockModel(nn.Module):
         self.param = nn.Parameter(torch.randn(10))
 
 
+class ModelConfig:
+    def __init__(self, name_or_path):
+        self.name_or_path = name_or_path
+
+
+@pytest.fixture
+def model_config():
+    return ModelConfig(name_or_path="meta-llama/Llama-2-7b-hf")
+
+
 @pytest.fixture
 def mock_classes():
     # Since imports happen inside functions, we patch the classes in their definition modules
@@ -38,11 +48,13 @@ def mock_classes():
 def test_get_llm_for_sequence_regression_reward(mock_classes):
     MockRewardModel, _, _ = mock_classes
 
-    model = get_llm_for_sequence_regression("gpt2", model_type="reward", lora_rank=8, normalize_reward=True)
+    _ = get_llm_for_sequence_regression(
+        "meta-llama/Llama-2-7b-hf", model_type="reward", lora_rank=8, normalize_reward=True
+    )
 
     MockRewardModel.assert_called_once()
     call_kwargs = MockRewardModel.call_args[1]
-    assert call_kwargs["pretrained_model"] == "gpt2"
+    assert call_kwargs["pretrained_model"] == "meta-llama/Llama-2-7b-hf"
     assert call_kwargs["lora_rank"] == 8
     assert call_kwargs["normalize_reward"] is True
 
@@ -50,27 +62,27 @@ def test_get_llm_for_sequence_regression_reward(mock_classes):
 def test_get_llm_for_sequence_regression_critic(mock_classes):
     _, MockCritic, _ = mock_classes
 
-    model = get_llm_for_sequence_regression("gpt2", model_type="critic", use_flash_attention=False)
+    _ = get_llm_for_sequence_regression("meta-llama/Llama-2-7b-hf", model_type="critic", use_flash_attention=False)
 
     MockCritic.assert_called_once()
     call_kwargs = MockCritic.call_args[1]
-    assert call_kwargs["pretrained_model"] == "gpt2"
+    assert call_kwargs["pretrained_model"] == "meta-llama/Llama-2-7b-hf"
     assert call_kwargs["use_flash_attention"] is False
 
 
 def test_get_llm_for_sequence_regression_invalid():
     with pytest.raises(ValueError, match="Unknown model_type"):
-        get_llm_for_sequence_regression("gpt2", model_type="invalid")
+        get_llm_for_sequence_regression("meta-llama/Llama-2-7b-hf", model_type="invalid")
 
 
 def test_get_actor_model(mock_classes):
     _, _, MockActor = mock_classes
 
-    model = get_actor_model("gpt2", lora_rank=16, bf16=False)
+    _ = get_actor_model("meta-llama/Llama-2-7b-hf", lora_rank=16, bf16=False)
 
     MockActor.assert_called_once()
     call_kwargs = MockActor.call_args[1]
-    assert call_kwargs["pretrained_model"] == "gpt2"
+    assert call_kwargs["pretrained_model"] == "meta-llama/Llama-2-7b-hf"
     assert call_kwargs["lora_rank"] == 16
     assert call_kwargs["bf16"] is False
 
@@ -79,11 +91,11 @@ def test_create_reference_model(mock_classes):
     _, _, MockActor = mock_classes
 
     # Verify lora_rank is forced to 0 and model is frozen
-    ref_model = create_reference_model("gpt2")
+    ref_model = create_reference_model("meta-llama/Llama-2-7b-hf")
 
     MockActor.assert_called_once()
     call_kwargs = MockActor.call_args[1]
-    assert call_kwargs["pretrained_model"] == "gpt2"
+    assert call_kwargs["pretrained_model"] == "meta-llama/Llama-2-7b-hf"
     assert call_kwargs["lora_rank"] == 0
 
     # Check if parameters are frozen

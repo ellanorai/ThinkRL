@@ -5,13 +5,13 @@ Tests for TensorBoard Logger
 Tests for TensorBoard integration.
 """
 
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+import tempfile
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from thinkrl.logging.tensorboard import TensorBoardLogger, TENSORBOARD_AVAILABLE
+from thinkrl.logging.tensorboard import TENSORBOARD_AVAILABLE, TensorBoardLogger
 
 
 class TestTensorBoardAvailability:
@@ -121,9 +121,7 @@ class TestTensorBoardLoggerMocked:
             logger = TensorBoardLogger(log_dir=tmpdir)
             logger.log_histogram("weights", [0.1, 0.2, 0.3, 0.4], step=1)
 
-            mock_writer.add_histogram.assert_called_once_with(
-                "weights", [0.1, 0.2, 0.3, 0.4], 1, bins="tensorflow"
-            )
+            mock_writer.add_histogram.assert_called_once_with("weights", [0.1, 0.2, 0.3, 0.4], 1, bins="tensorflow")
             logger.finish()
 
     @patch("thinkrl.logging.tensorboard.SummaryWriter")
@@ -139,9 +137,7 @@ class TestTensorBoardLoggerMocked:
             fake_image = [[1, 2], [3, 4]]
             logger.log_image("sample_image", fake_image, step=1)
 
-            mock_writer.add_image.assert_called_once_with(
-                "sample_image", fake_image, 1, dataformats="CHW"
-            )
+            mock_writer.add_image.assert_called_once_with("sample_image", fake_image, 1, dataformats="CHW")
             logger.finish()
 
     @patch("thinkrl.logging.tensorboard.SummaryWriter")
@@ -167,7 +163,7 @@ class TestTensorBoardLoggerMocked:
 
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = TensorBoardLogger(log_dir=tmpdir)
-            logger.log_hyperparams({"lr": 1e-4, "scheduler": None, "model": "gpt2"})
+            logger.log_hyperparams({"lr": 1e-4, "scheduler": None, "model": "meta-llama/Llama-3.2-1B"})
 
             mock_writer.add_hparams.assert_called_once()
             call_args = mock_writer.add_hparams.call_args[0][0]
