@@ -44,7 +44,7 @@ jobs:
           # Install core dependencies
           uv pip install cupy-cuda12x scipy pyyaml tqdm accelerate
           # Install dev/test dependencies
-          uv pip install pytest pytest-cov pytest-xdist pytest-mock
+          uv pip install pytest pytest-cov pytest-xdist pytest-mock pytest-asyncio
           # Install package
           uv pip install -e .
 
