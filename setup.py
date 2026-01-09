@@ -52,6 +52,8 @@ CORE_REQUIREMENTS = [
     "pyyaml>=6.0,<7.0",
     "tqdm>=4.65.0",
     "accelerate>=0.21.0,<1.0.0",
+    "transformers>=4.30.0,<5.0.0",
+    "requests>=2.31.0",
 ]
 
 # --- Dependencies based on requirements.txt ---
