@@ -120,15 +120,3 @@ class TestDAPOLoss:
         assert isinstance(loss, torch.Tensor)
         assert "dapo_loss" in metrics
         assert "clip_frac" in metrics
-
-
-# class TestCOPOLoss:
-#     def test_forward(self):
-#         loss_fn = COPOLoss()
-#         logits = torch.randn(2, 10, 100) # [B, S, V]
-#         ref_logits = torch.randn(2, 10, 100)
-#         labels = torch.randint(0, 100, (2, 10))
-#
-#         loss, metrics = loss_fn(logits, ref_logits, labels)
-#         assert isinstance(loss, torch.Tensor)
-#         assert "copo_loss" in metrics
