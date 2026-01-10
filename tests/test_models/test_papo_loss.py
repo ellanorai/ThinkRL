@@ -180,5 +180,3 @@ def test_perception_kl_maximization(papo_loss):
     # Careful inspection is tricky with multiple moving parts.
     # Let's inspect the metric 'kl_prcp_val' directly if possible?
     # No, metrics return scalar.
-
-    pass
