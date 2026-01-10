@@ -490,6 +490,7 @@ class KTOLoss(nn.Module):
         logratios = policy_logps - reference_logps
 
         if kl_div is None:
+            # Note: Global baseline, not per-sample (standard KTO estimator)
             kl_div = logratios.mean()
 
         # Separate desirable and undesirable
@@ -821,6 +822,7 @@ class COPOLoss(nn.Module):
         # Exploration Loss term (maximize bonus => minimize negative bonus)
         # We weigh it by the policy probability of the chosen response to encourage
         # high probability on unvisited (high bonus) states.
+        # Note: This couples count bonus x log-prob, creating exploration bias. Intentional.
         exploration_loss = -(self.alpha * bonus * policy_log_probs[:batch_size]).mean()
 
         total_loss = dpo_loss + exploration_loss
