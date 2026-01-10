@@ -18,7 +18,7 @@ Author: Archit Sood @ EllanorAI
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 import torch
 import torch.distributed as dist
@@ -388,8 +388,11 @@ class BaseRLHFAlgorithm(ABC):
         if "n" in generation_kwargs:
             del generation_kwargs["n"]
 
+        # Cast to Any to satisfy Pylance that this model has a 'generate' method
+        policy_model = cast(Any, self.policy_model)
+
         with torch.no_grad():
-            outputs = self.policy_model.generate(
+            outputs = policy_model.generate(
                 **inputs,
                 max_new_tokens=max_new_tokens,
                 temperature=temperature,
