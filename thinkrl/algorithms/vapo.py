@@ -21,11 +21,11 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, TensorDataset
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
+from thinkrl.models.loss import EntropyLoss, ValueLoss, VAPOLoss
 from thinkrl.utils.logging import get_logger
 
 
@@ -122,6 +122,15 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
         else:
             # Unified model case
             self.value_optimizer = None
+
+        # Initialize Loss Functions
+        self.policy_loss_fn = VAPOLoss(
+            epsilon_low=config.epsilon_low,
+            epsilon_high=config.epsilon_high,
+            lm_loss_coeff=config.lm_loss_coeff,
+        )
+        self.value_loss_fn = ValueLoss(clip_eps=config.value_clip)
+        self.entropy_loss_fn = EntropyLoss(coef=config.entropy_coeff)
 
         logger.info(
             f"Initialized VAPO (eps_low={config.epsilon_low}, eps_high={config.epsilon_high}, "
@@ -342,26 +351,8 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
 
         # 2. Token Masking
         token_mask = labels != -100
-        num_valid_tokens = token_mask.sum().float().clamp(min=1.0)
 
-        # 3. Policy Loss (VAPO specifics)
-        log_ratio = new_log_probs - old_log_probs
-        ratio = torch.exp(log_ratio)
-
-        # Asymmetric Clipping (Clip-Higher)
-        # Lower bound: 1 - eps_low
-        # Upper bound: 1 + eps_high
-        ratio_clipped = torch.clamp(ratio, 1.0 - self.config.epsilon_low, 1.0 + self.config.epsilon_high)
-
-        surr1 = ratio * advantages
-        surr2 = ratio_clipped * advantages
-
-        # Token-Level Loss Aggregation (Equation 7 in paper)
-        # Sum over all tokens in batch, then divide by total tokens
-        policy_loss = -torch.min(surr1, surr2)
-        policy_loss = (policy_loss * token_mask).sum() / num_valid_tokens
-
-        # 4. Positive Example LM Loss (Equation 9/10)
+        # 3. LM Loss Calculation (Auxiliary)
         # Identify correct samples
         positive_mask = raw_rewards >= self.config.positive_reward_threshold
         lm_loss = torch.tensor(0.0, device=input_ids.device)
@@ -378,49 +369,43 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
                 nll = -new_log_probs
                 lm_loss = (nll * pos_token_mask).sum() / pos_token_mask.sum().clamp(min=1.0)
 
-                # Add to policy loss with coefficient
-                policy_loss += self.config.lm_loss_coeff * lm_loss
+        # 4. Policy Loss via VAPOLoss (includes LM loss integration)
+        total_loss, metrics_policy = self.policy_loss_fn(
+            log_probs=new_log_probs,
+            old_log_probs=old_log_probs,
+            advantages=advantages,
+            action_mask=token_mask,
+            lm_loss=lm_loss,
+        )
 
         # 5. Value Loss
-        if self.config.value_clip is not None:
-            v_clipped = old_values + torch.clamp(
-                new_values - old_values, -self.config.value_clip, self.config.value_clip
-            )
-            v_loss1 = (new_values - returns) ** 2
-            v_loss2 = (v_clipped - returns) ** 2
-            value_loss = torch.max(v_loss1, v_loss2)
-        else:
-            value_loss = (new_values - returns) ** 2
-
-        value_loss = (value_loss * token_mask).sum() / num_valid_tokens
+        value_loss = self.value_loss_fn(
+            values=new_values,
+            old_values=old_values,
+            returns=returns,
+            action_mask=token_mask,
+        )
 
         # 6. Entropy
-        entropy = torch.tensor(0.0, device=input_ids.device)
-        entropy_loss = torch.tensor(0.0, device=input_ids.device)
-        if self.config.entropy_coeff > 0:
-            logits = outputs["logits"] if isinstance(outputs, dict) else outputs
-            probs = F.softmax(logits, dim=-1)
-            log_probs_all = F.log_softmax(logits, dim=-1)
-            entropy = -(probs * log_probs_all).sum(dim=-1)
-            entropy_mean = (entropy * token_mask).sum() / num_valid_tokens
-            entropy_loss = -self.config.entropy_coeff * entropy_mean
+        logits = outputs["logits"] if isinstance(outputs, dict) else outputs
+        entropy_loss = self.entropy_loss_fn(logits, action_mask=token_mask)
 
-        total_loss = policy_loss + self.config.value_coeff * value_loss + entropy_loss
+        # Total Loss aggregation
+        # VAPOLoss returns (policy_loss + lm_loss_term), but we need to sum everything.
+        # Wait, VAPOLoss.forward returns (total_policy_loss, metrics).
+        # We need to add value_loss and entropy_loss here.
+        # Let's adjust self.policy_loss_fn logic or simpler: use VAPOLoss only for policy + lm.
 
-        # Metrics
-        with torch.no_grad():
-            clip_frac = ((ratio < 1.0 - self.config.epsilon_low) | (ratio > 1.0 + self.config.epsilon_high)).float()
-            clip_frac = (clip_frac * token_mask).sum() / num_valid_tokens
-            approx_kl = 0.5 * (log_ratio**2).mean()
+        final_total_loss = total_loss + self.config.value_coeff * value_loss + entropy_loss
 
         return {
-            "loss": total_loss,
-            "policy_loss": policy_loss,
+            "loss": final_total_loss,
+            "policy_loss": metrics_policy["policy_loss"],
             "value_loss": value_loss,
             "lm_loss": lm_loss,
             "entropy_loss": entropy_loss,
-            "clip_frac": clip_frac,
-            "approx_kl": approx_kl,
+            "clip_frac": metrics_policy["clip_frac"],
+            "approx_kl": 0.5 * ((new_log_probs - old_log_probs) ** 2).mean().detach(),  # Re-compute simpler KL
             "mean_advantage": advantages[token_mask].mean(),
             "mean_return": returns[token_mask].mean(),
             "mean_value": new_values[token_mask].mean(),

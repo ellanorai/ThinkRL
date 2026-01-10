@@ -28,6 +28,7 @@ import torch.nn.functional as F
 from torch.optim import Optimizer
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
+from thinkrl.models.loss import DAPOLoss, EntropyLoss
 from thinkrl.utils.logging import get_logger
 
 
@@ -214,6 +215,13 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
         self.config = config
         self.sampling_buffer = DynamicSamplingBuffer(config)
         self._validate_model()
+
+        # Initialize Loss Functions
+        self.loss_fn = DAPOLoss(
+            epsilon_low=config.epsilon_low,
+            epsilon_high=config.epsilon_high,
+        )
+        self.entropy_loss_fn = EntropyLoss(coef=config.entropy_coeff)
 
     def _validate_model(self):
         """Ensure policy model has required interface."""
@@ -406,40 +414,29 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
         valid_mask_expanded = valid_mask.unsqueeze(1).expand_as(token_mask)
         combined_mask = token_mask & valid_mask_expanded
 
-        # Importance sampling ratio: π_θ / π_θ_old
-        ratio = torch.exp(log_probs - old_log_probs)
-
         # Broadcast advantages to token level [B] -> [B, S]
-        adv_expanded = advantages.unsqueeze(1).expand_as(ratio)
+        # We need this for DAPOLoss call above and diagnostics
+        adv_expanded = advantages.unsqueeze(1).expand_as(log_probs)
 
-        # Asymmetric clipping (Clip-Higher, Section 3.1)
-        ratio_clipped = torch.clamp(
-            ratio,
-            1.0 - cfg.epsilon_low,
-            1.0 + cfg.epsilon_high,
+        # Compute Policy Loss using DAPOLoss
+        policy_loss, metrics_loss = self.loss_fn(
+            log_probs=log_probs,
+            old_log_probs=old_log_probs,
+            advantages=adv_expanded,
+            action_mask=combined_mask,
         )
 
-        # Surrogate objectives
-        surr_unclipped = ratio * adv_expanded
-        surr_clipped = ratio_clipped * adv_expanded
-        surr_min = torch.min(surr_unclipped, surr_clipped)
-
-        # Token-level aggregation (Equation 12): 1 / Σ|o_i|
-        # Only count tokens from valid (non-zero variance) groups
-        num_valid_tokens = combined_mask.sum().float().clamp(min=1.0)
-        policy_loss = -surr_min[combined_mask].sum() / num_valid_tokens
-
         # Optional entropy bonus
-        entropy_loss = torch.tensor(0.0, device=device)
-        if cfg.entropy_coeff > 0:
-            logits = outputs["logits"] if isinstance(outputs, dict) else outputs
-            entropy = self._compute_entropy(logits, token_mask)
-            entropy_loss = -cfg.entropy_coeff * entropy
+        logits = outputs["logits"] if isinstance(outputs, dict) else outputs
+        entropy_loss = self.entropy_loss_fn(logits, action_mask=combined_mask)
+        # Note: EntropyLoss calculates mean, so for metrics we might want raw entropy again if needed
+        # DAPOLoss and EntropyLoss return means over valid tokens.
 
         total_loss = policy_loss + entropy_loss
 
         # Diagnostics
         with torch.no_grad():
+            ratio = torch.exp(log_probs - old_log_probs)  # Recompute for diagnostics
             metrics = self._compute_diagnostics(
                 ratio=ratio,
                 log_probs=log_probs,
@@ -459,17 +456,6 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
             "entropy_loss": entropy_loss.detach(),
             **metrics,
         }
-
-    def _compute_entropy(
-        self,
-        logits: torch.Tensor,
-        mask: torch.Tensor,
-    ) -> torch.Tensor:
-        """Compute mean entropy over valid tokens."""
-        probs = F.softmax(logits, dim=-1)
-        log_probs = F.log_softmax(logits, dim=-1)
-        entropy = -(probs * log_probs).sum(dim=-1)
-        return (entropy * mask).sum() / mask.sum().clamp(min=1.0)
 
     def _compute_diagnostics(
         self,

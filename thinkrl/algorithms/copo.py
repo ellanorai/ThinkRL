@@ -18,17 +18,16 @@ from __future__ import annotations
 from collections import deque
 import copy
 from dataclasses import dataclass
-import math
 import random
 from typing import Any, Literal
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, Dataset
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
+from thinkrl.models.loss import COPOLoss
 from thinkrl.utils.logging import get_logger
 
 
@@ -207,6 +206,14 @@ class COPOAlgorithm(BaseRLHFAlgorithm):
 
         # CFN Replay Buffer
         self.cfn_buffer = ReplayBuffer(capacity=self.config.cfn_buffer_size)
+
+        # Initialize Loss Function
+        self.loss_fn = COPOLoss(
+            beta=self.config.beta,
+            alpha=self.config.alpha,
+            cfn_output_dim=self.config.cfn_output_dim,
+            loss_type=self.config.loss_type,
+        )
 
         self.iteration_count = 0
         self.accumulated_loss = 0.0
@@ -496,16 +503,6 @@ class COPOAlgorithm(BaseRLHFAlgorithm):
 
         # 3. DPO Loss Calculation
         batch_size = chosen_ids.size(0)
-        chosen_logratios = policy_log_probs[:batch_size] - ref_log_probs[:batch_size]
-        rejected_logratios = policy_log_probs[batch_size:] - ref_log_probs[batch_size:]
-        logits = self.config.beta * (chosen_logratios - rejected_logratios)
-
-        if self.config.loss_type == "sigmoid":
-            dpo_loss = -F.logsigmoid(logits).mean()
-        elif self.config.loss_type == "hinge":
-            dpo_loss = torch.relu(1 - logits).mean()
-        else:  # ipo
-            dpo_loss = ((logits - 1 / (2 * self.config.beta)) ** 2).mean()
 
         # 4. Exploration Bonus (Only for CHOSEN responses)
         # Extract hidden features for chosen
@@ -516,28 +513,16 @@ class COPOAlgorithm(BaseRLHFAlgorithm):
         seq_len = torch.clamp(seq_len, min=0, max=chosen_hidden.size(1) - 1)
         chosen_feats = chosen_hidden[torch.arange(batch_size), seq_len]
 
-        # CFN Forward (Evaluation Mode)
-        self.cfn.eval()
-        with torch.no_grad():
-            cfn_out = self.cfn(chosen_feats)
-            # Bonus = ||f(s)|| / sqrt(d)
-            norm = torch.norm(cfn_out, p=2, dim=1)
-            bonus = norm / math.sqrt(self.config.cfn_output_dim)
+        # Compute Loss using COPOLoss
+        total_loss, metrics = self.loss_fn(
+            policy_log_probs=policy_log_probs,
+            ref_log_probs=ref_log_probs,
+            chosen_hidden_states=chosen_feats,
+            cfn_model=self.cfn,
+            batch_size=batch_size,
+        )
 
-        # Exploration Loss term
-        exploration_loss = -(self.config.alpha * bonus * policy_log_probs[:batch_size]).mean()
-
-        total_loss = dpo_loss + exploration_loss
-
-        return {
-            "loss": total_loss,
-            "loss/dpo": dpo_loss.detach(),
-            "loss/exploration": exploration_loss.detach(),
-            "rewards/chosen": (self.config.beta * chosen_logratios).detach().mean(),
-            "rewards/rejected": (self.config.beta * rejected_logratios).detach().mean(),
-            "rewards/accuracies": (chosen_logratios > rejected_logratios).float().mean(),
-            "exploration/bonus": bonus.mean(),
-        }
+        return metrics
 
     def training_step(self, batch: dict[str, Any]) -> dict[str, Any]:
         """Training step with Gradient Accumulation."""

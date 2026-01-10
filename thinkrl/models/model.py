@@ -33,7 +33,7 @@ __all__ = [
 ]
 
 
-def compute_model_size(model: nn.Module) -> dict[str, int]:
+def compute_model_size(model: nn.Module) -> dict[str, int | float]:
     """
     Compute model size statistics.
 

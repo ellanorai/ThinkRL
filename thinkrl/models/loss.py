@@ -419,8 +419,7 @@ class DPOLoss(nn.Module):
             if self.label_smoothing > 0:
                 # Soft labels
                 loss = (
-                    -F.logsigmoid(logits) * (1 - self.label_smoothing)
-                    - F.logsigmoid(-logits) * self.label_smoothing
+                    -F.logsigmoid(logits) * (1 - self.label_smoothing) - F.logsigmoid(-logits) * self.label_smoothing
                 )
             else:
                 loss = -F.logsigmoid(logits)
@@ -523,6 +522,184 @@ class KTOLoss(nn.Module):
         return loss, metrics
 
 
+class PAPOLoss(nn.Module):
+    """
+    Perception-Aware Policy Optimization (PAPO) Loss.
+
+    Combines Group Relative Policy Optimization (GRPO) loss with:
+    1. Implicit Perception Loss (Bounded KL divergence between original and DETACHED masked policies).
+       Note: We MAXIMIZE this KL divergence to encourage visual grounding, but bounded to prevent hallucinations.
+    2. Double Entropy Loss (Regularization to prevent policy collapse).
+       Note: We MAXIMIZE entropy (minimize negative entropy) to counter the KL maximization pressure.
+
+    Reference: https://arxiv.org/abs/2507.06448
+    """
+
+    def __init__(
+        self,
+        gamma: float = 0.01,
+        eta: float = 0.03,
+        clip_eps: float = 0.2,
+        beta: float = 0.04,
+        kl_prcp_cap: float = 5.0,
+    ):
+        """
+        Initialize PAPO loss.
+
+        Args:
+            gamma: Coefficient for Implicit Perception Loss (KL_prcp)
+            eta: Coefficient for Double Entropy Loss
+            clip_eps: Clipping epsilon for GRPO surrogate
+            beta: Coefficient for KL divergence penalty (relative to reference)
+            kl_prcp_cap: Maximum value for the perception KL term to prevent exploding gradients.
+        """
+        super().__init__()
+        self.gamma = gamma
+        self.eta = eta
+        self.clip_eps = clip_eps
+        self.beta = beta
+        self.kl_prcp_cap = kl_prcp_cap
+
+    def set_gamma(self, new_gamma: float):
+        """Update gamma coefficient (useful for annealing)."""
+        self.gamma = new_gamma
+
+    def set_beta(self, new_beta: float):
+        """Update beta coefficient (useful for annealing)."""
+        self.beta = new_beta
+
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        log_probs_mask: torch.Tensor,
+        old_log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        ref_log_probs: torch.Tensor | None = None,
+        action_mask: torch.Tensor | None = None,
+        normalize_advantages: bool = False,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """
+        Compute PAPO loss.
+
+        Args:
+            log_probs: Log probs of policy on original inputs [batch, seq_len]
+            log_probs_mask: Log probs of policy on corrupted/masked inputs [batch, seq_len]
+            old_log_probs: Log probs of old policy (for GRPO clipping) [batch, seq_len]
+            advantages: Group relative advantages [batch, seq_len] or [batch]
+            ref_log_probs: Log probs of reference model (optional) [batch, seq_len]
+            action_mask: Mask for action tokens [batch, seq_len]
+            normalize_advantages: Whether to normalize advantages within this batch (default: False)
+
+        Returns:
+            Tuple of (total_loss, metrics_dict)
+        """
+        # Ensure advantages are properly broadcasted
+        if advantages.dim() == 1 and log_probs.dim() == 2:
+            advantages = advantages.unsqueeze(1)
+
+        # Optional: Advantage Normalization
+        # Helps with mixed-modal reward scales if not handled externally
+        if normalize_advantages and advantages.numel() > 1:
+            if action_mask is not None:
+                # Normalize only based on valid tokens to avoid padding skew
+                valid_adv = advantages[action_mask.bool()]
+                mean, std = valid_adv.mean(), valid_adv.std()
+                advantages = (advantages - mean) / (std + 1e-8)
+            else:
+                advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+
+        # 1. GRPO Surrogate Loss
+        # ----------------------
+        # Ratio = pi / old_pi = exp(log_pi - log_old_pi)
+        log_ratio = torch.clamp(log_probs - old_log_probs, -20, 20)
+        ratio = torch.exp(log_ratio)
+
+        clipped_ratio = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps)
+
+        surr1 = ratio * advantages
+        surr2 = clipped_ratio * advantages
+
+        # Maximize surrogate -> Minimize negative surrogate
+        loss_surrogate = -torch.min(surr1, surr2)
+
+        # 2. Reference KL (Corrected Estimator)
+        # -------------------------------------
+        # Using positive-definite estimator matching Schulman approximation
+        kl_ref = torch.tensor(0.0, device=log_probs.device)
+        if ref_log_probs is not None and self.beta > 0:
+            # log_ratio_ref = log(ref / pi) = ref_log_probs - log_probs
+            log_ratio_ref = ref_log_probs - log_probs
+            # KL approx: exp(ratio) - ratio - 1
+            kl_ref = torch.exp(log_ratio_ref) - log_ratio_ref - 1.0
+
+        loss_kl_ref = self.beta * kl_ref
+
+        # 3. Implicit Perception Loss (Corrected & Bounded)
+        # -------------------------------------------------
+        # Objective: MAXIMIZE KL(pi || pi_mask)
+        # Fix 1: Stop-gradient on pi_mask (detach) to prevent mutual divergence escalation
+        # Fix 2: Cap the KL to prevent adversarial behavior/hallucination
+
+        # log_ratio_prcp = log(pi / pi_mask_detached)
+        log_ratio_prcp = torch.clamp(log_probs - log_probs_mask.detach(), -20, 20)
+        ratio_prcp = torch.exp(log_ratio_prcp)
+
+        # Schulman approx for KL: ratio - log_ratio - 1
+        kl_prcp_raw = ratio_prcp - log_ratio_prcp - 1.0
+
+        # Clamp to prevent explosion
+        kl_prcp = torch.clamp(kl_prcp_raw, min=0.0, max=self.kl_prcp_cap)
+
+        # We want to MAXIMIZE this, so we subtract it from the loss
+        loss_prcp = -self.gamma * kl_prcp
+
+        # 4. Double Entropy Loss (Corrected Sign)
+        # ---------------------------------------
+        # Objective: MAXIMIZE Entropy (Prevent collapse)
+        # Fix 3: Maximize entropy H = -log_pi
+        # Loss term: -eta * (H_pi + H_mask)
+
+        entropy = -log_probs
+        entropy_mask = -log_probs_mask  # We also encourage the masked policy to stay entropic
+
+        # Maximizing entropy means Minimizing negative entropy
+        loss_entropy = -self.eta * (entropy + entropy_mask)
+
+        # Combine terms
+        # ----------------------
+        total_loss_per_token = loss_surrogate + loss_kl_ref + loss_prcp + loss_entropy
+
+        # Apply masking and average
+        if action_mask is not None:
+            valid_count = action_mask.sum().clamp(min=1)
+            total_loss = (total_loss_per_token * action_mask).sum() / valid_count
+
+            # Metrics (detached)
+            with torch.no_grad():
+                metrics = {
+                    "papo_loss": total_loss.detach(),
+                    "surrogate_loss": (loss_surrogate * action_mask).sum() / valid_count,
+                    "kl_ref_val": (kl_ref * action_mask).sum() / valid_count,
+                    "kl_prcp_val": (kl_prcp * action_mask).sum() / valid_count,
+                    "entropy_val": (entropy * action_mask).sum() / valid_count,
+                    "clip_fraction": (
+                        ((ratio < 1 - self.clip_eps) | (ratio > 1 + self.clip_eps)).float() * action_mask
+                    ).sum()
+                    / valid_count,
+                }
+        else:
+            total_loss = total_loss_per_token.mean()
+            with torch.no_grad():
+                metrics = {
+                    "papo_loss": total_loss.detach(),
+                    "surrogate_loss": loss_surrogate.mean().detach(),
+                    "kl_prcp_val": kl_prcp.mean().detach(),
+                    "entropy_val": entropy.mean().detach(),
+                }
+
+        return total_loss, metrics
+
+
 class EntropyLoss(nn.Module):
     """
     Entropy bonus for policy exploration.
@@ -565,3 +742,368 @@ class EntropyLoss(nn.Module):
 
         # Return negative because we want to maximize entropy
         return -self.coef * mean_entropy
+
+
+class COPOLoss(nn.Module):
+    """
+    Count-based Online Preference Optimization (COPO) loss.
+
+    Combines DPO loss with a count-based exploration bonus:
+    J = J_DPO + alpha * E[1/sqrt(N)]
+    """
+
+    def __init__(
+        self,
+        beta: float = 0.1,
+        alpha: float = 0.1,
+        cfn_output_dim: int = 20,
+        loss_type: str = "sigmoid",
+    ):
+        """
+        Initialize COPO loss.
+
+        Args:
+            beta: DPO temperature / KL coefficient
+            alpha: Exploration bonus coefficient
+            cfn_output_dim: Output dimension of CFN (for scaling bonus)
+            loss_type: DPO loss type ('sigmoid', 'hinge', 'ipo')
+        """
+        super().__init__()
+        self.beta = beta
+        self.alpha = alpha
+        self.cfn_output_dim = cfn_output_dim
+        self.loss_type = loss_type
+
+    def forward(
+        self,
+        policy_log_probs: torch.Tensor,
+        ref_log_probs: torch.Tensor,
+        chosen_hidden_states: torch.Tensor,
+        cfn_model: nn.Module,
+        batch_size: int,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """
+        Compute COPO loss.
+
+        Args:
+            policy_log_probs: Policy log probs [2*batch] (concatenated chosen+rejected)
+            ref_log_probs: Reference log probs [2*batch]
+            chosen_hidden_states: Hidden states for chosen responses [batch, dim]
+            cfn_model: Coin Flipping Network model (for bonus calculation)
+            batch_size: Batch size (half of log_probs length)
+
+        Returns:
+            Tuple of (total_loss, metrics_dict)
+        """
+        # 1. DPO Component
+        chosen_logratios = policy_log_probs[:batch_size] - ref_log_probs[:batch_size]
+        rejected_logratios = policy_log_probs[batch_size:] - ref_log_probs[batch_size:]
+        logits = self.beta * (chosen_logratios - rejected_logratios)
+
+        if self.loss_type == "sigmoid":
+            dpo_loss = -F.logsigmoid(logits).mean()
+        elif self.loss_type == "hinge":
+            dpo_loss = torch.relu(1 - logits).mean()
+        else:  # ipo
+            dpo_loss = ((logits - 1 / (2 * self.beta)) ** 2).mean()
+
+        # 2. Exploration Bonus (Only for CHOSEN responses)
+        # CFN Forward (Evaluation Mode)
+        cfn_model.eval()
+        with torch.no_grad():
+            cfn_out = cfn_model(chosen_hidden_states)
+            # Bonus = ||f(s)|| / sqrt(d)
+            norm = torch.norm(cfn_out, p=2, dim=1)
+            # Import math strictly inside method if needed, but it's usually top-level
+            # Assuming math is imported or we can use N**0.5
+            bonus = norm / (self.cfn_output_dim**0.5)
+
+        # Exploration Loss term (maximize bonus => minimize negative bonus)
+        # We weigh it by the policy probability of the chosen response to encourage
+        # high probability on unvisited (high bonus) states.
+        exploration_loss = -(self.alpha * bonus * policy_log_probs[:batch_size]).mean()
+
+        total_loss = dpo_loss + exploration_loss
+
+        # Metrics
+        with torch.no_grad():
+            chosen_rewards = self.beta * chosen_logratios
+            rejected_rewards = self.beta * rejected_logratios
+            accuracy = (chosen_rewards > rejected_rewards).float().mean()
+
+        metrics = {
+            "loss": total_loss.detach(),
+            "loss/dpo": dpo_loss.detach(),
+            "loss/exploration": exploration_loss.detach(),
+            "rewards/chosen": chosen_rewards.mean().detach(),
+            "rewards/rejected": rejected_rewards.mean().detach(),
+            "rewards/accuracies": accuracy.detach(),
+            "exploration/bonus": bonus.mean().detach(),
+        }
+
+        return total_loss, metrics
+
+
+class ReinforceLoss(nn.Module):
+    """
+    REINFORCE (Vanilla Policy Gradient) loss.
+    Loss = -log(pi(a|s)) * A_t
+    """
+
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> torch.Tensor:
+        """
+        Compute REINFORCE policy loss.
+        """
+        loss = -(log_probs * advantages)
+
+        if action_mask is not None:
+            loss = loss * action_mask
+            return loss.sum() / action_mask.sum().clamp(min=1.0)
+
+        return loss.mean()
+
+
+class GRPOLoss(nn.Module):
+    """
+    Group Relative Policy Optimization (GRPO) loss.
+    J = E[ min(r*A, clip(r)*A) - beta * D_KL ]
+    """
+
+    def __init__(
+        self,
+        clip_eps: float = 0.2,
+        beta: float = 0.04,
+    ):
+        super().__init__()
+        self.clip_eps = clip_eps
+        self.beta = beta
+
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        old_log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        kl_div: torch.Tensor,  # Expected to be computed per-token or compatible shape
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """
+        Compute GRPO loss.
+        We want to maximize J, so minimize Loss = -J.
+        """
+        # Ratio = pi / pi_old
+        ratio = torch.exp(log_probs - old_log_probs)
+
+        # Surrogate
+        surr1 = ratio * advantages
+        surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * advantages
+        surrogate = torch.min(surr1, surr2)
+
+        # Loss per token = -surrogate + beta * KL
+        # Note: KL passed in should be positive D_KL(pi_ref || pi) or similar penalty
+        loss_per_token = -surrogate + self.beta * kl_div
+
+        if action_mask is not None:
+            total_loss = (loss_per_token * action_mask).sum() / action_mask.sum().clamp(min=1.0)
+
+            # Metrics
+            with torch.no_grad():
+                clip_frac = (ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)
+                clip_frac = (clip_frac.float() * action_mask).sum() / action_mask.sum().clamp(min=1.0)
+        else:
+            total_loss = loss_per_token.mean()
+            with torch.no_grad():
+                clip_frac = ((ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)).float().mean()
+
+        metrics = {
+            "grpo_loss": total_loss.detach(),
+            "clip_frac": clip_frac,
+        }
+
+        return total_loss, metrics
+
+
+class VAPOLoss(nn.Module):
+    """
+    VAPO Policy Loss with Asymmetric Clipping.
+    """
+
+    def __init__(
+        self,
+        epsilon_low: float = 0.2,
+        epsilon_high: float = 0.28,
+        lm_loss_coeff: float = 0.1,
+    ):
+        super().__init__()
+        self.epsilon_low = epsilon_low
+        self.epsilon_high = epsilon_high
+        self.lm_loss_coeff = lm_loss_coeff
+
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        old_log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        action_mask: torch.Tensor,
+        lm_loss: torch.Tensor | float = 0.0,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """
+        Compute VAPO policy loss.
+        """
+        ratio = torch.exp(log_probs - old_log_probs)
+
+        # Asymmetric Clipping
+        ratio_clipped = torch.clamp(ratio, 1.0 - self.epsilon_low, 1.0 + self.epsilon_high)
+
+        surr1 = ratio * advantages
+        surr2 = ratio_clipped * advantages
+
+        # PPO Objective
+        policy_loss = -torch.min(surr1, surr2)
+
+        # Mask and aggregate
+        num_valid = action_mask.sum().clamp(min=1.0)
+        policy_loss_mean = (policy_loss * action_mask).sum() / num_valid
+
+        # Add LM Loss
+        total_loss = policy_loss_mean + self.lm_loss_coeff * lm_loss
+
+        with torch.no_grad():
+            clip_frac = (ratio < 1.0 - self.epsilon_low) | (ratio > 1.0 + self.epsilon_high)
+            clip_frac = (clip_frac.float() * action_mask).sum() / num_valid
+
+        metrics = {
+            "policy_loss": policy_loss_mean.detach(),
+            "total_loss": total_loss.detach(),
+            "clip_frac": clip_frac,
+        }
+
+        return total_loss, metrics
+
+
+class IPOLoss(nn.Module):
+    """
+    Identity Preference Optimization (IPO) loss.
+
+    optimizes the policy to maximize the log-odds gap towards a target margin 1/(2*tau).
+    """
+
+    def __init__(
+        self,
+        tau: float = 0.1,
+        loss_type: str = "ipo",
+    ):
+        """
+        Initialize IPO loss.
+
+        Args:
+            tau: Regularization parameter
+            loss_type: 'ipo' or 'ipo_hinge'
+        """
+        super().__init__()
+        self.tau = tau
+        self.loss_type = loss_type
+
+    def forward(
+        self,
+        policy_chosen_logps: torch.Tensor,
+        policy_rejected_logps: torch.Tensor,
+        ref_chosen_logps: torch.Tensor,
+        ref_rejected_logps: torch.Tensor,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """
+        Compute IPO loss.
+
+        Returns:
+            Tuple of (loss, metrics_dict)
+        """
+        # Log ratios
+        chosen_logratios = policy_chosen_logps - ref_chosen_logps
+        rejected_logratios = policy_rejected_logps - ref_rejected_logps
+
+        # Logits = log(pi/ref) gap
+        logits = chosen_logratios - rejected_logratios
+
+        # Compute Loss
+        if self.loss_type == "ipo":
+            # (logits - 1/(2*tau))^2
+            losses = (logits - 1 / (2 * self.tau)) ** 2
+        elif self.loss_type == "ipo_hinge":
+            # ReLU(1/(2*tau) - logits)^2
+            losses = torch.relu(1 / (2 * self.tau) - logits) ** 2
+        else:
+            raise ValueError(f"Unknown IPO loss type: {self.loss_type}")
+
+        loss = losses.mean()
+
+        # Metrics
+        with torch.no_grad():
+            # Use tau as proxy for beta-scaled rewards if helpful or raw
+            # IPO paper doesn't explicitly scale rewards by beta/tau for reporting usually,
+            # but usually we want to see margin.
+            accuracy = (chosen_logratios > rejected_logratios).float().mean()
+            kl_dist = 0.5 * (chosen_logratios + rejected_logratios).mean()
+
+        metrics = {
+            "ipo_loss": loss.detach(),
+            "ipo_accuracy": accuracy.detach(),
+            "kl_approx": kl_dist.detach(),
+            "log_odds_margin": logits.mean().detach(),
+        }
+
+        return loss, metrics
+
+
+class DAPOLoss(nn.Module):
+    """
+    DAPO Policy Loss with Asymmetric Clipping.
+    """
+
+    def __init__(
+        self,
+        epsilon_low: float = 0.2,
+        epsilon_high: float = 0.28,
+    ):
+        super().__init__()
+        self.epsilon_low = epsilon_low
+        self.epsilon_high = epsilon_high
+
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        old_log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        action_mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """
+        Compute DAPO policy loss.
+        """
+        ratio = torch.exp(log_probs - old_log_probs)
+
+        # Asymmetric Clipping
+        ratio_clipped = torch.clamp(ratio, 1.0 - self.epsilon_low, 1.0 + self.epsilon_high)
+
+        surr1 = ratio * advantages
+        surr2 = ratio_clipped * advantages
+
+        # PPO Objective
+        policy_loss = -torch.min(surr1, surr2)
+
+        # Mask and aggregate by total tokens
+        num_valid = action_mask.sum().clamp(min=1.0)
+        total_loss = (policy_loss * action_mask).sum() / num_valid
+
+        with torch.no_grad():
+            clip_frac = (ratio < 1.0 - self.epsilon_low) | (ratio > 1.0 + self.epsilon_high)
+            clip_frac = (clip_frac.float() * action_mask).sum() / num_valid
+
+        metrics = {
+            "dapo_loss": total_loss.detach(),
+            "clip_frac": clip_frac,
+        }
+
+        return total_loss, metrics

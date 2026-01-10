@@ -22,11 +22,11 @@ from typing import Any
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim import Optimizer
 from torch.utils.data import DataLoader, TensorDataset
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
+from thinkrl.models.loss import EntropyLoss, PolicyLoss, ValueLoss
 from thinkrl.utils.logging import get_logger
 
 
@@ -120,6 +120,11 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         else:
             # Unified model case: One optimizer handled by BaseRLHFAlgorithm
             self.value_optimizer = None
+
+        # Initialize Loss Functions
+        self.policy_loss_fn = PolicyLoss(clip_eps=config.policy_clip)
+        self.value_loss_fn = ValueLoss(clip_eps=config.value_clip)
+        self.entropy_loss_fn = EntropyLoss(coef=config.entropy_coeff)
 
         logger.info(
             f"Initialized PPO (epochs={config.n_epochs}, clip={config.policy_clip}, "
@@ -290,63 +295,40 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         # Mask out padding/ignored tokens
         token_mask = labels != -100
 
-        log_ratio = new_log_probs - old_log_probs
-        ratio = torch.exp(log_ratio)
-
-        surr1 = ratio * advantages
-        surr2 = torch.clamp(ratio, 1.0 - self.config.policy_clip, 1.0 + self.config.policy_clip) * advantages
-
-        policy_loss = -torch.min(surr1, surr2)
-        policy_loss = (policy_loss * token_mask).sum() / token_mask.sum().clamp(min=1.0)
+        policy_loss, policy_metrics = self.policy_loss_fn(
+            log_probs=new_log_probs,
+            old_log_probs=old_log_probs,
+            advantages=advantages,
+            action_mask=token_mask,
+        )
 
         # 3. Value Loss
-        # Optional clipping for value function (standard PPO trick)
-        if self.config.value_clip is not None:
-            v_clipped = old_values + torch.clamp(
-                new_values - old_values, -self.config.value_clip, self.config.value_clip
-            )
-            v_loss1 = (new_values - returns) ** 2
-            v_loss2 = (v_clipped - returns) ** 2
-            value_loss = torch.max(v_loss1, v_loss2)
-        else:
-            value_loss = (new_values - returns) ** 2
-
-        value_loss = (value_loss * token_mask).sum() / token_mask.sum().clamp(min=1.0)
+        value_loss = self.value_loss_fn(
+            values=new_values,
+            old_values=old_values,
+            returns=returns,
+            action_mask=token_mask,
+        )
 
         # 4. Entropy Bonus
         # Approximate entropy from logits (categorical)
         logits = outputs["logits"] if isinstance(outputs, dict) else outputs
-        # Calculate entropy only on valid tokens
-        entropy = self._compute_entropy(logits, token_mask)
-        entropy_loss = -self.config.entropy_coeff * entropy
+        entropy_loss = self.entropy_loss_fn(logits, action_mask=token_mask)
 
         # 5. Total Loss
         total_loss = policy_loss + self.config.value_coeff * value_loss + entropy_loss
-
-        # Diagnostics
-        with torch.no_grad():
-            clip_frac = ((ratio < 1.0 - self.config.policy_clip) | (ratio > 1.0 + self.config.policy_clip)).float()
-            clip_frac = (clip_frac * token_mask).sum() / token_mask.sum().clamp(min=1.0)
-            approx_kl = 0.5 * (log_ratio**2).mean()
 
         return {
             "loss": total_loss,
             "policy_loss": policy_loss,
             "value_loss": value_loss,
             "entropy_loss": entropy_loss,
-            "clip_frac": clip_frac,
-            "approx_kl": approx_kl,
+            "clip_frac": policy_metrics["clip_fraction"],
+            "approx_kl": policy_metrics["approx_kl"],
             "mean_advantage": advantages.mean(),
             "mean_return": returns.mean(),
             "mean_value": new_values.mean(),
         }
-
-    def _compute_entropy(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """Compute masked entropy."""
-        probs = F.softmax(logits, dim=-1)
-        log_probs = F.log_softmax(logits, dim=-1)
-        entropy = -(probs * log_probs).sum(dim=-1)
-        return (entropy * mask).sum() / mask.sum().clamp(min=1.0)
 
     def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, float]:
         """Single training update with handling for separate/unified optimizers."""

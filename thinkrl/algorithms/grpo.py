@@ -26,6 +26,7 @@ import torch.nn.functional as F
 from torch.optim import Optimizer
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
+from thinkrl.models.loss import GRPOLoss
 from thinkrl.utils.logging import get_logger
 
 
@@ -90,6 +91,9 @@ class GRPOAlgorithm(BaseRLHFAlgorithm):
         )
 
         self.config = config
+
+        # Initialize Loss Function
+        self.loss_fn = GRPOLoss(clip_eps=config.clip_epsilon, beta=config.beta)
 
     def compute_advantages(self, rewards: torch.Tensor) -> torch.Tensor:
         """
@@ -223,56 +227,35 @@ class GRPOAlgorithm(BaseRLHFAlgorithm):
         # 4. Token Mask (completion tokens only)
         # Note: get_log_probs returns padded [B, S], we align mask accordingly
         token_mask = (labels != -100).float()
+        num_tokens = token_mask.sum().clamp(min=1.0)
 
-        # 5. Compute Ratio = pi_theta / pi_old
-        # log_ratio = log(pi) - log(old)
-        ratio = torch.exp(log_probs - old_log_probs)
-
-        # 6. Surrogate Objective (PPO style)
-        # min( r*A, clip(r, 1-eps, 1+eps)*A )
-        ratio_clipped = torch.clamp(ratio, 1.0 - cfg.clip_epsilon, 1.0 + cfg.clip_epsilon)
-        surr1 = ratio * advantages_expanded
-        surr2 = ratio_clipped * advantages_expanded
-        surrogate = torch.min(surr1, surr2)
-
-        # 7. KL Divergence Penalty (Eq 4)
+        # 5. Compute KL Divergence (Eq 4) needed for GRPOLoss
         # D_KL = pi_ref/pi - log(pi_ref/pi) - 1
-        # log(pi_ref/pi) = ref_log_probs - log_probs
-        # pi_ref/pi = exp(ref_log_probs - log_probs)
         log_ratio_ref = ref_log_probs - log_probs
         ratio_ref = torch.exp(log_ratio_ref)
         kl_div = ratio_ref - log_ratio_ref - 1.0
 
-        # 8. Total Loss
-        # Objective J = E [ surrogate - beta * KL ]
-        # We want to maximize J, so minimize Loss = -J = -surrogate + beta * KL
-        # Averaged over valid tokens
-
-        loss_per_token = -surrogate + cfg.beta * kl_div
-
-        # Apply mask and average
-        sum_loss = (loss_per_token * token_mask).sum()
-        num_tokens = token_mask.sum().clamp(min=1.0)
-
-        total_loss = sum_loss / num_tokens
+        # 6-8. Compute GRPO Loss using GRPOLoss
+        self.loss_fn.beta = cfg.beta
+        total_loss, metrics_loss = self.loss_fn(
+            log_probs=log_probs,
+            old_log_probs=old_log_probs,
+            advantages=advantages_expanded,
+            kl_div=kl_div,
+            action_mask=token_mask,
+        )
 
         # Metrics - detach for logging
         with torch.no_grad():
-            # Clip fraction accounting for advantage sign:
-            # - High clip: trying to increase prob (A > 0) but ratio exceeds upper bound
-            # - Low clip: trying to decrease prob (A < 0) but ratio below lower bound
-            clipped_high = (ratio > 1.0 + cfg.clip_epsilon) & (advantages_expanded > 0)
-            clipped_low = (ratio < 1.0 - cfg.clip_epsilon) & (advantages_expanded < 0)
-            clipped = clipped_high | clipped_low
+            # Clip fraction is already computed by GRPOLoss in metrics_loss["clip_frac"]
+            # We don't need to recompute it manually.
 
             metrics = {
                 "kl_mean": (kl_div * token_mask).sum() / num_tokens,
                 "advantage_mean": advantages.mean(),
                 "reward_mean": rewards.mean(),
                 "reward_std": rewards.std(),
-                "clip_fraction": (clipped * token_mask).sum() / num_tokens,
-                "clip_fraction_high": (clipped_high * token_mask).sum() / num_tokens,
-                "clip_fraction_low": (clipped_low * token_mask).sum() / num_tokens,
+                "clip_fraction": metrics_loss["clip_frac"],
             }
 
         return {

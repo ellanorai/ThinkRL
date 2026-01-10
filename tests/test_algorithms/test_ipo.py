@@ -184,7 +184,7 @@ def test_compute_loss_ipo_structure(ipo_algo, preference_batch):
     assert "loss" in loss_dict
     assert "rewards/chosen" in loss_dict
     assert "rewards/rejected" in loss_dict
-    assert "log_probs/kl_approx" in loss_dict
+    assert "kl_approx" in loss_dict
 
     assert loss_dict["loss"].ndim == 0
     assert not torch.isnan(loss_dict["loss"])
