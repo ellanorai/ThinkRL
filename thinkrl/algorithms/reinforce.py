@@ -21,10 +21,10 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim import Optimizer
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
+from thinkrl.models.loss import EntropyLoss, ReinforceLoss
 from thinkrl.utils.logging import get_logger
 
 
@@ -101,9 +101,12 @@ class REINFORCEAlgorithm(BaseRLHFAlgorithm):
         self._baseline_mean: float = 0.0
         self._baseline_initialized: bool = False
 
+        # Initialize Loss Functions
+        self.loss_fn = ReinforceLoss()
+        self.entropy_loss_fn = EntropyLoss(coef=config.entropy_coeff)
+
         logger.info(
-            f"Initialized REINFORCE (baseline={config.baseline_type}, "
-            f"entropy_coeff={config.entropy_coeff})"
+            f"Initialized REINFORCE (baseline={config.baseline_type}, " f"entropy_coeff={config.entropy_coeff})"
         )
 
     def compute_returns(
@@ -220,22 +223,27 @@ class REINFORCEAlgorithm(BaseRLHFAlgorithm):
 
         # Token mask (only compute loss on response tokens)
         token_mask = labels != -100
-        num_tokens = token_mask.sum().float().clamp(min=1.0)
 
         # Expand advantages to token level if needed
         if advantages.dim() == 1:
             advantages = advantages.unsqueeze(1).expand_as(log_probs)
 
         # Policy gradient loss: -log(pi) * A
-        policy_loss = -(log_probs * advantages * token_mask).sum() / num_tokens
+        policy_loss = self.loss_fn(
+            log_probs=log_probs,
+            advantages=advantages,
+            action_mask=token_mask,
+        )
 
         # Entropy bonus (encourages exploration)
-        entropy_loss = torch.tensor(0.0, device=device)
-        entropy = torch.tensor(0.0, device=device)
-        if self.config.entropy_coeff > 0:
-            logits = outputs["logits"] if isinstance(outputs, dict) else outputs
-            entropy = self._compute_entropy(logits, token_mask)
-            entropy_loss = -self.config.entropy_coeff * entropy
+        self.entropy_loss_fn.coef = self.config.entropy_coeff
+        logits = outputs["logits"] if isinstance(outputs, dict) else outputs
+        entropy_loss = self.entropy_loss_fn(logits, action_mask=token_mask)
+        # Note: EntropyLoss returns negative entropy (scalar loss), but we might want raw entropy for metric
+        # Recalculating metric entropy or extracting it if EntropyLoss supports it
+        # EntropyLoss returns -coeff * entropy.
+        # entropy = -entropy_loss / coeff
+        entropy = -entropy_loss / (self.config.entropy_coeff + 1e-8)
 
         # KL penalty (optional, for staying close to reference)
         kl_loss = torch.tensor(0.0, device=device)
@@ -267,13 +275,6 @@ class REINFORCEAlgorithm(BaseRLHFAlgorithm):
             "baseline": baseline.detach() if isinstance(baseline, torch.Tensor) else baseline,
             "advantage_mean": advantages[token_mask].mean() if token_mask.any() else torch.tensor(0.0),
         }
-
-    def _compute_entropy(self, logits: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
-        """Compute mean entropy over valid tokens."""
-        probs = F.softmax(logits, dim=-1)
-        log_probs = F.log_softmax(logits, dim=-1)
-        entropy = -(probs * log_probs).sum(dim=-1)
-        return (entropy * mask).sum() / mask.sum().clamp(min=1.0)
 
     def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, float]:
         """

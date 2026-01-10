@@ -28,6 +28,7 @@ import torch.nn as nn
 from torch.optim import Optimizer
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
+from thinkrl.models.loss import EntropyLoss, GRPOLoss
 from thinkrl.utils.logging import get_logger
 
 
@@ -101,6 +102,10 @@ class DrGRPOAlgorithm(BaseRLHFAlgorithm):
 
         self.config = config
 
+        # Initialize Loss Functions
+        self.loss_fn = GRPOLoss(clip_eps=config.epsilon, beta=config.kl_coeff)
+        self.entropy_loss_fn = EntropyLoss(coef=config.entropy_coeff)
+
     def compute_advantages(self, batch: dict[str, Any]) -> torch.Tensor:
         """
         Compute Dr.GRPO advantages.
@@ -170,46 +175,38 @@ class DrGRPOAlgorithm(BaseRLHFAlgorithm):
         # 4. Token Mask (completion tokens only)
         token_mask = (labels != -100).float()
 
-        # 5. Ratio and Surrogate (PPO style)
-        ratio = torch.exp(log_probs - old_log_probs)
-        ratio_clipped = torch.clamp(ratio, 1.0 - cfg.epsilon, 1.0 + cfg.epsilon)
-
-        surr1 = ratio * advantages_expanded
-        surr2 = ratio_clipped * advantages_expanded
-        surrogate = torch.min(surr1, surr2)
-
-        # 6. KL Divergence Penalty
+        # 5. Compute KL Divergence (Eq 4) needed for GRPOLoss
         log_ratio_ref = ref_log_probs - log_probs
         ratio_ref = torch.exp(log_ratio_ref)
         kl_div = ratio_ref - log_ratio_ref - 1.0
 
+        # 6-8. Compute GRPO Loss using GRPOLoss
+        total_loss, metrics_loss = self.loss_fn(
+            log_probs=log_probs,
+            old_log_probs=old_log_probs,
+            advantages=advantages_expanded,
+            kl_div=kl_div,
+            action_mask=token_mask,
+        )
+
         # 7. Entropy (Optional)
-        entropy = -log_probs
+        logits = outputs["logits"] if isinstance(outputs, dict) else outputs
+        entropy_loss = self.entropy_loss_fn(logits, action_mask=token_mask)
 
-        # 8. Total Loss
-        loss_per_token = -surrogate + cfg.kl_coeff * kl_div
-
-        if cfg.entropy_coeff > 0:
-            loss_per_token = loss_per_token - cfg.entropy_coeff * entropy
-
-        # Average over valid tokens
-        sum_loss = (loss_per_token * token_mask).sum()
-        num_tokens = token_mask.sum().clamp(min=1.0)
-        total_loss = sum_loss / num_tokens
+        # Add entropy loss to total (EntropyLoss returns -coeff * entropy)
+        total_loss = total_loss + entropy_loss
 
         # Metrics
         with torch.no_grad():
-            clipped_high = (ratio > 1.0 + cfg.epsilon) & (advantages_expanded > 0)
-            clipped_low = (ratio < 1.0 - cfg.epsilon) & (advantages_expanded < 0)
-            clipped = clipped_high | clipped_low
+            num_tokens = token_mask.sum().clamp(min=1.0)
 
             metrics = {
                 "loss": total_loss.item(),
                 "kl_mean": (kl_div * token_mask).sum().item() / num_tokens.item(),
                 "advantage_mean": advantages.mean().item(),
                 "advantage_std": advantages.std().item(),
-                "clip_fraction": (clipped * token_mask).sum().item() / num_tokens.item(),
-                "entropy_mean": (entropy * token_mask).sum().item() / num_tokens.item(),
+                "clip_fraction": metrics_loss["clip_frac"].item(),
+                "entropy_loss": entropy_loss.item(),
             }
 
         return {

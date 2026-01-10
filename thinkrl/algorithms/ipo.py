@@ -28,6 +28,7 @@ import torch.nn as nn
 from torch.optim import Optimizer
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
+from thinkrl.models.loss import IPOLoss
 from thinkrl.utils.logging import get_logger
 
 
@@ -120,6 +121,12 @@ class IPOAlgorithm(BaseRLHFAlgorithm):
         for param in self.ref_model.parameters():
             param.requires_grad = False
 
+        # Initialize Loss Function
+        self.loss_fn = IPOLoss(
+            tau=config.tau,
+            loss_type=config.loss_type,
+        )
+
         logger.info(
             f"Initialized IPO (tau={config.tau}, beta={config.beta}, "
             f"loss_type={config.loss_type}, norm={config.length_normalization})"
@@ -204,45 +211,64 @@ class IPOAlgorithm(BaseRLHFAlgorithm):
         """
         Compute IPO loss.
         """
-        chosen_log_ratios, rejected_log_ratios = self.compute_log_ratios(batch)
+        # Unpack batch
+        chosen_input_ids = batch["chosen_input_ids"]
+        chosen_mask = batch["chosen_attention_mask"]
+        chosen_labels = batch["chosen_labels"]
 
-        # Difference of log ratios (log-odds gap)
-        # logits = log(pi_w/ref_w) - log(pi_l/ref_l)
-        logits = chosen_log_ratios - rejected_log_ratios
+        rejected_input_ids = batch["rejected_input_ids"]
+        rejected_mask = batch["rejected_attention_mask"]
+        rejected_labels = batch["rejected_labels"]
 
-        # Compute Loss
-        if self.config.loss_type == "ipo":
-            # Standard IPO: (logits - 1/(2*tau))^2
-            losses = (logits - 1 / (2 * self.config.tau)) ** 2
-        elif self.config.loss_type == "ipo_hinge":
-            # Hinge IPO: Only penalize if margin < 1/(2*tau)
-            # ReLU(1/(2*tau) - logits)^2
-            losses = torch.relu(1 / (2 * self.config.tau) - logits) ** 2
-        else:
-            raise ValueError(f"Unknown loss type: {self.config.loss_type}")
+        # Concatenate batches for efficient forward pass
+        all_input_ids = torch.cat([chosen_input_ids, rejected_input_ids], dim=0)
+        all_mask = torch.cat([chosen_mask, rejected_mask], dim=0)
+        all_labels = torch.cat([chosen_labels, rejected_labels], dim=0)
 
-        loss = losses.mean()
+        # 1. Forward pass policy model
+        policy_outputs = self.policy_model(input_ids=all_input_ids, attention_mask=all_mask)
+        policy_log_probs = self.get_batch_log_probs(policy_outputs, all_labels)
 
-        # Metrics
-        # We use beta to scale rewards for reporting consistency with DPO/PPO
-        chosen_rewards = (self.config.beta * chosen_log_ratios).detach()
-        rejected_rewards = (self.config.beta * rejected_log_ratios).detach()
-        reward_accuracies = (chosen_rewards > rejected_rewards).float()
+        # 2. Forward pass reference model (no grad)
+        with torch.no_grad():
+            ref_outputs = self.ref_model(input_ids=all_input_ids, attention_mask=all_mask)
+            ref_log_probs = self.get_batch_log_probs(ref_outputs, all_labels)
 
-        # Diagnostic: Estimated KL Divergence
-        # KL approx = E_data [ log(pi/ref) ]
-        # We average over both chosen and rejected samples
-        kl_dist = 0.5 * (chosen_log_ratios.detach() + rejected_log_ratios.detach()).mean()
+        # 3. Split back into chosen and rejected
+        batch_size = chosen_input_ids.shape[0]
+
+        policy_chosen_log_probs = policy_log_probs[:batch_size]
+        policy_rejected_log_probs = policy_log_probs[batch_size:]
+
+        ref_chosen_log_probs = ref_log_probs[:batch_size]
+        ref_rejected_log_probs = ref_log_probs[batch_size:]
+
+        # 4. Compute Loss using IPOLoss
+        loss, metrics = self.loss_fn(
+            policy_chosen_logps=policy_chosen_log_probs,
+            policy_rejected_logps=policy_rejected_log_probs,
+            ref_chosen_logps=ref_chosen_log_probs,
+            ref_rejected_logps=ref_rejected_log_probs,
+        )
+
+        metrics["log_probs/chosen"] = policy_chosen_log_probs.detach().mean()
+        metrics["log_probs/rejected"] = policy_rejected_log_probs.detach().mean()
+
+        # Add explicit reward metrics scaled by beta for consistency
+        with torch.no_grad():
+            chosen_logratios = policy_chosen_log_probs - ref_chosen_log_probs
+            rejected_logratios = policy_rejected_log_probs - ref_rejected_log_probs
+
+            chosen_rewards = self.config.beta * chosen_logratios
+            rejected_rewards = self.config.beta * rejected_logratios
+
+            metrics["rewards/chosen"] = chosen_rewards.mean()
+            metrics["rewards/rejected"] = rejected_rewards.mean()
+            metrics["rewards/margins"] = (chosen_rewards - rejected_rewards).mean()
 
         return {
             "loss": loss,
-            "rewards/chosen": chosen_rewards.mean(),
-            "rewards/rejected": rejected_rewards.mean(),
-            "rewards/accuracies": reward_accuracies.mean(),
-            "rewards/margins": (chosen_rewards - rejected_rewards).mean(),
-            "log_probs/chosen": chosen_log_ratios.detach().mean(),
-            "log_probs/rejected": rejected_log_ratios.detach().mean(),
-            "log_probs/kl_approx": kl_dist,
+            **metrics,
         }
 
     def training_step(self, batch: dict[str, Any]) -> dict[str, Any]:

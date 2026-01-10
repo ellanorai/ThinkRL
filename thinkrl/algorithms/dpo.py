@@ -16,10 +16,10 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim import Optimizer
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
+from thinkrl.models.loss import DPOLoss
 from thinkrl.utils.logging import get_logger
 
 
@@ -94,6 +94,13 @@ class DPOAlgorithm(BaseRLHFAlgorithm):
         self.ref_model.eval()
         for param in self.ref_model.parameters():
             param.requires_grad = False
+
+        # Initialize Loss Function
+        self.loss_fn = DPOLoss(
+            beta=config.beta,
+            label_smoothing=config.label_smoothing,
+            ipo=(config.loss_type == "ipo"),
+        )
 
         logger.info(
             f"Initialized DPO (beta={config.beta}, " f"loss_type={config.loss_type}, lr={config.learning_rate})"
@@ -173,50 +180,21 @@ class DPOAlgorithm(BaseRLHFAlgorithm):
         ref_chosen_log_probs = ref_log_probs[:batch_size]
         ref_rejected_log_probs = ref_log_probs[batch_size:]
 
-        # 4. Compute DPO logits
-        # log(pi(yw|x)/ref(yw|x))
-        chosen_logratios = policy_chosen_log_probs - ref_chosen_log_probs
-        # log(pi(yl|x)/ref(yl|x))
-        rejected_logratios = policy_rejected_log_probs - ref_rejected_log_probs
+        # 4. Compute Loss using DPOLoss
+        loss, metrics = self.loss_fn(
+            policy_chosen_logps=policy_chosen_log_probs,
+            policy_rejected_logps=policy_rejected_log_probs,
+            reference_chosen_logps=ref_chosen_log_probs,
+            reference_rejected_logps=ref_rejected_log_probs,
+        )
 
-        # logits = beta * (log_ratio_chosen - log_ratio_rejected)
-        logits = self.config.beta * (chosen_logratios - rejected_logratios)
-
-        # 5. Compute Loss
-        if self.config.loss_type == "sigmoid":
-            # -log(sigmoid(logits))
-            losses = -F.logsigmoid(logits)
-        elif self.config.loss_type == "hinge":
-            losses = torch.relu(1 - logits)
-        elif self.config.loss_type == "ipo":
-            # IPO: (logits - 1/(2*beta))^2
-            losses = (logits - 1 / (2 * self.config.beta)) ** 2
-        else:
-            raise ValueError(f"Unknown loss type: {self.config.loss_type}")
-
-        # Optional label smoothing
-        if self.config.label_smoothing > 0:
-            # (1 - epsilon) * loss + epsilon * (inverse loss)
-            losses = losses * (1 - self.config.label_smoothing) + self.config.label_smoothing * (
-                -F.logsigmoid(-logits)
-            )
-
-        loss = losses.mean()
-
-        # 6. Metrics
-        # Implicit rewards = beta * log(pi/ref)
-        chosen_rewards = (self.config.beta * chosen_logratios).detach()
-        rejected_rewards = (self.config.beta * rejected_logratios).detach()
-        reward_accuracies = (chosen_rewards > rejected_rewards).float()
+        # Add other metrics useful for debugging
+        metrics["log_probs/chosen"] = policy_chosen_log_probs.detach().mean()
+        metrics["log_probs/rejected"] = policy_rejected_log_probs.detach().mean()
 
         return {
             "loss": loss,
-            "rewards/chosen": chosen_rewards.mean(),
-            "rewards/rejected": rejected_rewards.mean(),
-            "rewards/accuracies": reward_accuracies.mean(),
-            "rewards/margins": (chosen_rewards - rejected_rewards).mean(),
-            "log_probs/chosen": policy_chosen_log_probs.detach().mean(),
-            "log_probs/rejected": policy_rejected_log_probs.detach().mean(),
+            **metrics,
         }
 
     def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, float]:

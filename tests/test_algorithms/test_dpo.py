@@ -155,10 +155,10 @@ def test_compute_loss_sigmoid(dpo_algo, preference_batch):
     loss_dict = dpo_algo.compute_loss(preference_batch)
 
     assert "loss" in loss_dict
-    assert "rewards/chosen" in loss_dict
-    assert "rewards/rejected" in loss_dict
-    assert "rewards/accuracies" in loss_dict
-    assert "rewards/margins" in loss_dict
+    assert "chosen_reward" in loss_dict
+    assert "rejected_reward" in loss_dict
+    assert "dpo_accuracy" in loss_dict
+    assert "reward_margin" in loss_dict
 
     # Check shape/type
     assert loss_dict["loss"].ndim == 0
