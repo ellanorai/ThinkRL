@@ -154,6 +154,9 @@ class PolicyLoss(nn.Module):
         Returns:
             Tuple of (loss, metrics_dict)
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         # Compute importance ratio
         ratio = torch.exp(log_probs - old_log_probs)
 
@@ -245,6 +248,9 @@ class ValueLoss(nn.Module):
         Returns:
             Scalar value loss
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         if self.clip_eps is not None:
             # Clipped value loss
             values_clipped = old_values + torch.clamp(
@@ -594,6 +600,9 @@ class PAPOLoss(nn.Module):
         Returns:
             Tuple of (total_loss, metrics_dict)
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         # Ensure advantages are properly broadcasted
         if advantages.dim() == 1 and log_probs.dim() == 2:
             advantages = advantages.unsqueeze(1)
@@ -731,6 +740,9 @@ class EntropyLoss(nn.Module):
         Returns:
             Entropy loss (negative, to be added to total loss)
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         probs = F.softmax(logits, dim=-1)
         log_probs = F.log_softmax(logits, dim=-1)
         entropy = -(probs * log_probs).sum(dim=-1)
@@ -861,6 +873,9 @@ class ReinforceLoss(nn.Module):
         """
         Compute REINFORCE policy loss.
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         loss = -(log_probs * advantages)
 
         if action_mask is not None:
@@ -897,6 +912,9 @@ class GRPOLoss(nn.Module):
         Compute GRPO loss.
         We want to maximize J, so minimize Loss = -J.
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         # Ratio = pi / pi_old
         ratio = torch.exp(log_probs - old_log_probs)
 
@@ -956,6 +974,9 @@ class VAPOLoss(nn.Module):
         """
         Compute VAPO policy loss.
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         ratio = torch.exp(log_probs - old_log_probs)
 
         # Asymmetric Clipping
@@ -1084,6 +1105,9 @@ class DAPOLoss(nn.Module):
         """
         Compute DAPO policy loss.
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         ratio = torch.exp(log_probs - old_log_probs)
 
         # Asymmetric Clipping
@@ -1109,3 +1133,111 @@ class DAPOLoss(nn.Module):
         }
 
         return total_loss, metrics
+
+
+class PRIMELoss(nn.Module):
+    """
+    PRIME Implicit Reward Model Loss.
+
+    Trains the Implicit Process Reward Model (PRM) using outcome labels.
+    The PRM is trained to maximize the likelihood of the correct outcome
+    based on the "implicit reward" score, which is defined as the scaled
+    log-likelihood ratio between the PRM and a reference model.
+
+    Equation:
+        L_CE = -[r_o * log(sigmoid(R)) + (1 - r_o) * log(1 - sigmoid(R))]
+        where R = beta * (log_pi_prm(y) - log_pi_ref(y))
+
+    Reference:
+        PRIME: Process Reinforcement through Implicit Rewards (Algorithm 1, Line 8)
+        https://arxiv.org/abs/2502.01456
+    """
+
+    def __init__(self, beta: float = 0.05):
+        """
+        Initialize PRIME loss.
+
+        Args:
+            beta: KL penalty coefficient / Reward scale (default: 0.05 per paper)
+        """
+        super().__init__()
+        self.beta = beta
+
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        ref_log_probs: torch.Tensor,
+        outcome_labels: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """
+        Compute Implicit PRM loss.
+
+        Args:
+            log_probs: PRM log probabilities [batch, seq_len]
+            ref_log_probs: Reference model log probabilities [batch, seq_len]
+            outcome_labels: Binary outcome labels (1.0 for Correct, 0.0 for Incorrect) [batch]
+            action_mask: Mask for action tokens [batch, seq_len]
+
+        Returns:
+            Tuple of (loss, metrics_dict)
+        """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
+        # 1. Cast and reshape outcome labels for safety
+        # Ensure we are working with floats for BCE
+        outcome_labels = outcome_labels.float()
+
+        # 2. Compute Sequence-level Log Probabilities
+        if action_mask is not None:
+            # Sum log probs over validity mask (completion only)
+            sum_log_probs = (log_probs * action_mask).sum(dim=-1)
+            sum_ref_log_probs = (ref_log_probs * action_mask).sum(dim=-1)
+        else:
+            sum_log_probs = log_probs.sum(dim=-1)
+            sum_ref_log_probs = ref_log_probs.sum(dim=-1)
+
+        # 3. Calculate Implicit Reward (The Logit for BCE)
+        # R(y) = beta * (log p_phi(y) - log p_ref(y))
+        log_ratio = sum_log_probs - sum_ref_log_probs
+        implicit_rewards = self.beta * log_ratio
+
+        # Ensure implicit_rewards matches outcome_labels shape
+        if implicit_rewards.shape != outcome_labels.shape:
+            # Handle potential [B, 1] vs [B] mismatches
+            outcome_labels = outcome_labels.view_as(implicit_rewards)
+
+        # 4. Compute Binary Cross Entropy Loss
+        # We use BCEWithLogitsLoss for numerical stability
+        loss = F.binary_cross_entropy_with_logits(implicit_rewards, outcome_labels)
+
+        # 5. Metrics
+        with torch.no_grad():
+            probs = torch.sigmoid(implicit_rewards)
+            predictions = (probs > 0.5).float()
+            accuracy = (predictions == outcome_labels).float().mean()
+
+            # Avg reward for correct vs incorrect samples
+            correct_mask = outcome_labels == 1.0
+            incorrect_mask = outcome_labels == 0.0
+
+            # Use .new_tensor to ensure consistent return type (Tensor vs float)
+            # This prevents issues with distributed reduction or loggers expecting tensors
+            avg_reward_correct = (
+                implicit_rewards[correct_mask].mean() if correct_mask.any() else implicit_rewards.new_tensor(0.0)
+            )
+
+            avg_reward_incorrect = (
+                implicit_rewards[incorrect_mask].mean() if incorrect_mask.any() else implicit_rewards.new_tensor(0.0)
+            )
+
+        metrics = {
+            "prime_prm_loss": loss.detach(),
+            "prm_accuracy": accuracy.detach(),
+            "avg_reward_correct": avg_reward_correct.detach(),
+            "avg_reward_incorrect": avg_reward_incorrect.detach(),
+            "implicit_reward_mean": implicit_rewards.mean().detach(),
+        }
+
+        return loss, metrics
