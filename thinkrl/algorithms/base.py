@@ -359,6 +359,17 @@ class BaseRLHFAlgorithm(ABC):
             )
             return {"text": texts, "token_ids": [], "log_probs": []}
 
+    def _generate_with_policy_model(
+        self,
+        prompts: list[str],
+        max_new_tokens: int = 128,
+        temperature: float = 1.0,
+        top_p: float = 0.9,
+        top_k: int = 50,
+        do_sample: bool = True,
+        num_return_sequences: int = 1,
+        **generation_kwargs,
+    ) -> list[str]:
         """
         Generate using the policy model directly (fallback when vLLM not used).
         """

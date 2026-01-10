@@ -87,7 +87,7 @@ ThinkRL is a modular, high-performance open-source library for large-scale reinf
 
 ### ⚡ Training & Optimization
 
-* LoRA / QLoRA (PEFT)
+* **LoRA / QLoRA (PEFT)**
 * Singular Value Decomposition (SVD) for finetuning
 * DeepSpeed (ZeRO-2 / ZeRO-3)
 * Hugging Face integration
@@ -121,36 +121,34 @@ pip install thinkrl[all]
 
 ## 🎯 Quick Start
 
-### Basic RLHF Training
+### Supervised Fine-Tuning (SFT)
 
 ```python
-from thinkrl import RLHFTrainer, ModelConfig
+from thinkrl.training import SFTTrainer, SFTConfig
 
-config = ModelConfig(
-    model_name_or_path="microsoft/DialoGPT-small",
-    model_type="gpt",
-    algorithm="vapo"
+config = SFTConfig(
+    model_name_or_path="facebook/opt-125m",
+    output_dir="./outputs",
+    train_batch_size=4
 )
 
-trainer = RLHFTrainer(config)
-trainer.train()
-
+trainer = SFTTrainer(config)
+# trainer.train()  # Start training
 ```
 
-### Chain-of-Thought Training
+### Chain-of-Thought (CoT) Training
 
 ```python
-from thinkrl import CoTTrainer, ReasoningConfig
+from thinkrl.training.cot_trainer import CoTTrainer, CoTConfig
 
-config = ReasoningConfig(
-    model_name_or_path="Qwen/Qwen2.5-8B",
+config = CoTConfig(
+    model_name_or_path="Qwen/Qwen2.5-7B",
     reasoning_type="cot",
     max_reasoning_steps=10
 )
 
-trainer = CoTTrainer(config)
-trainer.train()
-
+# trainer = CoTTrainer(config)
+# trainer.train()
 ```
 
 ---
@@ -168,10 +166,28 @@ ThinkRL/
 ├── distributed/      # DeepSpeed Strategies
 ├── utils/            # Metrics, Logging, Checkpointing
 └── configs/          # YAML Configuration
-
 ```
 
 ---
+
+## 🤝 Contributing
+
+We welcome contributions! Please see our [CONTRIBUTING.md](CONTRIBUTING.md) for details on how to get started, our code of conduct, and the process for submitting pull requests.
+
+## 📄 Citation
+
+If you use ThinkRL in your research, please cite:
+
+```bibtex
+@software{thinkrl2025,
+  author = {Sood, Archit and EllanorAI Team},
+  title = {ThinkRL: A Modular Library for Reasoning-Centric Reinforcement Learning},
+  year = {2025},
+  publisher = {GitHub},
+  journal = {GitHub repository},
+  howpublished = {\url{https://github.com/ellanorai/ThinkRL}}
+}
+```
 
 ## 📜 License
 
@@ -182,10 +198,5 @@ Apache License 2.0
 <div align="center">
 ⭐ <strong>Star us on <a href="https://github.com/ellanorai/ThinkRL">GitHub</a> to support ThinkRL</strong>
 
-
-
-
 Crafted by <a href="https://ellanorai.org">EllanorAI</a>
 </div>
-
----
