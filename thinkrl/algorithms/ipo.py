@@ -122,7 +122,7 @@ class IPOAlgorithm(BaseRLHFAlgorithm):
             param.requires_grad = False
 
         # Initialize Loss Function
-        self.loss_fn = IPOLoss(
+        self.loss_fn: IPOLoss = IPOLoss(
             tau=config.tau,
             loss_type=config.loss_type,
         )
@@ -194,6 +194,7 @@ class IPOAlgorithm(BaseRLHFAlgorithm):
 
         # 2. Forward pass reference model (no grad)
         with torch.no_grad():
+            assert self.ref_model is not None, "Reference model required for IPO"
             ref_outputs = self.ref_model(input_ids=all_input_ids, attention_mask=all_mask)
             ref_log_probs = self.get_batch_log_probs(ref_outputs, all_labels)
 
@@ -231,6 +232,7 @@ class IPOAlgorithm(BaseRLHFAlgorithm):
 
         # 2. Forward pass reference model (no grad)
         with torch.no_grad():
+            assert self.ref_model is not None, "Reference model required for IPO"
             ref_outputs = self.ref_model(input_ids=all_input_ids, attention_mask=all_mask)
             ref_log_probs = self.get_batch_log_probs(ref_outputs, all_labels)
 

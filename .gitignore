@@ -31,3 +31,4 @@ coverage.xml
 .vs/
 *.txt
 test_errors.log
+test_verification.log
