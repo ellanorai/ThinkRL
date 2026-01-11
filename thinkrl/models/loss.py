@@ -154,6 +154,9 @@ class PolicyLoss(nn.Module):
         Returns:
             Tuple of (loss, metrics_dict)
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         # Compute importance ratio
         ratio = torch.exp(log_probs - old_log_probs)
 
@@ -177,24 +180,24 @@ class PolicyLoss(nn.Module):
             )
 
         # Apply action mask
+        # Apply action mask and compute metrics
         if action_mask is not None:
-            loss = loss * action_mask
-            num_actions = action_mask.sum().clamp(min=1)
-        else:
-            num_actions = loss.numel()
-
-        # Mean loss
-        policy_loss = loss.sum() / num_actions
-
-        # Compute metrics
-        with torch.no_grad():
-            clip_fraction = ((ratio < 1 - self.clip_eps) | (ratio > 1 + self.clip_eps)).float()
-            if action_mask is not None:
-                clip_fraction = (clip_fraction * action_mask).sum() / num_actions
+            mask = action_mask.bool()
+            if mask.any():
+                policy_loss = loss[mask].mean()
+                with torch.no_grad():
+                    clip_fraction = ((ratio < 1 - self.clip_eps) | (ratio > 1 + self.clip_eps)).float()[mask].mean()
+                    approx_kl = 0.5 * ((log_probs - old_log_probs) ** 2)[mask].mean()
             else:
-                clip_fraction = clip_fraction.mean()
-
-            approx_kl = 0.5 * ((log_probs - old_log_probs) ** 2).mean()
+                policy_loss = loss.sum() * 0.0
+                with torch.no_grad():
+                    clip_fraction = torch.tensor(0.0, device=loss.device)
+                    approx_kl = torch.tensor(0.0, device=loss.device)
+        else:
+            policy_loss = loss.mean()
+            with torch.no_grad():
+                clip_fraction = ((ratio < 1 - self.clip_eps) | (ratio > 1 + self.clip_eps)).float().mean()
+                approx_kl = 0.5 * ((log_probs - old_log_probs) ** 2).mean()
 
         metrics = {
             "policy_loss": policy_loss.detach(),
@@ -245,6 +248,9 @@ class ValueLoss(nn.Module):
         Returns:
             Scalar value loss
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         if self.clip_eps is not None:
             # Clipped value loss
             values_clipped = old_values + torch.clamp(
@@ -594,6 +600,9 @@ class PAPOLoss(nn.Module):
         Returns:
             Tuple of (total_loss, metrics_dict)
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         # Ensure advantages are properly broadcasted
         if advantages.dim() == 1 and log_probs.dim() == 2:
             advantages = advantages.unsqueeze(1)
@@ -626,10 +635,11 @@ class PAPOLoss(nn.Module):
         # 2. Reference KL (Corrected Estimator)
         # -------------------------------------
         # Using positive-definite estimator matching Schulman approximation
-        kl_ref = torch.tensor(0.0, device=log_probs.device)
+        # Initialize as zeros_like to support masked indexing in metrics
+        kl_ref = torch.zeros_like(log_probs)
         if ref_log_probs is not None and self.beta > 0:
             # log_ratio_ref = log(ref / pi) = ref_log_probs - log_probs
-            log_ratio_ref = ref_log_probs - log_probs
+            log_ratio_ref = torch.clamp(ref_log_probs - log_probs, -20, 20)
             # KL approx: exp(ratio) - ratio - 1
             kl_ref = torch.exp(log_ratio_ref) - log_ratio_ref - 1.0
 
@@ -672,21 +682,29 @@ class PAPOLoss(nn.Module):
 
         # Apply masking and average
         if action_mask is not None:
-            valid_count = action_mask.sum().clamp(min=1)
-            total_loss = (total_loss_per_token * action_mask).sum() / valid_count
-
-            # Metrics (detached)
-            with torch.no_grad():
+            mask = action_mask.bool()
+            if mask.any():
+                total_loss = total_loss_per_token[mask].mean()
+                with torch.no_grad():
+                    metrics = {
+                        "papo_loss": total_loss.detach(),
+                        "surrogate_loss": loss_surrogate[mask].mean().detach(),
+                        "kl_ref_val": kl_ref[mask].mean().detach(),
+                        "kl_prcp_val": kl_prcp[mask].mean().detach(),
+                        "entropy_val": entropy[mask].mean().detach(),
+                        "clip_fraction": ((ratio < 1 - self.clip_eps) | (ratio > 1 + self.clip_eps))
+                        .float()[mask]
+                        .mean(),
+                    }
+            else:
+                total_loss = total_loss_per_token.sum() * 0.0
                 metrics = {
                     "papo_loss": total_loss.detach(),
-                    "surrogate_loss": (loss_surrogate * action_mask).sum() / valid_count,
-                    "kl_ref_val": (kl_ref * action_mask).sum() / valid_count,
-                    "kl_prcp_val": (kl_prcp * action_mask).sum() / valid_count,
-                    "entropy_val": (entropy * action_mask).sum() / valid_count,
-                    "clip_fraction": (
-                        ((ratio < 1 - self.clip_eps) | (ratio > 1 + self.clip_eps)).float() * action_mask
-                    ).sum()
-                    / valid_count,
+                    "surrogate_loss": torch.tensor(0.0, device=total_loss.device),
+                    "kl_ref_val": torch.tensor(0.0, device=total_loss.device),
+                    "kl_prcp_val": torch.tensor(0.0, device=total_loss.device),
+                    "entropy_val": torch.tensor(0.0, device=total_loss.device),
+                    "clip_fraction": torch.tensor(0.0, device=total_loss.device),
                 }
         else:
             total_loss = total_loss_per_token.mean()
@@ -731,6 +749,9 @@ class EntropyLoss(nn.Module):
         Returns:
             Entropy loss (negative, to be added to total loss)
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         probs = F.softmax(logits, dim=-1)
         log_probs = F.log_softmax(logits, dim=-1)
         entropy = -(probs * log_probs).sum(dim=-1)
@@ -861,6 +882,9 @@ class ReinforceLoss(nn.Module):
         """
         Compute REINFORCE policy loss.
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         loss = -(log_probs * advantages)
 
         if action_mask is not None:
@@ -897,6 +921,9 @@ class GRPOLoss(nn.Module):
         Compute GRPO loss.
         We want to maximize J, so minimize Loss = -J.
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         # Ratio = pi / pi_old
         ratio = torch.exp(log_probs - old_log_probs)
 
@@ -910,12 +937,14 @@ class GRPOLoss(nn.Module):
         loss_per_token = -surrogate + self.beta * kl_div
 
         if action_mask is not None:
-            total_loss = (loss_per_token * action_mask).sum() / action_mask.sum().clamp(min=1.0)
-
-            # Metrics
-            with torch.no_grad():
-                clip_frac = (ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)
-                clip_frac = (clip_frac.float() * action_mask).sum() / action_mask.sum().clamp(min=1.0)
+            mask = action_mask.bool()
+            if mask.any():
+                total_loss = loss_per_token[mask].mean()
+                with torch.no_grad():
+                    clip_frac = ((ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)).float()[mask].mean()
+            else:
+                total_loss = loss_per_token.sum() * 0.0
+                clip_frac = torch.tensor(0.0, device=loss_per_token.device)
         else:
             total_loss = loss_per_token.mean()
             with torch.no_grad():
@@ -956,6 +985,9 @@ class VAPOLoss(nn.Module):
         """
         Compute VAPO policy loss.
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         ratio = torch.exp(log_probs - old_log_probs)
 
         # Asymmetric Clipping
@@ -1084,6 +1116,9 @@ class DAPOLoss(nn.Module):
         """
         Compute DAPO policy loss.
         """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
         ratio = torch.exp(log_probs - old_log_probs)
 
         # Asymmetric Clipping
@@ -1106,6 +1141,230 @@ class DAPOLoss(nn.Module):
         metrics = {
             "dapo_loss": total_loss.detach(),
             "clip_frac": clip_frac,
+        }
+
+        return total_loss, metrics
+
+
+class PRIMELoss(nn.Module):
+    """
+    PRIME Implicit Reward Model Loss.
+
+    Trains the Implicit Process Reward Model (PRM) using outcome labels.
+    The PRM is trained to maximize the likelihood of the correct outcome
+    based on the "implicit reward" score, which is defined as the scaled
+    log-likelihood ratio between the PRM and a reference model.
+
+    Equation:
+        L_CE = -[r_o * log(sigmoid(R)) + (1 - r_o) * log(1 - sigmoid(R))]
+        where R = beta * (log_pi_prm(y) - log_pi_ref(y))
+
+    Reference:
+        PRIME: Process Reinforcement through Implicit Rewards (Algorithm 1, Line 8)
+        https://arxiv.org/abs/2502.01456
+    """
+
+    def __init__(self, beta: float = 0.05):
+        """
+        Initialize PRIME loss.
+
+        Args:
+            beta: KL penalty coefficient / Reward scale (default: 0.05 per paper)
+        """
+        super().__init__()
+        self.beta = beta
+
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        ref_log_probs: torch.Tensor,
+        outcome_labels: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """
+        Compute Implicit PRM loss.
+
+        Args:
+            log_probs: PRM log probabilities [batch, seq_len]
+            ref_log_probs: Reference model log probabilities [batch, seq_len]
+            outcome_labels: Binary outcome labels (1.0 for Correct, 0.0 for Incorrect) [batch]
+            action_mask: Mask for action tokens [batch, seq_len]
+
+        Returns:
+            Tuple of (loss, metrics_dict)
+        """
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
+        # 1. Cast and reshape outcome labels for safety
+        # Ensure we are working with floats for BCE
+        outcome_labels = outcome_labels.float()
+
+        # 2. Compute Sequence-level Log Probabilities
+        if action_mask is not None:
+            # Sum log probs over validity mask (completion only)
+            sum_log_probs = (log_probs * action_mask).sum(dim=-1)
+            sum_ref_log_probs = (ref_log_probs * action_mask).sum(dim=-1)
+        else:
+            sum_log_probs = log_probs.sum(dim=-1)
+            sum_ref_log_probs = ref_log_probs.sum(dim=-1)
+
+        # 3. Calculate Implicit Reward (The Logit for BCE)
+        # R(y) = beta * (log p_phi(y) - log p_ref(y))
+        log_ratio = sum_log_probs - sum_ref_log_probs
+        implicit_rewards = self.beta * log_ratio
+
+        # Ensure implicit_rewards matches outcome_labels shape
+        if implicit_rewards.shape != outcome_labels.shape:
+            # Handle potential [B, 1] vs [B] mismatches
+            outcome_labels = outcome_labels.view_as(implicit_rewards)
+
+        # 4. Compute Binary Cross Entropy Loss
+        # We use BCEWithLogitsLoss for numerical stability
+        loss = F.binary_cross_entropy_with_logits(implicit_rewards, outcome_labels)
+
+        # 5. Metrics
+        with torch.no_grad():
+            probs = torch.sigmoid(implicit_rewards)
+            predictions = (probs > 0.5).float()
+            accuracy = (predictions == outcome_labels).float().mean()
+
+            # Avg reward for correct vs incorrect samples
+            correct_mask = outcome_labels == 1.0
+            incorrect_mask = outcome_labels == 0.0
+
+            # Use .new_tensor to ensure consistent return type (Tensor vs float)
+            # This prevents issues with distributed reduction or loggers expecting tensors
+            avg_reward_correct = (
+                implicit_rewards[correct_mask].mean() if correct_mask.any() else implicit_rewards.new_tensor(0.0)
+            )
+
+            avg_reward_incorrect = (
+                implicit_rewards[incorrect_mask].mean() if incorrect_mask.any() else implicit_rewards.new_tensor(0.0)
+            )
+
+        metrics = {
+            "prime_prm_loss": loss.detach(),
+            "prm_accuracy": accuracy.detach(),
+            "avg_reward_correct": avg_reward_correct.detach(),
+            "avg_reward_incorrect": avg_reward_incorrect.detach(),
+            "implicit_reward_mean": implicit_rewards.mean().detach(),
+        }
+
+        return loss, metrics
+
+
+class ReinforcePlusPlusLoss(nn.Module):
+    """
+    REINFORCE++ Policy Loss.
+
+    Combines PPO-style clipped surrogate objective with a separate 'k2' KL penalty
+    for the k>1 (Baseline) variant.
+
+    For k=1 (General), set kl_coeff=0.0 (KL is handled in rewards).
+    For k>1 (Reasoning), set kl_coeff>0.0 to enable the k2 estimator.
+
+    Equation:
+        L = -L_PPO(A_norm) + lambda * J_k2
+        where J_k2 = 0.5 * (log_pi - log_ref)^2
+
+    Reference:
+        REINFORCE++: Stabilizing Critic-Free Policy Optimization (Eq. 8, Appendix B.1)
+        https://arxiv.org/abs/2501.03262
+    """
+
+    def __init__(
+        self,
+        clip_eps: float = 0.2,
+        kl_coeff: float = 0.0,
+    ):
+        """
+        Initialize REINFORCE++ loss.
+
+        Args:
+            clip_eps: PPO clipping epsilon (default: 0.2)
+            kl_coeff: Coefficient for k2 KL loss (lambda in Eq. 8).
+        """
+        super().__init__()
+        self.clip_eps = clip_eps
+        self.kl_coeff = kl_coeff
+
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        old_log_probs: torch.Tensor,
+        ref_log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """
+        Compute REINFORCE++ loss.
+
+        Args:
+            log_probs: Current policy log probs [batch, seq_len]
+            old_log_probs: Old policy log probs [batch, seq_len]
+            ref_log_probs: Reference model log probs (for k2 KL) [batch, seq_len]
+            advantages: Globally normalized advantages [batch, seq_len]
+            action_mask: Mask for action tokens [batch, seq_len]
+
+        Returns:
+            Tuple of (total_loss, metrics_dict)
+        """
+        # 1. PPO Surrogate Component
+        # --------------------------
+        # Ratio = pi / old_pi
+        ratio = torch.exp(log_probs - old_log_probs)
+        clipped_ratio = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps)
+
+        # Minimize negative surrogate (Maximize objective)
+        surr1 = ratio * advantages
+        surr2 = clipped_ratio * advantages
+        policy_loss = -torch.min(surr1, surr2)
+
+        # 2. k2 KL Component (Eq. 8 / Appendix B.1)
+        # -----------------------------------------
+        # J_k2 = 0.5 * (log(pi) - log(ref))^2
+        # Paper proves this is the unbiased estimator for Reverse KL gradient
+        kl_loss = torch.tensor(0.0, device=log_probs.device)
+        k2_val = torch.tensor(0.0, device=log_probs.device)
+
+        if self.kl_coeff > 0.0:
+            log_ratio_ref = log_probs - ref_log_probs
+            k2_val = 0.5 * (log_ratio_ref**2)
+            kl_loss = self.kl_coeff * k2_val
+
+        # 3. Combine and Mask
+        # -------------------
+        total_loss_per_token = policy_loss + kl_loss
+
+        if action_mask is not None:
+            num_valid = action_mask.sum().clamp(min=1.0)
+            total_loss = (total_loss_per_token * action_mask).sum() / num_valid
+
+            # Metrics
+            with torch.no_grad():
+                # Clip fraction calculation
+                is_clipped = (ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)
+                clip_frac = (is_clipped.float() * action_mask).sum() / num_valid
+
+                # KL metric (avg over valid tokens)
+                kl_val_avg = (k2_val * action_mask).sum() / num_valid if self.kl_coeff > 0 else k2_val
+        else:
+            total_loss = total_loss_per_token.mean()
+
+            with torch.no_grad():
+                clip_frac = ((ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)).float().mean()
+                kl_val_avg = k2_val.mean()
+
+        metrics = {
+            "loss": total_loss.detach(),
+            "policy_loss": (policy_loss * action_mask).sum() / num_valid
+            if action_mask is not None
+            else policy_loss.mean(),
+            "kl_loss": (kl_loss * action_mask).sum() / num_valid if action_mask is not None else kl_loss.mean(),
+            "k2_val": kl_val_avg.detach(),
+            "clip_frac": clip_frac,
+            "ratio_mean": ratio.mean().detach(),
         }
 
         return total_loss, metrics
