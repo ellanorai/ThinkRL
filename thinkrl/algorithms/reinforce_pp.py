@@ -30,7 +30,7 @@ from thinkrl.models.loss import PolicyLoss
 from thinkrl.utils.logging import get_logger
 
 
-logger = get_logger(__name__)
+_logger = get_logger(__name__)
 
 
 @dataclass
