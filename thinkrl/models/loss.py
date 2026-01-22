@@ -881,9 +881,18 @@ class ReinforceLoss(nn.Module):
     ) -> torch.Tensor:
         """
         Compute REINFORCE policy loss.
+
+        Args:
+            log_probs: Log probabilities [batch, seq_len]
+            advantages: Advantages [batch] or [batch, seq_len]
+            action_mask: Mask for action tokens [batch, seq_len]
         """
         if action_mask is not None:
             action_mask = action_mask.float()
+
+        # Ensure advantages are properly broadcasted
+        if advantages.dim() == 1 and log_probs.dim() == 2:
+            advantages = advantages.unsqueeze(1)
 
         loss = -(log_probs * advantages)
 
@@ -1310,6 +1319,10 @@ class ReinforcePlusPlusLoss(nn.Module):
         Returns:
             Tuple of (total_loss, metrics_dict)
         """
+        # Ensure advantages are properly broadcasted
+        if advantages.dim() == 1 and log_probs.dim() == 2:
+            advantages = advantages.unsqueeze(1)
+
         # 1. PPO Surrogate Component
         # --------------------------
         # Ratio = pi / old_pi
@@ -1336,6 +1349,9 @@ class ReinforcePlusPlusLoss(nn.Module):
         # 3. Combine and Mask
         # -------------------
         total_loss_per_token = policy_loss + kl_loss
+
+        # Initialize num_valid to avoid unbound variable errors
+        num_valid = torch.tensor(1.0, device=log_probs.device)
 
         if action_mask is not None:
             num_valid = action_mask.sum().clamp(min=1.0)
@@ -1368,3 +1384,84 @@ class ReinforcePlusPlusLoss(nn.Module):
         }
 
         return total_loss, metrics
+
+
+class RLOOLoss(nn.Module):
+    """
+    RLOO (REINFORCE Leave-One-Out) Policy Loss.
+
+    Computes the policy gradient loss using REINFORCE with advantages derived
+    from a Leave-One-Out (LOO) baseline. Optionally supports PPO-style clipping
+    for stability, as referenced in some RLOO implementations (e.g., REINFORCE++).
+    """
+
+    def __init__(self, clip_eps: float = 0.2):
+        """
+        Initialize RLOO loss.
+
+        Args:
+            clip_eps: PPO clipping epsilon (default: 0.2)
+        """
+        super().__init__()
+        self.clip_eps = clip_eps
+
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        old_log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        action_mask: torch.Tensor | None = None,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """
+        Compute RLOO policy loss.
+
+        Args:
+            log_probs: Current policy log probs [batch, seq_len]
+            old_log_probs: Old policy log probs [batch, seq_len]
+            advantages: Advantages calculated via LOO. Shape: [batch] or [batch, seq_len].
+                        Sequence-level advantages will be broadcast if needed.
+            action_mask: Mask for action tokens [batch, seq_len]
+
+        Returns:
+            Tuple of (loss, metrics_dict)
+        """
+
+        if action_mask is not None:
+            action_mask = action_mask.float()
+
+        # Ensure advantages are properly broadcasted
+        if advantages.dim() == 1 and log_probs.dim() == 2:
+            advantages = advantages.unsqueeze(1)
+
+        # Compute ratio for optional clipping (reinforce++ style or standard RLOO safely)
+        # For pure REINFORCE (on-policy, 1 epoch), this is 1.0
+        ratio = torch.exp(log_probs - old_log_probs)
+
+        surr1 = ratio * advantages
+        surr2 = torch.clamp(ratio, 1.0 - self.clip_eps, 1.0 + self.clip_eps) * advantages
+
+        # Maximize surrogate -> Minimize negative surrogate
+        # Using PPO-clip formulation for robust default for RLOO variants
+
+        loss = -torch.min(surr1, surr2)
+
+        if action_mask is not None:
+            # Mask and average over valid action tokens
+            loss = loss * action_mask
+            num_valid = action_mask.sum().clamp(min=1.0)
+            policy_loss = loss.sum() / num_valid
+
+            with torch.no_grad():
+                # Metrics
+                is_clipped = (ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)
+                clip_frac = (is_clipped.float() * action_mask).sum() / num_valid
+        else:
+            policy_loss = loss.mean()
+            with torch.no_grad():
+                clip_frac = ((ratio < 1.0 - self.clip_eps) | (ratio > 1.0 + self.clip_eps)).float().mean()
+        metrics = {
+            "policy_loss": policy_loss.detach(),
+            "clip_frac": clip_frac,
+            "advantages_mean": advantages.mean(),
+        }
+        return policy_loss, metrics
