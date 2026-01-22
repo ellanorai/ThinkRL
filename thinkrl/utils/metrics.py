@@ -19,10 +19,10 @@ import torch.utils.dlpack
 
 # Handle CuPy import failure gracefully (e.g., no GPU/CUDA)
 try:
-    import cupy as cp
+    import cupy as cp  # type: ignore
 
     try:
-        from cupyx.scipy import stats as _cupy_stats  # noqa: F401
+        from cupyx.scipy import stats as _cupy_stats  # type: ignore  # noqa: F401
 
         _CUPY_SCIPY_AVAILABLE = True
         del _cupy_stats  # Imported locally where needed
@@ -40,7 +40,7 @@ except (ImportError, OSError):
 if TYPE_CHECKING:
     # For type checkers: provide proper type based on CuPy availability
     try:
-        import cupy
+        import cupy  # type: ignore
 
         CupyArray: TypeAlias = cupy.ndarray
     except ImportError:
