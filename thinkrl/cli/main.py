@@ -1066,7 +1066,7 @@ if TYPER_AVAILABLE:
                 if wandb.run is not None:
                     wandb.finish()
             except ImportError:
-                pass
+                typer.echo("Warning: wandb not installed; unable to finish W&B run cleanly.")
 
         # 6. Save
         if output_dir:
