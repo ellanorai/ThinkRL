@@ -4,6 +4,9 @@ ThinkRL vLLM Client (Improved)
 Robust client for interacting with vLLM server with dynamic distributed support.
 Handles Multi-GPU (DDP/FSDP) training environments correctly.
 """
+import contextlib
+import importlib.util  # for checking availability
+import os
 from typing import Any
 
 import requests
@@ -14,16 +17,16 @@ from thinkrl.utils.logging import get_logger
 
 
 try:
-    from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
-    from vllm.distributed.utils import StatelessProcessGroup
+    if importlib.util.find_spec("vllm"):
+        pass  # Imports verified inside methods to be safe
 except ImportError:
-    raise ImportError("vLLM is required. Install with `pip install vllm`.") from None
+    pass
 
 logger = get_logger(__name__)
 
 
 class VLLMClient:
-    def __init__(self, url: str = "http://localhost:8000", group_port: int = 51216):
+    def __init__(self, url: str = "http://localhost:8000", group_port: int = 51216, sync_world_size: int = 2):
         self.url = url
         self.group_port = group_port
         self.communicator = None
@@ -33,15 +36,17 @@ class VLLMClient:
         # Rank 1 = The vLLM Server
         self.client_rank = 0
         self.server_rank = 1
-        self.sync_world_size = 2
+        self.sync_world_size = sync_world_size
 
         # Check if we are in a distributed training setup
         self.is_distributed = dist.is_available() and dist.is_initialized()
         self.is_main_process = True
+        self.rank = 0
 
         if self.is_distributed:
+            self.rank = dist.get_rank()
             # Only Rank 0 of the training cluster should talk to vLLM
-            self.is_main_process = dist.get_rank() == 0
+            self.is_main_process = self.rank == 0
 
     def generate(
         self,
@@ -74,8 +79,10 @@ class VLLMClient:
             # Request log_probs from vLLM to avoid double forward pass
             request_params = {**params}
             if return_logprobs:
-                request_params["logprobs"] = 1  # Return top-1 log prob per token
-                request_params["prompt_logprobs"] = None  # Don't need prompt logprobs
+                # vLLM parameter: logprobs=N returns top N logprobs. We usually just need the performed action.
+                # However, vLLM returns a list of dicts. We set N=1 for efficiency.
+                request_params["logprobs"] = 1
+                request_params["prompt_logprobs"] = None  # Don't need prompt logprobs usually
 
             resp = requests.post(
                 f"{self.url}/generate",
@@ -116,12 +123,25 @@ class VLLMClient:
         if not self.is_main_process:
             return
 
+        try:
+            from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
+            from vllm.distributed.utils import StatelessProcessGroup
+        except ImportError as e:
+            raise ImportError("vLLM is required for weight sync. Install with `pip install vllm`.") from e
+
         logger.info(f"Initializing NCCL bridge on device {device} (Client Rank {self.client_rank})")
 
-        # Create the Stateless Group for the Bridge (Size = 2)
+        # Get server IP from URL if needed, usually passed separately or env var
+        # For now assume localhost or env var config for PyNccl
+        # PyNcclCommunicator mostly relies on 'host' being resolvable
+
+        # Create the Stateless Group for the Bridge
         # This isolates the training traffic from the inference sync traffic
+        # Note: vLLM worker uses `socket.gethostbyname(socket.gethostname())` usually
+        host = os.environ.get("VLLM_NCCL_HOST", "127.0.0.1")
+
         pg = StatelessProcessGroup.create(
-            host="127.0.0.1", port=self.group_port, rank=self.client_rank, world_size=self.sync_world_size
+            host=host, port=self.group_port, rank=self.client_rank, world_size=self.sync_world_size
         )
 
         self.communicator = PyNcclCommunicator(pg, device=device)
@@ -139,12 +159,38 @@ class VLLMClient:
             logger.error("Attempted to update weights without initialized communicator.")
             raise RuntimeError("Communicator not initialized. Call init_weight_sync() first.")
 
-        # OPTIONAL: If using FSDP, you might need a context manager here
-        # to gather full state dict to rank 0 before broadcasting.
-        # e.g., with FSDP.summons_params(model, writeback=False): ...
+        # 1. Trigger Server Sync
+        # We MUST tell the server to enter the recv loop.
+        try:
+            resp = requests.post(f"{self.url}/update_weights")
+            resp.raise_for_status()
+        except requests.RequestException as e:
+            logger.error(f"Failed to trigger weight update on server: {e}")
+            raise RuntimeError(f"Weight update trigger failed: {e}") from e
 
+        # 2. Broadcast Weights
         # logger.debug("Broadcasting model weights to vLLM server...")
-        for _, param in model.named_parameters():
-            # We strictly broadcast from Client (0) to Server (1)
-            # using the 'src' rank relative to the bridge group.
-            self.communicator.broadcast(param.data, src=self.client_rank)
+
+        # Handle FSDP: Gather full params on Rank 0
+        from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
+
+        context = contextlib.nullcontext()
+        if isinstance(model, FSDP):
+            # Writeback=False because we just want to read for broadcast, not persist the gathering
+            context = FSDP.summon_full_params(model, writeback=False, rank0_only=True)
+
+        with context:
+            # Flatten parameters for efficient single-tensor broadcast
+            # This requires the server to know the structure to unflatten,
+            # OR we broadcast layer-by-layer.
+            # Layer-by-layer is slower but robust to architecture mismatches if handled by name.
+            # Flattening is much faster. Let's do flattening if possible, but for stability now,
+            # we will iterate. *Optimization: Bucket buffers.*
+
+            # Simple iteration for v1 safety
+            for _, param in model.named_parameters():
+                # We strictly broadcast from Client (0) to Server (1)
+                # using the 'src' rank relative to the bridge group.
+                self.communicator.broadcast(param.data, src=self.client_rank)
+
+        return

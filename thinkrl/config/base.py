@@ -39,12 +39,18 @@ class ModelConfig:
     name_or_path: str = "meta-llama/Llama-3.1-8B"
 
     # Precision
-    torch_dtype: str = "bfloat16"  # "float32", "float16", "bfloat16"
+    dtype: str = "bfloat16"  # "float32", "float16", "bfloat16"
 
     # Optimization
     use_flash_attention: bool = True
     gradient_checkpointing: bool = False
 
+    # ... (skipping unchanged lines is risky with replace_file_content if not contiguous)
+    # I should include the chunk fully or split it.
+    # The getter is far away (line 62).
+    # I will do MultiReplace.
+
+    # ...
     # Quantization
     load_in_4bit: bool = False
     load_in_8bit: bool = False
@@ -59,14 +65,14 @@ class ModelConfig:
     ref_model_name_or_path: str | None = None
     share_ref_weights: bool = True
 
-    def get_torch_dtype(self) -> torch.dtype:
+    def get_dtype(self) -> torch.dtype:
         """Get torch dtype from string."""
         dtype_map = {
             "float32": torch.float32,
             "float16": torch.float16,
             "bfloat16": torch.bfloat16,
         }
-        return dtype_map.get(self.torch_dtype, torch.bfloat16)
+        return dtype_map.get(self.dtype, torch.bfloat16)
 
 
 @dataclass

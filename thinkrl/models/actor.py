@@ -11,7 +11,6 @@ Author: Archit Sood @ EllanorAI
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import torch
 import torch.nn as nn
@@ -24,12 +23,14 @@ logger = logging.getLogger(__name__)
 # Optional imports
 try:
     from transformers import AutoConfig, AutoModelForCausalLM
+
     _TRANSFORMERS_AVAILABLE = True
 except ImportError:
     _TRANSFORMERS_AVAILABLE = False
 
 try:
-    from peft import LoraConfig, get_peft_model, TaskType
+    from peft import LoraConfig, TaskType, get_peft_model
+
     _PEFT_AVAILABLE = True
 except ImportError:
     _PEFT_AVAILABLE = False
@@ -92,9 +93,7 @@ class Actor(nn.Module):
         super().__init__()
 
         if not _TRANSFORMERS_AVAILABLE:
-            raise ImportError(
-                "transformers is required. Install with: pip install transformers"
-            )
+            raise ImportError("transformers is required. Install with: pip install transformers")
 
         # Load model if string provided
         if isinstance(pretrained_model, str):
@@ -125,6 +124,7 @@ class Actor(nn.Module):
             if load_in_4bit:
                 try:
                     from transformers import BitsAndBytesConfig
+
                     load_kwargs["quantization_config"] = BitsAndBytesConfig(
                         load_in_4bit=True,
                         bnb_4bit_compute_dtype=torch.bfloat16,
@@ -145,9 +145,7 @@ class Actor(nn.Module):
         # Apply LoRA if specified
         if lora_rank > 0:
             if not _PEFT_AVAILABLE:
-                raise ImportError(
-                    "peft is required for LoRA. Install with: pip install peft"
-                )
+                raise ImportError("peft is required for LoRA. Install with: pip install peft")
 
             if target_modules is None:
                 target_modules = self._get_default_target_modules()
@@ -174,12 +172,9 @@ class Actor(nn.Module):
 
     def _get_default_target_modules(self) -> list[str]:
         """Get default LoRA target modules based on model architecture."""
-        # Common target modules for different architectures
-        return [
-            "q_proj", "k_proj", "v_proj", "o_proj",  # Attention
-            "gate_proj", "up_proj", "down_proj",  # MLP (Llama-style)
-            "query_key_value",  # Some models use fused QKV
-        ]
+        # Use "all-linear" for broad compatibility across architectures
+        # This targets all linear layers which is safer than hardcoding specific names
+        return "all-linear"
 
     def forward(
         self,
@@ -194,7 +189,6 @@ class Actor(nn.Module):
 
         Args:
             input_ids: Input token IDs [batch, seq_len]
-            attention_mask: Attention mask [batch, seq_len]
             attention_mask: Attention mask [batch, seq_len]
             action_mask: Mask for action tokens [batch, seq_len]
             return_output: Whether to return full model output
@@ -221,10 +215,14 @@ class Actor(nn.Module):
 
         # Gather log probs for actual tokens (shifted by 1)
         # logits[:, :-1] predicts tokens[:, 1:]
-        gathered_log_probs = log_probs[:, :-1, :].gather(
-            dim=-1,
-            index=input_ids[:, 1:].unsqueeze(-1),
-        ).squeeze(-1)
+        gathered_log_probs = (
+            log_probs[:, :-1, :]
+            .gather(
+                dim=-1,
+                index=input_ids[:, 1:].unsqueeze(-1),
+            )
+            .squeeze(-1)
+        )
 
         # Apply action mask if provided
         if action_mask is not None:
@@ -268,6 +266,7 @@ class Actor(nn.Module):
         self.model.config.use_cache = True
 
         try:
+            pad_token_id = kwargs.pop("pad_token_id", self.model.config.eos_token_id)
             outputs = self.model.generate(
                 input_ids=input_ids,
                 attention_mask=attention_mask,
@@ -276,7 +275,7 @@ class Actor(nn.Module):
                 temperature=temperature if do_sample else 1.0,
                 top_p=top_p if do_sample else 1.0,
                 top_k=top_k if do_sample else 0,
-                pad_token_id=self.model.config.eos_token_id,
+                pad_token_id=pad_token_id,
                 **kwargs,
             )
         finally:
@@ -330,15 +329,13 @@ class Actor(nn.Module):
         else:
             trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
             total = sum(p.numel() for p in self.parameters())
-            logger.info(
-                f"Trainable: {trainable:,} / {total:,} = {100 * trainable / total:.2f}%"
-            )
+            logger.info(f"Trainable: {trainable:,} / {total:,} = {100 * trainable / total:.2f}%")
 
     def save_pretrained(self, save_directory: str, **kwargs):
         """Save the model."""
         self.model.save_pretrained(save_directory, **kwargs)
 
     @classmethod
-    def from_pretrained(cls, model_path: str, **kwargs) -> "Actor":
+    def from_pretrained(cls, model_path: str, **kwargs) -> Actor:
         """Load a saved Actor model."""
         return cls(pretrained_model=model_path, **kwargs)

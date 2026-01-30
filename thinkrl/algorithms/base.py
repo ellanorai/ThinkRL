@@ -163,6 +163,15 @@ class BaseRLHFAlgorithm(ABC):
             f"distributed={self.is_distributed}, vllm={use_vllm})"
         )
 
+    def to(self, device: torch.device | str) -> BaseRLHFAlgorithm:
+        """
+        Move the algorithm's models to the specified device.
+        """
+        self.policy_model.to(device)
+        if self.ref_model is not None:
+            self.ref_model.to(device)
+        return self
+
     @abstractmethod
     def compute_loss(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """
