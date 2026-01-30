@@ -33,7 +33,7 @@ class TestModelConfig:
         config = ModelConfig()
 
         assert config.name_or_path == "meta-llama/Llama-3.1-8B"
-        assert config.torch_dtype == "bfloat16"
+        assert config.dtype == "bfloat16"
         assert config.use_flash_attention is True
         assert config.load_in_4bit is False
 
@@ -41,28 +41,28 @@ class TestModelConfig:
         """Test custom model config initialization."""
         config = ModelConfig(
             name_or_path="meta-llama/Llama-2-7b-hf",
-            torch_dtype="float16",
+            dtype="float16",
             use_flash_attention=False,
         )
 
         assert config.name_or_path == "meta-llama/Llama-2-7b-hf"
-        assert config.torch_dtype == "float16"
+        assert config.dtype == "float16"
         assert config.use_flash_attention is False
 
-    def test_get_torch_dtype_bfloat16(self):
-        """Test get_torch_dtype for bfloat16."""
-        config = ModelConfig(torch_dtype="bfloat16")
-        assert config.get_torch_dtype() == torch.bfloat16
+    def test_get_dtype_bfloat16(self):
+        """Test get_dtype for bfloat16."""
+        config = ModelConfig(dtype="bfloat16")
+        assert config.get_dtype() == torch.bfloat16
 
-    def test_get_torch_dtype_float16(self):
-        """Test get_torch_dtype for float16."""
-        config = ModelConfig(torch_dtype="float16")
-        assert config.get_torch_dtype() == torch.float16
+    def test_get_dtype_float16(self):
+        """Test get_dtype for float16."""
+        config = ModelConfig(dtype="float16")
+        assert config.get_dtype() == torch.float16
 
-    def test_get_torch_dtype_float32(self):
-        """Test get_torch_dtype for float32."""
-        config = ModelConfig(torch_dtype="float32")
-        assert config.get_torch_dtype() == torch.float32
+    def test_get_dtype_float32(self):
+        """Test get_dtype for float32."""
+        config = ModelConfig(dtype="float32")
+        assert config.get_dtype() == torch.float32
 
 
 class TestDistributedConfig:
@@ -347,14 +347,14 @@ class TestMergeConfigs:
         overrides = {
             "max_steps": 1000,
             "algorithm.name": "dpo",
-            "model.torch_dtype": "float16",
+            "model.dtype": "float16",
         }
 
         merged = merge_configs(base, overrides)
 
         assert merged.max_steps == 1000
         # assert merged.algorithm.name == "dpo" # algorithm might be None or dict depending on merge
-        assert merged.model.torch_dtype == "float16"
+        assert merged.model.dtype == "float16"
 
     def test_base_unchanged(self):
         """Test that base config is unchanged."""

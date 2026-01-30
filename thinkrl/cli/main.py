@@ -210,9 +210,9 @@ if TYPER_AVAILABLE:
             typer.echo("Loading base model...")
             model = AutoModelForCausalLM.from_pretrained(
                 base_model,
-                torch_dtype="auto",
                 device_map="auto",
                 trust_remote_code=True,
+                torch_dtype="auto",
             )
             tokenizer = AutoTokenizer.from_pretrained(base_model, trust_remote_code=True)
 
@@ -805,6 +805,275 @@ if TYPER_AVAILABLE:
         # TODO: Implement KTO training
         typer.echo("Note: KTO training implementation pending")
         typer.echo("This will use thinkrl.algorithms.KTOAlgorithm")
+
+    @app.command()
+    def reinforce_pp(
+        model: Annotated[
+            str,
+            Option("--model", "-m", help="Model name or path"),
+        ],
+        dataset: Annotated[
+            str,
+            Option("--dataset", "-d", help="Prompt dataset name or path"),
+        ],
+        dataset_split: Annotated[
+            str,
+            Option("--dataset-split", help="Dataset split to load"),
+        ] = "train",
+        prompt_column: Annotated[
+            str,
+            Option("--prompt-column", "-pc", help="Column name for prompts"),
+        ] = "prompt",
+        source: Annotated[
+            str,
+            Option("--source", "-s", help="Dataset source: 'hf' (HuggingFace), 'local', 'json', 'csv'"),
+        ] = "hf",
+        ref_model: Annotated[
+            Optional[str],
+            Option("--ref-model", "-r", help="Reference model name or path (required)"),
+        ] = None,
+        output_dir: Annotated[
+            Path,
+            Option("--output-dir", "-o", help="Output directory"),
+        ] = Path("./reinforce_pp_output"),
+        learning_rate: Annotated[
+            float,
+            Option("--learning-rate", "--lr", help="Learning rate"),
+        ] = 1e-6,
+        mode: Annotated[
+            str,
+            Option("--mode", help="Mode: 'general' (k=1) or 'baseline' (k>1)"),
+        ] = "baseline",
+        group_size: Annotated[
+            int,
+            Option("--group-size", "-g", help="Group size (for baseline mode)"),
+        ] = 4,
+        entropy_coeff: Annotated[
+            float,
+            Option("--entropy-coeff", help="Entropy coefficient"),
+        ] = 0.01,
+        kl_loss_coeff: Annotated[
+            float,
+            Option("--kl-coeff", help="KL loss coefficient (for baseline mode)"),
+        ] = 0.1,
+        num_train_epochs: Annotated[
+            int,
+            Option("--num-train-epochs", "--epochs", help="Number of training epochs"),
+        ] = 1,
+        per_device_train_batch_size: Annotated[
+            int,
+            Option("--batch-size", "-b", help="Per-device batch size"),
+        ] = 4,
+        lora_r: Annotated[
+            Optional[int],
+            Option("--lora-r", help="LoRA rank (enables LoRA if set)"),
+        ] = None,
+        grad_accum: Annotated[
+            int,
+            Option("--grad-accum", "-ga", help="Gradient accumulation steps"),
+        ] = 1,
+        bf16: Annotated[
+            bool,
+            Option("--bf16/--no-bf16", help="Use bfloat16 precision"),
+        ] = True,
+        use_flash_attention: Annotated[
+            bool,
+            Option("--flash-attn/--no-flash-attn", help="Use Flash Attention 2"),
+        ] = False,
+        reward_fn: Annotated[
+            Optional[str],
+            Option("--reward-fn", help="Path to reward function (module.py:func_name)"),
+        ] = None,
+        deepspeed: Annotated[
+            Optional[str],
+            Option("--deepspeed", help="Path to DeepSpeed configuration file"),
+        ] = None,
+        use_vllm: Annotated[
+            bool,
+            Option("--use-vllm", help="Use VLLM for generation"),
+        ] = False,
+        vllm_group_port: Annotated[
+            int,
+            Option("--vllm-group-port", help="NCCL group port for VLLM sync"),
+        ] = 51216,
+        logging_backend: Annotated[
+            str,
+            Option("--logging-backend", help="Logging backend: 'tensorboard', 'wandb', or 'none'"),
+        ] = "tensorboard",
+        wandb_project: Annotated[
+            str,
+            Option("--wandb-project", help="WandB project name (if using wandb)"),
+        ] = "thinkrl-reinforce-pp",
+    ):
+        """
+        REINFORCE++ Policy Optimization.
+
+        Critic-free RL algorithm with global advantage normalization.
+        Can run in 'general' mode (standard PPO-like reward) or 'baseline' mode (group relative).
+
+        Example:
+            thinkrl reinforce_pp --model meta-llama/Llama-3.1-8B --dataset math_dataset --mode baseline --group-size 4
+        """
+        typer.echo("=" * 60)
+        typer.echo("ThinkRL REINFORCE++")
+        typer.echo("=" * 60)
+        typer.echo(f"Model: {model}")
+        typer.echo(f"Ref Model: {ref_model}")
+        typer.echo(f"Dataset: {dataset}")
+        typer.echo(f"Dataset Source: {source}")
+        typer.echo(f"Output: {output_dir}")
+        typer.echo(f"DeepSpeed: {deepspeed}")
+        typer.echo(f"Mode: {mode}")
+        typer.echo(f"Group Size: {group_size}")
+        typer.echo(f"Learning rate: {learning_rate}")
+        typer.echo(f"Entropy Coeff: {entropy_coeff}")
+        typer.echo(f"KL Coeff: {kl_loss_coeff}")
+        typer.echo(f"Epochs: {num_train_epochs}")
+        typer.echo(f"Batch size: {per_device_train_batch_size}")
+        typer.echo(f"VLLM Enabled: {use_vllm}")
+        typer.echo(f"Logging Backend: {logging_backend}")
+        typer.echo()
+
+        # Custom imports inside command to avoid circular deps / startup costs
+        import importlib.util
+        import sys
+
+        import torch
+        from transformers import AutoTokenizer
+
+        from thinkrl.algorithms.reinforce_pp import REINFORCEPPConfig
+        from thinkrl.data.datasets import RLHFDataset
+        from thinkrl.models.loader import get_model
+        from thinkrl.training.reinforce_pp_trainer import ReinforcePPTrainer
+
+        # 1. Load Models
+        typer.echo("Loading models...")
+        policy_model = get_model(
+            model,
+            model_type="actor",
+            bf16=bf16,
+            trust_remote_code=True,
+            lora_rank=lora_r if lora_r else 0,
+            use_flash_attention=use_flash_attention,
+        )
+        if ref_model:
+            ref_model_inst = get_model(
+                ref_model,
+                model_type="ref",
+                bf16=bf16,
+                trust_remote_code=True,
+                use_flash_attention=use_flash_attention,
+            )
+        else:
+            raise typer.Exit("Reference model is required (`--ref-model`)")
+
+        tokenizer = AutoTokenizer.from_pretrained(model)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        # 2. Load Dataset
+        typer.echo(f"Loading dataset: {dataset} (source={source}, split={dataset_split})")
+        train_dataset = RLHFDataset(
+            dataset_name_or_path=dataset,
+            tokenizer=tokenizer,
+            split=dataset_split,
+            prompt_column=prompt_column,
+            source=source,
+        )
+
+        # 3. Load Reward Function
+        if reward_fn:
+            if ":" in reward_fn:
+                module_path, func_name = reward_fn.split(":")
+            else:
+                module_path, func_name = reward_fn, "reward_fn"
+
+            try:
+                spec = importlib.util.spec_from_file_location("reward_module", module_path)
+                reward_module = importlib.util.module_from_spec(spec)
+                sys.modules["reward_module"] = reward_module
+                spec.loader.exec_module(reward_module)
+                reward_func_callable = getattr(reward_module, func_name)
+                typer.echo(f"Loaded reward function '{func_name}' from {module_path}")
+            except Exception as e:
+                typer.echo(f"Error loading reward function: {e}")
+                raise typer.Exit(1) from e
+        else:
+            typer.echo("Warning: No reward function provided. Using dummy len-based reward.")
+
+            def reward_func_callable(prompts, completions):
+                return torch.tensor([float(len(c)) for c in completions])
+
+        # 4. Config & Trainer
+        if logging_backend == "wandb":
+            try:
+                import wandb
+
+                wandb.init(
+                    project=wandb_project,
+                    config={
+                        "model": model,
+                        "dataset": dataset,
+                        "mode": mode,
+                        "learning_rate": learning_rate,
+                        "batch_size": per_device_train_batch_size,
+                        "grad_accum": grad_accum,
+                        "lora_r": lora_r,
+                        "epochs": num_train_epochs,
+                    },
+                )
+                typer.echo(f"W&B initialized: project={wandb_project}")
+            except ImportError:
+                typer.echo("Error: wandb not installed. Run 'pip install wandb'.")
+
+        # Removed unused config instantiation since trainer uses args now
+
+        trainer = ReinforcePPTrainer(
+            model=policy_model,
+            ref_model=ref_model_inst,
+            tokenizer=tokenizer,
+            dataset=train_dataset,
+            reward_fn=reward_func_callable,
+            config=REINFORCEPPConfig(
+                learning_rate=learning_rate,
+                batch_size=per_device_train_batch_size,
+                mode=mode,
+                group_size=group_size,
+                entropy_coeff=entropy_coeff,
+                kl_loss_coeff=kl_loss_coeff,
+                n_epochs=num_train_epochs,
+                deepspeed=deepspeed,
+                gradient_accumulation_steps=grad_accum,
+            ),
+            n_epochs=num_train_epochs,
+            output_dir=output_dir,
+            vllm_group_port=vllm_group_port,
+            use_vllm=use_vllm,
+        )
+
+        # 5. Train
+        typer.echo("Starting training...")
+        # Calculate steps from epochs
+        steps_per_epoch = len(train_dataset) // per_device_train_batch_size
+        total_steps = steps_per_epoch * num_train_epochs
+        trainer.train(steps=total_steps, batch_size=per_device_train_batch_size)
+
+        # Finish W&B run
+        if logging_backend == "wandb":
+            try:
+                import wandb
+
+                if wandb.run is not None:
+                    wandb.finish()
+            except ImportError:
+                pass
+
+        # 6. Save
+        if output_dir:
+            output_dir.mkdir(parents=True, exist_ok=True)
+            policy_model.save_pretrained(output_dir)
+            tokenizer.save_pretrained(output_dir)
+            typer.echo(f"Saved model to {output_dir}")
 
     def _check_typer():
         """Check if typer is available."""
