@@ -210,19 +210,17 @@ class Actor(nn.Module):
         if temperature != 1.0:
             logits = logits / temperature
 
-        # Compute log probabilities
-        log_probs = F.log_softmax(logits, dim=-1)
-
-        # Gather log probs for actual tokens (shifted by 1)
+        # Compute per-token log probabilities efficiently (avoids materializing [B, S, V] log_softmax)
         # logits[:, :-1] predicts tokens[:, 1:]
-        gathered_log_probs = (
-            log_probs[:, :-1, :]
-            .gather(
-                dim=-1,
-                index=input_ids[:, 1:].unsqueeze(-1),
-            )
-            .squeeze(-1)
-        )
+        shifted_logits = logits[:, :-1, :]  # [B, S-1, V]
+        shifted_labels = input_ids[:, 1:]   # [B, S-1]
+
+        # F.cross_entropy fuses log_softmax + gather internally, saving ~V*sizeof(float) per token
+        gathered_log_probs = -F.cross_entropy(
+            shifted_logits.reshape(-1, shifted_logits.size(-1)),
+            shifted_labels.reshape(-1),
+            reduction="none",
+        ).reshape(shifted_logits.size(0), shifted_logits.size(1))
 
         # Apply action mask if provided
         if action_mask is not None:
