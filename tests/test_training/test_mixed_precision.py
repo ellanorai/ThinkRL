@@ -8,8 +8,6 @@ Tests for:
 Specifically tests Bug #1 fix: Double unscale_() crash prevention
 """
 
-from unittest.mock import MagicMock, PropertyMock, patch
-
 import pytest
 import torch
 import torch.nn as nn
