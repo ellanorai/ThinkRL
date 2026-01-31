@@ -967,7 +967,7 @@ if TYPER_AVAILABLE:
         else:
             raise typer.Exit("Reference model is required (`--ref-model`)")
 
-        tokenizer = AutoTokenizer.from_pretrained(model)
+        tokenizer = AutoTokenizer.from_pretrained(model, padding_side="left")
         if tokenizer.pad_token is None:
             tokenizer.pad_token = tokenizer.eos_token
 
