@@ -74,8 +74,6 @@ class TestMixedPrecisionTrainer:
 
         # Simulate a backward pass
         x = torch.randn(2, 10, device="cuda")
-        y = simple_model(x)
-        loss = y.sum()
 
         with trainer.autocast():
             loss = simple_model(x).sum()
