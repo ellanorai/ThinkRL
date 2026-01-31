@@ -45,12 +45,6 @@ class ModelConfig:
     use_flash_attention: bool = True
     gradient_checkpointing: bool = False
 
-    # ... (skipping unchanged lines is risky with replace_file_content if not contiguous)
-    # I should include the chunk fully or split it.
-    # The getter is far away (line 62).
-    # I will do MultiReplace.
-
-    # ...
     # Quantization
     load_in_4bit: bool = False
     load_in_8bit: bool = False
@@ -226,8 +220,6 @@ class ThinkRLConfig:
         """Create config from dictionary."""
         # Parse nested configs
         model = ModelConfig(**data.get("model", {}))
-        # Parse nested configs
-        model = ModelConfig(**data.get("model", {}))
 
         # Dynamic Algorithm Config Loading
         algo_data = data.get("algorithm", {})
@@ -290,7 +282,28 @@ class ThinkRLConfig:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert config to dictionary."""
-        return asdict(self)
+        # Handle algorithm being either a dataclass or a plain dict
+        if self.algorithm is None:
+            algo_dict = None
+        elif isinstance(self.algorithm, dict):
+            algo_dict = self.algorithm
+        else:
+            # It's a dataclass, use asdict
+            algo_dict = asdict(self.algorithm)
+
+        result = {
+            "model": asdict(self.model),
+            "algorithm": algo_dict,
+            "distributed": asdict(self.distributed),
+            "data": asdict(self.data),
+            "logging": asdict(self.logging),
+            "peft": asdict(self.peft) if self.peft else None,
+            "max_steps": self.max_steps,
+            "eval_steps": self.eval_steps,
+            "save_steps": self.save_steps,
+            "seed": self.seed,
+        }
+        return result
 
     def to_yaml(self, path: str | Path) -> None:
         """Save configuration to YAML file."""

@@ -310,21 +310,66 @@ def tokenize_batch(
     all_input_ids = []
     all_attention_mask = []
 
-    for i in range(0, len(texts), batch_size):
-        batch_texts = texts[i : i + batch_size]
-        encoded = tokenize_text(
-            batch_texts,
-            tokenizer,
-            max_length=max_length,
-            padding=padding,
-            truncation=truncation,
-            add_special_tokens=add_special_tokens,
-            return_tensors=return_tensors,
-            **kwargs,
-        )
+    # If padding is 'max_length' and max_length is specified, we can use it directly for each mini-batch
+    # since all will be padded to the same length
+    if padding == "max_length" and max_length is not None:
+        # All mini-batches will be padded to max_length, safe to concatenate directly
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i : i + batch_size]
+            encoded = tokenize_text(
+                batch_texts,
+                tokenizer,
+                max_length=max_length,
+                padding=padding,
+                truncation=truncation,
+                add_special_tokens=add_special_tokens,
+                return_tensors=return_tensors,
+                **kwargs,
+            )
 
-        all_input_ids.append(encoded["input_ids"])
-        all_attention_mask.append(encoded["attention_mask"])
+            all_input_ids.append(encoded["input_ids"])
+            all_attention_mask.append(encoded["attention_mask"])
+    else:
+        # For padding=True or padding='longest', tokenize without padding first,
+        # then pad all to the global max length
+        global_max_len = 0
+        mini_batch_results = []
+
+        for i in range(0, len(texts), batch_size):
+            batch_texts = texts[i : i + batch_size]
+            encoded = tokenize_text(
+                batch_texts,
+                tokenizer,
+                max_length=max_length,
+                padding=False,  # Don't pad yet - we'll pad to global max later
+                truncation=truncation,
+                add_special_tokens=add_special_tokens,
+                return_tensors=return_tensors,
+                **kwargs,
+            )
+            mini_batch_results.append(encoded)
+            # Track max length across all mini-batches
+            global_max_len = max(global_max_len, encoded["input_ids"].shape[1])
+
+        # Pad all mini-batches to global max length
+        pad_token_id = getattr(tokenizer, "pad_token_id", 0) or 0
+        for encoded in mini_batch_results:
+            curr_len = encoded["input_ids"].shape[1]
+            if curr_len < global_max_len:
+                padding_size = global_max_len - curr_len
+                # Pad input_ids
+                pad_ids = torch.full(
+                    (encoded["input_ids"].shape[0], padding_size), pad_token_id, dtype=encoded["input_ids"].dtype
+                )
+                all_input_ids.append(torch.cat([encoded["input_ids"], pad_ids], dim=1))
+                # Pad attention_mask with 0s
+                pad_mask = torch.zeros(
+                    (encoded["attention_mask"].shape[0], padding_size), dtype=encoded["attention_mask"].dtype
+                )
+                all_attention_mask.append(torch.cat([encoded["attention_mask"], pad_mask], dim=1))
+            else:
+                all_input_ids.append(encoded["input_ids"])
+                all_attention_mask.append(encoded["attention_mask"])
 
     # Concatenate batches
     result = {

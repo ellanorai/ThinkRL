@@ -9,13 +9,22 @@ PYTEST := pytest
 # PyTorch Index URL (Updated for CUDA 12.8 - using Nightly channel)
 TORCH_INDEX := https://download.pytorch.org/whl/nightly/cu128
 
-.PHONY: install dev-install clean check test format lint
+.PHONY: install install-all dev-install clean check test format lint
 
-install: ## Install production dependencies (CUDA enabled)
+install: ## Install all dependencies from requirements files (one command)
+	$(PIP) install --upgrade pip
+	$(PIP) install -r requirements.txt -r requirements-dev.txt -r requirements-docs.txt --extra-index-url $(TORCH_INDEX)
 	$(PIP) install -e . --extra-index-url $(TORCH_INDEX)
 
-dev-install: ## Install with Dev, Docs, and GPU support
-	$(PIP) install -e ".[complete]" --extra-index-url $(TORCH_INDEX)
+install-prod: ## Install production dependencies only
+	$(PIP) install -r requirements.txt --extra-index-url $(TORCH_INDEX)
+	$(PIP) install -e . --extra-index-url $(TORCH_INDEX)
+
+install-ci: ## Install CI dependencies (for GitHub Actions)
+	$(PIP) install -r requirements-ci.txt --extra-index-url $(TORCH_INDEX)
+	$(PIP) install -e . --extra-index-url $(TORCH_INDEX)
+
+dev-install: install ## Install with Dev, Docs, and GPU support + pre-commit hooks
 	pre-commit install
 
 clean: ## Clean build artifacts

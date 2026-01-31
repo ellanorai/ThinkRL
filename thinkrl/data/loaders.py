@@ -35,14 +35,22 @@ def create_rlhf_collate_fn(tokenizer, padding_side="right"):
             if isinstance(batch[0][key], torch.Tensor):
                 tensors = [item[key] for item in batch]
 
+                # Determine appropriate padding value based on key
+                if key == "attention_mask":
+                    pad_value = 0  # Attention mask should be 0 for padding
+                elif key == "labels":
+                    pad_value = -100  # Labels use -100 to ignore in loss
+                else:
+                    pad_value = padding_value  # Use tokenizer pad_token_id for input_ids etc.
+
                 # Pad sequences
                 if padding_side == "left":
                     # Reverse, pad, reverse back for left padding
                     tensors_rev = [t.flip(0) for t in tensors]
-                    padded_rev = pad_sequence(tensors_rev, batch_first=True, padding_value=padding_value)
+                    padded_rev = pad_sequence(tensors_rev, batch_first=True, padding_value=pad_value)
                     collated[key] = padded_rev.flip(1)
                 else:
-                    collated[key] = pad_sequence(tensors, batch_first=True, padding_value=padding_value)
+                    collated[key] = pad_sequence(tensors, batch_first=True, padding_value=pad_value)
             else:
                 # Fallback for other types
                 collated[key] = [item[key] for item in batch]

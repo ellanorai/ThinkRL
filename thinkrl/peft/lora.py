@@ -275,11 +275,12 @@ def inject_lora(
     peft_model = get_peft_model(model, peft_config)
 
     # Log parameter count
-    trainable, total = _count_parameters(peft_model)
+    trainable, frozen = _count_parameters(peft_model)
+    total = trainable + frozen
     logger.info(
         f"Injected LoRA adapters: "
         f"{trainable:,} trainable / {total:,} total parameters "
-        f"({100 * trainable / total:.2f}%)"
+        f"({100 * trainable / total if total > 0 else 0:.2f}%)"
     )
 
     return peft_model

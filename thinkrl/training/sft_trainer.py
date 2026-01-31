@@ -445,44 +445,43 @@ class SFTTrainer:
 
                     if self.args.deepspeed:
                         curr_step = self.model_engine.global_steps
+                        # Update our tracking to match DS engine
+                        if curr_step > self.global_step:
+                            self.global_step = curr_step
                     else:
                         if (step + 1) % self.args.gradient_accumulation_steps == 0:
                             self.global_step += 1
-                        curr_step = self.global_step
 
-                    if curr_step > self.global_step:  # Update happened
-                        self.global_step = curr_step
+                    # Logging logic - always runs after a gradient update step
+                    if self.global_step > 0 and self.global_step % self.args.logging_steps == 0:
+                        try:
+                            if self.scheduler:
+                                current_lr = self.scheduler.get_last_lr()[0]
+                            else:
+                                current_lr = 0.0  # DS might hide it
+                        except Exception:
+                            current_lr = 0.0
 
-                        # Logging logic...
-                        if self.global_step % self.args.logging_steps == 0:
-                            # ... (rest of logging)
+                        avg_loss = running_loss / max(loss_count, 1)
+                        progress_bar.set_postfix(
+                            {
+                                "loss": f"{avg_loss:.4f}",
+                                "lr": f"{current_lr:.2e}",
+                            }
+                        )
 
-                            # ... update progress bar
-                            try:
-                                if self.scheduler:
-                                    current_lr = self.scheduler.get_last_lr()[0]
-                                else:
-                                    current_lr = 0.0  # DS might hide it
-                            except Exception:
-                                current_lr = 0.0
+                        self._log_metrics(
+                            {
+                                "train/loss": avg_loss,
+                                "train/learning_rate": current_lr,
+                                "train/epoch": epoch + 1,
+                            },
+                            self.global_step,
+                        )
 
-                            avg_loss = running_loss / max(loss_count, 1)
-                            progress_bar.set_postfix(
-                                {
-                                    "loss": f"{avg_loss:.4f}",
-                                    "lr": f"{current_lr:.2e}",
-                                }
-                            )
-                            # ... log
-
-                            self._log_metrics(
-                                {
-                                    "train/loss": avg_loss,
-                                    "train/learning_rate": current_lr,
-                                    "train/epoch": epoch + 1,
-                                },
-                                self.global_step,
-                            )
+                        # Reset running loss after logging
+                        running_loss = 0.0
+                        loss_count = 0
 
                     # Evaluation
                     if self.eval_dataset and self.global_step > 0 and self.global_step % self.args.eval_steps == 0:

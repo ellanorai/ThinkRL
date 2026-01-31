@@ -74,7 +74,7 @@ class BaseRLHFDataset(Dataset):
             self.dataset = []
 
     def __len__(self) -> int:
-        if hasattr(self, "data") and self.data:
+        if hasattr(self, "data"):
             return len(self.data)
         return len(self.dataset)
 

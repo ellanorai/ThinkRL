@@ -14,14 +14,16 @@ Author: EllanorAI
 
 from __future__ import annotations
 
-import logging
+from collections.abc import Generator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, Generator
+import logging
+from typing import Any
 
 import torch
 import torch.nn as nn
+
 
 logger = logging.getLogger(__name__)
 
@@ -105,6 +107,7 @@ class MixedPrecisionTrainer:
 
         # Initialize loss scaler for FP16
         self.scaler = None
+        self._grads_unscaled = False  # Track if gradients have been unscaled
         if precision == PrecisionType.FP16 and torch.cuda.is_available():
             self.scaler = torch.cuda.amp.GradScaler(
                 init_scale=init_scale,
@@ -122,7 +125,7 @@ class MixedPrecisionTrainer:
         )
 
     @classmethod
-    def from_config(cls, config: MixedPrecisionConfig, device: str = "cuda") -> "MixedPrecisionTrainer":
+    def from_config(cls, config: MixedPrecisionConfig, device: str = "cuda") -> MixedPrecisionTrainer:
         """Create trainer from config."""
         return cls(
             precision=config.precision,
@@ -233,8 +236,9 @@ class MixedPrecisionTrainer:
             return None
 
         # For FP16, unscale first if not already done
-        if self.scaler is not None and optimizer is not None:
+        if self.scaler is not None and optimizer is not None and not self._grads_unscaled:
             self.scaler.unscale_(optimizer)
+            self._grads_unscaled = True
 
         # Clip gradients
         grad_norm = torch.nn.utils.clip_grad_norm_(
@@ -264,6 +268,7 @@ class MixedPrecisionTrainer:
             # FP16 with scaled step
             self.scaler.step(optimizer)
             self.scaler.update()
+            self._grads_unscaled = False  # Reset for next iteration
         else:
             # BF16 or FP32 - direct step
             optimizer.step()

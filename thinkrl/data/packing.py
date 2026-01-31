@@ -12,12 +12,14 @@ Author: EllanorAI
 
 from __future__ import annotations
 
-import logging
+from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
-from typing import Any, Iterable, Iterator
+import logging
+from typing import Any
 
 import torch
 from torch.utils.data import Dataset, IterableDataset
+
 
 logger = logging.getLogger(__name__)
 
@@ -135,10 +137,10 @@ def pack_sequences(
             current_labels = []
 
         # Add sequence to current pack
-        start_pos = len(current_input_ids)
+        # Position IDs should reset for each sub-sequence (for models with absolute position embeddings)
         current_input_ids.extend(input_ids)
         current_attention_mask.extend(attention_mask)
-        current_position_ids.extend(range(start_pos, start_pos + seq_len))
+        current_position_ids.extend(range(seq_len))  # Start from 0 for each sub-sequence
         if has_labels and labels is not None:
             current_labels.extend(labels)
 
@@ -327,19 +329,16 @@ def compute_packing_efficiency(
         Dictionary with efficiency metrics
     """
     original_tokens = sum(
-        len(s["input_ids"]) if isinstance(s["input_ids"], list) else s["input_ids"].numel()
-        for s in sequences
+        len(s["input_ids"]) if isinstance(s["input_ids"], list) else s["input_ids"].numel() for s in sequences
     )
 
     packed_tokens = sum(
-        s["attention_mask"].sum().item() if isinstance(s["attention_mask"], torch.Tensor)
-        else sum(s["attention_mask"])
+        s["attention_mask"].sum().item() if isinstance(s["attention_mask"], torch.Tensor) else sum(s["attention_mask"])
         for s in packed_sequences
     )
 
     total_packed_slots = sum(
-        len(s["input_ids"]) if isinstance(s["input_ids"], list) else s["input_ids"].numel()
-        for s in packed_sequences
+        len(s["input_ids"]) if isinstance(s["input_ids"], list) else s["input_ids"].numel() for s in packed_sequences
     )
 
     return {
@@ -380,17 +379,19 @@ def unpack_sequences(
     current_ids = []
     current_mask = []
 
-    for i, (token_id, mask) in enumerate(zip(input_ids, attention_mask)):
+    for _, (token_id, mask) in enumerate(zip(input_ids, attention_mask)):
         if mask == 0:
             # Padding - end of content
             break
 
         if token_id == eos_token_id and current_ids:
             # End of sequence
-            sequences.append({
-                "input_ids": torch.tensor(current_ids, dtype=torch.long),
-                "attention_mask": torch.tensor(current_mask, dtype=torch.long),
-            })
+            sequences.append(
+                {
+                    "input_ids": torch.tensor(current_ids, dtype=torch.long),
+                    "attention_mask": torch.tensor(current_mask, dtype=torch.long),
+                }
+            )
             current_ids = []
             current_mask = []
         else:
@@ -399,10 +400,12 @@ def unpack_sequences(
 
     # Add final sequence
     if current_ids:
-        sequences.append({
-            "input_ids": torch.tensor(current_ids, dtype=torch.long),
-            "attention_mask": torch.tensor(current_mask, dtype=torch.long),
-        })
+        sequences.append(
+            {
+                "input_ids": torch.tensor(current_ids, dtype=torch.long),
+                "attention_mask": torch.tensor(current_mask, dtype=torch.long),
+            }
+        )
 
     return sequences
 

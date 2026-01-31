@@ -315,6 +315,9 @@ class ReinforcePPTrainer:
                     output_scores=True,
                 )
 
+                # Set model back to train mode after generation
+                self.algorithm.policy_model.train()
+
                 full_sequences = outputs.sequences
 
                 input_len = input_ids.shape[1]
@@ -325,7 +328,7 @@ class ReinforcePPTrainer:
 
             return {
                 "input_ids": full_sequences,
-                "attention_mask": torch.ones_like(full_sequences),
+                "attention_mask": (full_sequences != self.tokenizer.pad_token_id).long(),
                 "labels": labels,
                 "generated_ids": generated_ids,
             }

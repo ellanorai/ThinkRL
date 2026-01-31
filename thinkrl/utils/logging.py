@@ -441,9 +441,8 @@ def get_logger(name: str = "thinkrl", level: int | str | None = None) -> logging
     """
     logger = logging.getLogger(name)
 
-    # If logger has no handlers AND is not disabled (level > CRITICAL), set it up.
-    # Check for level NOTSET as well, as getLogger returns a logger with NOTSET by default.
-    if not logger.handlers and logger.level <= logging.CRITICAL and logger.level != logging.NOTSET:
+    # If logger has no handlers, add a default console handler
+    if not logger.handlers:
         # Use provided level or default to INFO if creating handlers
         effective_level = level
         if effective_level is None:
