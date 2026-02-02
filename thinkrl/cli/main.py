@@ -896,6 +896,13 @@ if TYPER_AVAILABLE:
             int,
             Option("--vllm-group-port", help="NCCL group port for VLLM sync"),
         ] = 51216,
+        gradient_checkpointing: Annotated[
+            bool,
+            Option(
+                "--gradient-checkpointing/--no-gradient-checkpointing",
+                help="Enable gradient checkpointing to save memory",
+            ),
+        ] = False,
         logging_backend: Annotated[
             str,
             Option("--logging-backend", help="Logging backend: 'tensorboard', 'wandb', or 'none'"),
@@ -945,6 +952,14 @@ if TYPER_AVAILABLE:
         from thinkrl.data.datasets import RLHFDataset
         from thinkrl.models.loader import get_model
         from thinkrl.training.reinforce_pp_trainer import ReinforcePPTrainer
+        from thinkrl.utils.distributed_util import get_local_rank, init_distributed
+
+        # 0. Initialize Distributed if needed
+        init_distributed()
+        local_rank = get_local_rank()
+        device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
+        if torch.cuda.is_available():
+            torch.cuda.set_device(device)
 
         # 1. Load Models
         typer.echo("Loading models...")
@@ -955,7 +970,12 @@ if TYPER_AVAILABLE:
             trust_remote_code=True,
             lora_rank=lora_r if lora_r else 0,
             use_flash_attention=use_flash_attention,
+            device_map={"": local_rank} if torch.cuda.is_available() else None,
         )
+        if gradient_checkpointing:
+            policy_model.gradient_checkpointing_enable()
+            typer.echo("Gradient checkpointing enabled for policy model.")
+
         if ref_model:
             ref_model_inst = get_model(
                 ref_model,
@@ -963,6 +983,7 @@ if TYPER_AVAILABLE:
                 bf16=bf16,
                 trust_remote_code=True,
                 use_flash_attention=use_flash_attention,
+                device_map={"": local_rank} if torch.cuda.is_available() else None,
             )
         else:
             raise typer.Exit("Reference model is required (`--ref-model`)")
@@ -1005,7 +1026,7 @@ if TYPER_AVAILABLE:
                 return torch.tensor([float(len(c)) for c in completions])
 
         # 4. Config & Trainer
-        if logging_backend == "wandb":
+        if logging_backend == "wandb" and local_rank == 0:
             try:
                 import wandb
 
@@ -1025,8 +1046,6 @@ if TYPER_AVAILABLE:
                 typer.echo(f"W&B initialized: project={wandb_project}")
             except ImportError:
                 typer.echo("Error: wandb not installed. Run 'pip install wandb'.")
-
-        # Removed unused config instantiation since trainer uses args now
 
         trainer = ReinforcePPTrainer(
             model=policy_model,
@@ -1059,7 +1078,7 @@ if TYPER_AVAILABLE:
         trainer.train(steps=total_steps, batch_size=per_device_train_batch_size)
 
         # Finish W&B run
-        if logging_backend == "wandb":
+        if logging_backend == "wandb" and local_rank == 0:
             try:
                 import wandb
 
@@ -1069,7 +1088,7 @@ if TYPER_AVAILABLE:
                 typer.echo("Warning: wandb not installed; unable to finish W&B run cleanly.")
 
         # 6. Save
-        if output_dir:
+        if output_dir and local_rank == 0:
             output_dir.mkdir(parents=True, exist_ok=True)
             policy_model.save_pretrained(output_dir)
             tokenizer.save_pretrained(output_dir)
