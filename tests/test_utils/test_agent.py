@@ -194,7 +194,7 @@ class TestAgentExecutorBase:
     @pytest.mark.asyncio
     async def test_generate_requires_vllm(self, mock_llm_engine, mock_tokenizer):
         """Test that generate works when vLLM is available."""
-        executor = AgentExecutorBase(
+        AgentExecutorBase(
             llm_engine=mock_llm_engine,
             tokenizer=mock_tokenizer,
         )
@@ -204,7 +204,7 @@ class TestAgentExecutorBase:
     async def test_generate_mock_vllm(self, mock_llm_engine, mock_tokenizer):
         """Test generate method with mocked vLLM engine."""
         with patch("thinkrl.utils.agent._VLLM_AVAILABLE", True):
-            with patch("thinkrl.utils.agent.TokensPrompt", MagicMock()) as MockTokensPrompt:
+            with patch("thinkrl.utils.agent.TokensPrompt", MagicMock()):
                 # Mock the async generator returned by add_request
                 async def mock_async_generator():
                     mock_output = MagicMock()

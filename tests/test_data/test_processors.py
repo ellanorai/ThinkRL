@@ -12,7 +12,15 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from thinkrl.data.processors import process_audio, process_image
+from thinkrl.data.processors import (
+    AudioProcessor,
+    DataProcessor,
+    ImageProcessor,
+    TextProcessor,
+    get_data_processor,
+    process_audio,
+    process_image,
+)
 
 
 # Check actual availability in the module we are testing
@@ -174,7 +182,7 @@ class TestProcessAudio:
 
 # --- Processor Class Tests ---
 
-from thinkrl.data.processors import AudioProcessor, DataProcessor, ImageProcessor, TextProcessor, get_data_processor
+# --- Processor Class Tests ---
 
 
 class TestTextProcessor:

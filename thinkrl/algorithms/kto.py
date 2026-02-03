@@ -20,7 +20,7 @@ Author: EllanorAI
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Any
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm

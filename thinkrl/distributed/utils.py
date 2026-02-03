@@ -207,7 +207,7 @@ def setup_distributed_logging() -> None:
 def print_rank_0(*args, **kwargs) -> None:
     """Print only on rank 0."""
     if is_main_process():
-        print(*args, **kwargs)
+        pass
 
 
 def gather_scalar(value: float | int, world_size: int | None = None) -> list[float]:

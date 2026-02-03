@@ -5,10 +5,11 @@ Tests for REINFORCE Algorithm
 Comprehensive tests for Monte Carlo policy gradient implementation.
 """
 
+from unittest.mock import MagicMock, patch
+
 import pytest
 import torch
 import torch.nn as nn
-from unittest.mock import MagicMock, patch
 
 from thinkrl.algorithms.reinforce import (
     REINFORCEAlgorithm,
@@ -163,10 +164,12 @@ class TestComputeReturns:
         """Test returns computation for token-level rewards."""
         # With gamma=1.0, returns should be cumulative sum from end
         algorithm.config.gamma = 1.0
-        rewards = torch.tensor([
-            [0.0, 0.0, 1.0],
-            [0.0, 0.5, 0.5],
-        ])
+        rewards = torch.tensor(
+            [
+                [0.0, 0.0, 1.0],
+                [0.0, 0.5, 0.5],
+            ]
+        )
 
         returns = algorithm.compute_returns(rewards)
 
@@ -177,9 +180,11 @@ class TestComputeReturns:
     def test_discounted_returns(self, algorithm):
         """Test discounted returns computation."""
         algorithm.config.gamma = 0.9
-        rewards = torch.tensor([
-            [1.0, 1.0, 1.0],
-        ])
+        rewards = torch.tensor(
+            [
+                [1.0, 1.0, 1.0],
+            ]
+        )
 
         returns = algorithm.compute_returns(rewards)
 
@@ -283,9 +288,16 @@ class TestComputeLoss:
         result = algorithm.compute_loss(batch)
 
         expected_keys = [
-            "loss", "policy_loss", "entropy", "entropy_loss",
-            "kl_div", "kl_loss", "reward_mean", "reward_std",
-            "baseline", "advantage_mean",
+            "loss",
+            "policy_loss",
+            "entropy",
+            "entropy_loss",
+            "kl_div",
+            "kl_loss",
+            "reward_mean",
+            "reward_std",
+            "baseline",
+            "advantage_mean",
         ]
         for key in expected_keys:
             assert key in result
@@ -351,10 +363,7 @@ class TestTrainingStep:
     def test_training_step_updates_weights(self, algorithm, batch):
         """Test training_step updates model weights."""
         # Get initial weights
-        initial_weights = {
-            name: param.clone()
-            for name, param in algorithm.policy_model.named_parameters()
-        }
+        initial_weights = {name: param.clone() for name, param in algorithm.policy_model.named_parameters()}
 
         algorithm.training_step(batch)
 
@@ -424,7 +433,7 @@ class TestREINFORCEIntegration:
         algo = create_reinforce(model, learning_rate=1e-3)
 
         losses = []
-        for step in range(5):
+        for _step in range(5):
             batch = {
                 "input_ids": torch.randint(0, 100, (4, 16)),
                 "attention_mask": torch.ones(4, 16),

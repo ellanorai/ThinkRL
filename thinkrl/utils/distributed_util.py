@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import logging
 import os
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import torch
 import torch.distributed as dist
@@ -349,10 +349,7 @@ def stateless_init_process_group(
         ```
     """
     if not _VLLM_AVAILABLE:
-        logger.warning(
-            "vLLM not available, cannot create stateless process group. "
-            "Install with: pip install vllm"
-        )
+        logger.warning("vLLM not available, cannot create stateless process group. " "Install with: pip install vllm")
         return None
 
     try:
@@ -366,9 +363,7 @@ def stateless_init_process_group(
             group=pg,
             device=device,
         )
-        logger.info(
-            f"Created stateless process group: rank={rank}, world_size={world_size}"
-        )
+        logger.info(f"Created stateless process group: rank={rank}, world_size={world_size}")
         return pynccl_comm
 
     except Exception as e:

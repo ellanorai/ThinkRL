@@ -10,12 +10,12 @@ Author: Archit Sood @ EllanorAI
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 import asyncio
+from dataclasses import dataclass, field
 import logging
 import os
-from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Callable
+from typing import Any
 
 
 logger = logging.getLogger(__name__)
@@ -216,11 +216,7 @@ class AgentExecutorBase:
             return {
                 "output_ids": final_output.outputs[0].token_ids,
                 "text": final_output.outputs[0].text,
-                "log_probs": (
-                    final_output.outputs[0].logprobs
-                    if self.compute_log_probs
-                    else []
-                ),
+                "log_probs": (final_output.outputs[0].logprobs if self.compute_log_probs else []),
             }
 
     async def execute(
@@ -263,9 +259,7 @@ class AgentExecutorBase:
         if agent is not None:
             initial_state = {"input_ids": input_ids}
             if _RAY_AVAILABLE:
-                initial_state = await asyncio.to_thread(
-                    ray.get, agent.reset.remote(initial_state)
-                )
+                initial_state = await asyncio.to_thread(ray.get, agent.reset.remote(initial_state))
             else:
                 initial_state = agent.reset(initial_state)
             state.metadata.update(initial_state)
@@ -301,9 +295,7 @@ class AgentExecutorBase:
                 }
 
                 if _RAY_AVAILABLE:
-                    step_result = await asyncio.to_thread(
-                        ray.get, agent.step.remote(step_input)
-                    )
+                    step_result = await asyncio.to_thread(ray.get, agent.step.remote(step_input))
                 else:
                     step_result = agent.step(step_input)
 
@@ -349,10 +341,7 @@ class AgentExecutorBase:
         if agent_kwargs_list is None:
             agent_kwargs_list = [{}] * len(prompts)
 
-        tasks = [
-            self.execute(prompt, sampling_params, kwargs)
-            for prompt, kwargs in zip(prompts, agent_kwargs_list)
-        ]
+        tasks = [self.execute(prompt, sampling_params, kwargs) for prompt, kwargs in zip(prompts, agent_kwargs_list)]
 
         results = await asyncio.gather(*tasks)
         return list(results)
@@ -397,8 +386,7 @@ def load_agent_class(
 
     if not issubclass(agent_class, AgentInstanceBase):
         logger.warning(
-            f"{class_name} does not inherit from AgentInstanceBase. "
-            "Consider using the base class for consistency."
+            f"{class_name} does not inherit from AgentInstanceBase. " "Consider using the base class for consistency."
         )
 
     return agent_class

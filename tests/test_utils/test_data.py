@@ -406,7 +406,7 @@ class TestApplyChatTemplate:
 
         messages = [{"role": "user", "content": "Hello!"}]
 
-        result = apply_chat_template(messages, mock_tokenizer, add_generation_prompt=True)
+        apply_chat_template(messages, mock_tokenizer, add_generation_prompt=True)
 
         mock_tokenizer.apply_chat_template.assert_called_with(
             messages,

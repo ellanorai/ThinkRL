@@ -115,7 +115,7 @@ class TestBaseRLHFAlgorithm:
 
     def test_generate_rollouts_vllm(self, policy_model):
         with patch("thinkrl.algorithms.base._VLLM_AVAILABLE", True):
-            with patch("thinkrl.algorithms.base.VLLMClient") as MockClient:
+            with patch("thinkrl.algorithms.base.VLLMClient"):
                 algo = ConcreteAlgorithm(policy_model, use_vllm=True)
                 algo.vllm_client.generate.return_value = {"text": ["vllm"], "token_ids": [[1]], "log_probs": [[-0.1]]}
 
@@ -125,14 +125,14 @@ class TestBaseRLHFAlgorithm:
 
     def test_sync_vllm_weights(self, policy_model):
         with patch("thinkrl.algorithms.base._VLLM_AVAILABLE", True):
-            with patch("thinkrl.algorithms.base.VLLMClient") as MockClient:
+            with patch("thinkrl.algorithms.base.VLLMClient"):
                 algo = ConcreteAlgorithm(policy_model, use_vllm=True)
                 algo.sync_vllm_weights()
                 algo.vllm_client.update_model_weights.assert_called_with(algo.policy_model)
 
     def test_init_vllm_weight_sync(self, policy_model):
         with patch("thinkrl.algorithms.base._VLLM_AVAILABLE", True):
-            with patch("thinkrl.algorithms.base.VLLMClient") as MockClient:
+            with patch("thinkrl.algorithms.base.VLLMClient"):
                 algo = ConcreteAlgorithm(policy_model, use_vllm=True)
                 device = torch.device("cpu")
                 algo.init_vllm_weight_sync(device)

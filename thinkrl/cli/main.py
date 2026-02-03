@@ -24,7 +24,7 @@ import json
 import logging
 from pathlib import Path
 import sys
-from typing import Annotated, Optional
+from typing import Annotated
 
 
 # Optional typer support
@@ -62,10 +62,8 @@ if TYPER_AVAILABLE:
     @app.command()
     def train(
         config: Annotated[Path, Option("--config", "-c", help="Path to config YAML/JSON file")],
-        overrides: Annotated[
-            Optional[list[str]], Option("--override", "-o", help="Config overrides (key=value)")
-        ] = None,
-        resume: Annotated[Optional[Path], Option("--resume", "-r", help="Path to checkpoint to resume from")] = None,
+        overrides: Annotated[list[str] | None, Option("--override", "-o", help="Config overrides (key=value)")] = None,
+        resume: Annotated[Path | None, Option("--resume", "-r", help="Path to checkpoint to resume from")] = None,
         dry_run: Annotated[bool, Option("--dry-run", help="Validate config without running")] = False,
     ):
         """
@@ -147,7 +145,7 @@ if TYPER_AVAILABLE:
         adapter: Annotated[Path, Option("--adapter", "-a", help="Path to LoRA adapter")],
         output: Annotated[Path, Option("--output", "-o", help="Output path for merged model")],
         push_to_hub: Annotated[
-            Optional[str], Option("--push-to-hub", help="Push merged model to HuggingFace Hub")
+            str | None, Option("--push-to-hub", help="Push merged model to HuggingFace Hub")
         ] = None,
     ):
         """
@@ -208,7 +206,7 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def info(
-        config: Annotated[Optional[Path], Option("--config", "-c", help="Show config file info")] = None,
+        config: Annotated[Path | None, Option("--config", "-c", help="Show config file info")] = None,
     ):
         """
         Show ThinkRL information.
@@ -290,10 +288,10 @@ if TYPER_AVAILABLE:
         gradient_accumulation_steps: Annotated[
             int, Option("--gradient-accumulation-steps", "--gas", help="Gradient accumulation steps")
         ] = 1,
-        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
         packing: Annotated[bool, Option("--packing/--no-packing", help="Use sequence packing")] = False,
-        push_to_hub: Annotated[Optional[str], Option("--push-to-hub", help="Push to HuggingFace Hub repo")] = None,
+        push_to_hub: Annotated[str | None, Option("--push-to-hub", help="Push to HuggingFace Hub repo")] = None,
     ):
         """
         Supervised Fine-Tuning (SFT) - Similar to `trl sft`.
@@ -336,7 +334,7 @@ if TYPER_AVAILABLE:
         ] = 1,
         per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
         loss_type: Annotated[str, Option("--loss-type", help="Loss type: sigmoid, hinge, ipo")] = "sigmoid",
-        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     ):
         """
@@ -380,7 +378,7 @@ if TYPER_AVAILABLE:
             int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
         per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
-        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     ):
         """
@@ -423,9 +421,9 @@ if TYPER_AVAILABLE:
             int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
         per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
-        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
-        reward_fn: Annotated[Optional[str], Option("--reward-fn", help="Path to reward function module")] = None,
+        reward_fn: Annotated[str | None, Option("--reward-fn", help="Path to reward function module")] = None,
     ):
         """
         Group Relative Policy Optimization (GRPO).
@@ -466,7 +464,7 @@ if TYPER_AVAILABLE:
             int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
         per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
-        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     ):
         """
@@ -505,7 +503,7 @@ if TYPER_AVAILABLE:
             int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
         per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
-        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     ):
         """
@@ -545,7 +543,7 @@ if TYPER_AVAILABLE:
             int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
         per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
-        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     ):
         """
@@ -584,7 +582,7 @@ if TYPER_AVAILABLE:
             str, Option("--source", "-s", help="Dataset source: 'hf' (HuggingFace), 'local', 'json', 'csv'")
         ] = "hf",
         ref_model: Annotated[
-            Optional[str], Option("--ref-model", "-r", help="Reference model name or path (required)")
+            str | None, Option("--ref-model", "-r", help="Reference model name or path (required)")
         ] = None,
         output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path(
             "./reinforce_pp_output"
@@ -598,16 +596,20 @@ if TYPER_AVAILABLE:
             int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
         per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
-        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        lora_init: Annotated[
+            str, Option("--lora-init", help="LoRA init type: 'default', 'garbage', 'pissa', 'pissa_niter_[n]'")
+        ] = "default",
         grad_accum: Annotated[int, Option("--grad-accum", "-ga", help="Gradient accumulation steps")] = 1,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
+        fp16: Annotated[bool, Option("--fp16/--no-fp16", help="Use float16 precision")] = False,
         use_flash_attention: Annotated[
             bool, Option("--flash-attn/--no-flash-attn", help="Use Flash Attention 2")
         ] = False,
         reward_fn: Annotated[
-            Optional[str], Option("--reward-fn", help="Path to reward function (module.py:func_name)")
+            str | None, Option("--reward-fn", help="Path to reward function (module.py:func_name)")
         ] = None,
-        deepspeed: Annotated[Optional[str], Option("--deepspeed", help="Path to DeepSpeed configuration file")] = None,
+        deepspeed: Annotated[str | None, Option("--deepspeed", help="Path to DeepSpeed configuration file")] = None,
         use_vllm: Annotated[bool, Option("--use-vllm", help="Use VLLM for generation")] = False,
         vllm_group_port: Annotated[int, Option("--vllm-group-port", help="NCCL group port for VLLM sync")] = 51216,
         gradient_checkpointing: Annotated[
@@ -623,6 +625,10 @@ if TYPER_AVAILABLE:
         wandb_project: Annotated[
             str, Option("--wandb-project", help="WandB project name (if using wandb)")
         ] = "thinkrl-reinforce-pp",
+        max_length: Annotated[int, Option("--max-length", help="Maximum sequence length")] = 512,
+        max_samples: Annotated[
+            int | None, Option("--max-samples", help="Maximum number of samples to load from dataset")
+        ] = None,
     ):
         """
         REINFORCE++ Policy Optimization.
@@ -645,13 +651,24 @@ if TYPER_AVAILABLE:
         typer.echo(f"Mode: {mode}")
         typer.echo(f"Group Size: {group_size}")
         typer.echo(f"Learning rate: {learning_rate}")
+        typer.echo(f"LoRA Rank: {lora_r}")
+        typer.echo(f"LoRA Init: {lora_init}")
         typer.echo(f"Entropy Coeff: {entropy_coeff}")
         typer.echo(f"KL Coeff: {kl_loss_coeff}")
         typer.echo(f"Epochs: {num_train_epochs}")
         typer.echo(f"Batch size: {per_device_train_batch_size}")
+        typer.echo(f"BF16 Enabled: {bf16}")
+        typer.echo(f"FP16 Enabled: {fp16}")
         typer.echo(f"VLLM Enabled: {use_vllm}")
         typer.echo(f"Logging Backend: {logging_backend}")
+        typer.echo(f"Max Length: {max_length}")
+        typer.echo(f"Max Samples: {max_samples if max_samples else 'All'}")
         typer.echo()
+
+        # Handle precision overlap: if fp16 is requested, disable bf16
+        if fp16 and bf16:
+            bf16 = False
+            typer.echo("Note: Both BF16 and FP16 requested. Prioritizing FP16 (BF16 disabled).")
 
         # Custom imports inside command to avoid circular deps / startup costs
         import importlib.util
@@ -679,8 +696,10 @@ if TYPER_AVAILABLE:
             model,
             model_type="actor",
             bf16=bf16,
+            fp16=fp16,
             trust_remote_code=True,
             lora_rank=lora_r if lora_r else 0,
+            lora_init_type=lora_init,
             use_flash_attention=use_flash_attention,
             device_map={"": local_rank} if torch.cuda.is_available() else None,
         )
@@ -693,7 +712,9 @@ if TYPER_AVAILABLE:
                 ref_model,
                 model_type="ref",
                 bf16=bf16,
+                fp16=fp16,
                 trust_remote_code=True,
+                lora_init_type=lora_init,
                 use_flash_attention=use_flash_attention,
                 device_map={"": local_rank} if torch.cuda.is_available() else None,
             )
@@ -712,6 +733,8 @@ if TYPER_AVAILABLE:
             split=dataset_split,
             prompt_column=prompt_column,
             source=source,
+            max_length=max_length,
+            max_samples=max_samples,
         )
 
         # 3. Load Reward Function

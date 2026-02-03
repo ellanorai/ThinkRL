@@ -10,10 +10,10 @@ Author: Archit Sood @ EllanorAI
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
-from typing import Any, Callable
+from typing import Any
 
-import torch
 from tqdm import tqdm
 
 
@@ -52,7 +52,7 @@ def reward_normalization(
 
     mean = sum(rewards) / len(rewards)
     variance = sum((r - mean) ** 2 for r in rewards) / len(rewards)
-    std = variance ** 0.5 + 1e-8
+    std = variance**0.5 + 1e-8
 
     for obj in objs:
         if reward_key in obj:
@@ -162,13 +162,12 @@ def rejection_sampling_processor(
 
     # Keep best output for each input
     result = []
-    for input_text, outputs in input_to_outputs.items():
+    for _input_text, outputs in input_to_outputs.items():
         best = max(outputs, key=lambda x: x.get(reward_key, float("-inf")))
         result.append(best)
 
     logger.info(
-        f"Rejection sampling: {len(objs)} -> {len(result)} samples "
-        f"({len(input_to_outputs)} unique inputs)"
+        f"Rejection sampling: {len(objs)} -> {len(result)} samples " f"({len(input_to_outputs)} unique inputs)"
     )
     return result
 
@@ -237,17 +236,17 @@ def iterative_dpo_processor(
         best = sorted_outputs[0]
         worst = sorted_outputs[-1]
 
-        result.append({
-            input_key: input_text,
-            "chosen": best.get(output_key, ""),
-            "rejected": worst.get(output_key, ""),
-            "chosen_reward": best.get(reward_key, 0),
-            "rejected_reward": worst.get(reward_key, 0),
-        })
+        result.append(
+            {
+                input_key: input_text,
+                "chosen": best.get(output_key, ""),
+                "rejected": worst.get(output_key, ""),
+                "chosen_reward": best.get(reward_key, 0),
+                "rejected_reward": worst.get(reward_key, 0),
+            }
+        )
 
-    logger.info(
-        f"Iterative DPO: {len(objs)} samples -> {len(result)} preference pairs"
-    )
+    logger.info(f"Iterative DPO: {len(objs)} samples -> {len(result)} preference pairs")
     return result
 
 
@@ -293,17 +292,14 @@ def best_of_n_processor(
     # Keep best output for inputs with >= n samples
     result = []
     skipped = 0
-    for input_text, outputs in input_to_outputs.items():
+    for _input_text, outputs in input_to_outputs.items():
         if len(outputs) < n:
             skipped += 1
             continue
         best = max(outputs, key=lambda x: x.get(reward_key, float("-inf")))
         result.append(best)
 
-    logger.info(
-        f"Best-of-{n}: {len(objs)} -> {len(result)} samples "
-        f"(skipped {skipped} inputs with < {n} samples)"
-    )
+    logger.info(f"Best-of-{n}: {len(objs)} -> {len(result)} samples " f"(skipped {skipped} inputs with < {n} samples)")
     return result
 
 
@@ -393,13 +389,15 @@ def create_pairwise_data(
                 rejected_reward = rejected.get(reward_key, 0)
 
                 if chosen_reward - rejected_reward >= margin:
-                    result.append({
-                        input_key: input_text,
-                        "chosen": chosen.get(output_key, ""),
-                        "rejected": rejected.get(output_key, ""),
-                        "chosen_reward": chosen_reward,
-                        "rejected_reward": rejected_reward,
-                    })
+                    result.append(
+                        {
+                            input_key: input_text,
+                            "chosen": chosen.get(output_key, ""),
+                            "rejected": rejected.get(output_key, ""),
+                            "chosen_reward": chosen_reward,
+                            "rejected_reward": rejected_reward,
+                        }
+                    )
 
     logger.info(f"Created {len(result)} preference pairs from {len(objs)} samples")
     return result

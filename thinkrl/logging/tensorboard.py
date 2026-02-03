@@ -57,9 +57,7 @@ class TensorBoardLogger(Logger):
         self._writer = None
 
         if not TENSORBOARD_AVAILABLE:
-            raise ImportError(
-                "TensorBoard is not installed. Install with: pip install tensorboard"
-            )
+            raise ImportError("TensorBoard is not installed. Install with: pip install tensorboard")
 
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -73,7 +71,7 @@ class TensorBoardLogger(Logger):
         logger.info(f"Initialized TensorBoard logger: {self.log_dir}")
 
     @property
-    def writer(self) -> "SummaryWriter":
+    def writer(self) -> SummaryWriter:
         """Get the SummaryWriter instance."""
         return self._writer
 

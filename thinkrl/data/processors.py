@@ -7,8 +7,8 @@ Processors for multimodal data (Image, Audio).
 
 from __future__ import annotations
 
-import logging
 from abc import ABC, abstractmethod
+import logging
 from typing import Any
 
 
@@ -129,12 +129,10 @@ def get_data_processor(
     }
 
     if processor_type not in processors:
-        raise ValueError(
-            f"Unknown processor type: {processor_type}. "
-            f"Available: {list(processors.keys())}"
-        )
+        raise ValueError(f"Unknown processor type: {processor_type}. " f"Available: {list(processors.keys())}")
 
     return processors[processor_type](**kwargs)
+
 
 # Optional dependencies
 try:

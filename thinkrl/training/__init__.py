@@ -9,54 +9,51 @@ Author: EllanorAI
 """
 
 from .kl_controller import (
-    KLControllerType,
-    KLControllerConfig,
-    KLController,
     AdaptiveKLController,
     FixedKLController,
+    KLController,
+    KLControllerConfig,
+    KLControllerType,
     create_kl_controller,
 )
-
+from .mixed_precision import (
+    MixedPrecisionConfig,
+    MixedPrecisionTrainer,
+    PrecisionType,
+    cast_model_to_dtype,
+    disable_tf32,
+    enable_tf32,
+    get_autocast_dtype,
+)
+from .rl_utils import (
+    RewardProcessor,
+    # Reward processing
+    RewardProcessorConfig,
+    compute_advantages_from_returns,
+    compute_clipped_surrogate_loss,
+    # Entropy
+    compute_entropy,
+    compute_entropy_bonus,
+    # Advantage estimation
+    compute_gae,
+    compute_group_advantages,
+    # KL divergence
+    compute_kl_divergence,
+    compute_kl_penalty,
+    compute_length_penalty,
+    # Clip ratios
+    compute_policy_ratio,
+    compute_returns,
+    # Token-level
+    compute_token_advantages,
+    filter_zero_variance_groups,
+    # Group sampling
+    sample_groups,
+)
 from .sft_trainer import (
     SFTConfig,
     SFTTrainer,
     create_sft_trainer,
-)
-
-from .mixed_precision import (
-    PrecisionType,
-    MixedPrecisionConfig,
-    MixedPrecisionTrainer,
-    get_autocast_dtype,
-    cast_model_to_dtype,
-    enable_tf32,
-    disable_tf32,
-)
-
-from .rl_utils import (
-    # Advantage estimation
-    compute_gae,
-    compute_returns,
-    compute_advantages_from_returns,
-    # Reward processing
-    RewardProcessorConfig,
-    RewardProcessor,
-    # KL divergence
-    compute_kl_divergence,
-    compute_kl_penalty,
-    # Clip ratios
-    compute_policy_ratio,
-    compute_clipped_surrogate_loss,
-    # Group sampling
-    sample_groups,
-    compute_group_advantages,
-    filter_zero_variance_groups,
-    # Token-level
-    compute_token_advantages,
-    compute_length_penalty,
-    # Entropy
-    compute_entropy,
-    compute_entropy_bonus,
 )
 
 

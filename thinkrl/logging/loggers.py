@@ -9,9 +9,9 @@ Author: EllanorAI
 
 from __future__ import annotations
 
+from abc import ABC, abstractmethod
 import logging
 import sys
-from abc import ABC, abstractmethod
 from typing import Any
 
 import torch.distributed as dist
@@ -44,10 +44,12 @@ class Logger(ABC):
         """
         pass
 
+    @abstractmethod
     def log_text(self, key: str, text: str, step: int | None = None) -> None:
         """Log text/string data."""
         pass
 
+    @abstractmethod
     def log_table(
         self,
         key: str,
@@ -58,11 +60,12 @@ class Logger(ABC):
         """Log tabular data."""
         pass
 
+    @abstractmethod
     def finish(self) -> None:
         """Cleanup and finalize logging."""
         pass
 
-    def __enter__(self) -> "Logger":
+    def __enter__(self) -> Logger:
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> None:

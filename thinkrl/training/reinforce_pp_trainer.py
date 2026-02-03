@@ -1,5 +1,5 @@
 from collections.abc import Callable
-from typing import Any, Optional, Union
+from typing import Any, Union
 
 import torch
 import torch.nn as nn
@@ -33,10 +33,10 @@ class ReinforcePPTrainer:
         tokenizer: PreTrainedTokenizer,
         dataset: RLHFDataset,
         reward_fn: Callable[[list[str], list[str]], torch.Tensor],
-        config: Optional[REINFORCEPPConfig] = None,
-        optimizer: Optional[torch.optim.Optimizer] = None,
-        generation_config: Optional[GenerationConfig] = None,
-        device: Optional[Union[str, torch.device]] = None,
+        config: REINFORCEPPConfig | None = None,
+        optimizer: torch.optim.Optimizer | None = None,
+        generation_config: GenerationConfig | None = None,
+        device: Union[str, torch.device] | None = None,
         use_vllm: bool = False,
         vllm_group_port: int = 51216,
         **algo_kwargs,

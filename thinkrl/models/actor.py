@@ -66,10 +66,12 @@ class Actor(nn.Module):
         pretrained_model: str | nn.Module,
         use_flash_attention: bool = True,
         bf16: bool = True,
+        fp16: bool = False,
         load_in_4bit: bool = False,
         lora_rank: int = 0,
         lora_alpha: int = 16,
         lora_dropout: float = 0.05,
+        lora_init_type: str = "default",
         target_modules: list[str] | None = None,
         device_map: str | dict | None = None,
         trust_remote_code: bool = False,
@@ -82,6 +84,7 @@ class Actor(nn.Module):
             pretrained_model: Model name or pre-loaded model
             use_flash_attention: Use Flash Attention 2 if available
             bf16: Use bfloat16 precision
+            fp16: Use float16 precision
             load_in_4bit: Load model in 4-bit quantization
             lora_rank: LoRA rank (0 to disable)
             lora_alpha: LoRA alpha scaling
@@ -117,6 +120,8 @@ class Actor(nn.Module):
 
             if bf16:
                 load_kwargs["torch_dtype"] = torch.bfloat16
+            elif fp16:
+                load_kwargs["torch_dtype"] = torch.float16
 
             if device_map is not None:
                 load_kwargs["device_map"] = device_map
@@ -157,16 +162,21 @@ class Actor(nn.Module):
                 target_modules=target_modules,
                 task_type=TaskType.CAUSAL_LM,
                 bias="none",
+                init_lora_weights=True if lora_init_type == "default" else lora_init_type,
             )
 
             self.model = get_peft_model(self.model, lora_config)
             logger.info(f"Applied LoRA with rank={lora_rank}")
 
-            # Cast non-LoRA layers to bf16 if needed
+            # Cast non-LoRA layers to target precision if needed
             if bf16:
                 for name, param in self.model.named_parameters():
                     if "lora_" not in name:
                         param.data = param.data.to(torch.bfloat16)
+            elif fp16:
+                for name, param in self.model.named_parameters():
+                    if "lora_" not in name:
+                        param.data = param.data.to(torch.float16)
 
         self.lora_rank = lora_rank
 

@@ -12,10 +12,11 @@ Author: EllanorAI
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
 from enum import Enum
+import logging
 from typing import Any
+
 
 logger = logging.getLogger(__name__)
 
@@ -122,7 +123,7 @@ class KLController:
         self.kl_history: list[float] = []
 
     @classmethod
-    def from_config(cls, config: KLControllerConfig) -> "KLController":
+    def from_config(cls, config: KLControllerConfig) -> KLController:
         """Create controller from config."""
         return cls(
             init_kl_coef=config.init_kl_coef,
@@ -195,9 +196,7 @@ class KLController:
     def _linear_update(self) -> float:
         """Linear schedule from init to final coefficient."""
         progress = min(self.step / self.total_steps, 1.0)
-        self.kl_coef = self.init_kl_coef + progress * (
-            self.final_kl_coef - self.init_kl_coef
-        )
+        self.kl_coef = self.init_kl_coef + progress * (self.final_kl_coef - self.init_kl_coef)
         return self.kl_coef
 
     def _cosine_update(self) -> float:
@@ -206,9 +205,7 @@ class KLController:
 
         progress = min(self.step / self.total_steps, 1.0)
         cosine_decay = 0.5 * (1 + math.cos(math.pi * progress))
-        self.kl_coef = self.final_kl_coef + cosine_decay * (
-            self.init_kl_coef - self.final_kl_coef
-        )
+        self.kl_coef = self.final_kl_coef + cosine_decay * (self.init_kl_coef - self.final_kl_coef)
         return self.kl_coef
 
     def get_kl_coef(self) -> float:

@@ -12,13 +12,13 @@ Author: EllanorAI
 
 from __future__ import annotations
 
-import logging
 from dataclasses import dataclass
+import logging
 from typing import Any
 
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
+
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,7 @@ class RewardProcessor:
         self.count = 0
 
     @classmethod
-    def from_config(cls, config: RewardProcessorConfig) -> "RewardProcessor":
+    def from_config(cls, config: RewardProcessorConfig) -> RewardProcessor:
         return cls(
             normalize=config.normalize,
             normalize_method=config.normalize_method,
@@ -238,17 +238,13 @@ class RewardProcessor:
             self.running_mean = batch_mean
             self.running_var = batch_var
         else:
-            self.running_mean = (
-                self.momentum * self.running_mean + (1 - self.momentum) * batch_mean
-            )
-            self.running_var = (
-                self.momentum * self.running_var + (1 - self.momentum) * batch_var
-            )
+            self.running_mean = self.momentum * self.running_mean + (1 - self.momentum) * batch_mean
+            self.running_var = self.momentum * self.running_var + (1 - self.momentum) * batch_var
 
         self.count += 1
 
         # Normalize
-        return (rewards - self.running_mean) / (self.running_var ** 0.5 + self.eps)
+        return (rewards - self.running_mean) / (self.running_var**0.5 + self.eps)
 
     def _normalize_batch(self, rewards: torch.Tensor) -> torch.Tensor:
         """Normalize within batch."""
@@ -550,7 +546,7 @@ def compute_token_advantages(
             raise ValueError("action_mask required when token_rewards not provided")
 
         batch_size = rewards.shape[0]
-        seq_len = action_mask.shape[1]
+        action_mask.shape[1]
 
         # Find last valid token in each sequence
         last_token_idx = action_mask.sum(dim=1).long() - 1
@@ -593,7 +589,7 @@ def compute_length_penalty(
     if penalty_type == "linear":
         return -penalty_coef * deviation
     elif penalty_type == "quadratic":
-        return -penalty_coef * deviation ** 2
+        return -penalty_coef * deviation**2
     else:
         raise ValueError(f"Unknown penalty_type: {penalty_type}")
 

@@ -162,7 +162,6 @@ def freeze_layers(
 
     if num_layers is not None:
         # Common pattern for transformer models
-        layer_count = 0
         for name, param in model.named_parameters():
             if "layer" in name.lower() or "block" in name.lower():
                 # Extract layer number

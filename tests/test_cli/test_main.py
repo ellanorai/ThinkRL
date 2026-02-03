@@ -6,9 +6,9 @@ Tests for command-line interface.
 """
 
 import json
-import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+import tempfile
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -19,11 +19,13 @@ class TestCLIAvailability:
     def test_import_cli_module(self):
         """Test that CLI module can be imported."""
         from thinkrl.cli import main
+
         assert main is not None
 
     def test_app_exists_or_none(self):
         """Test that app exists (if typer installed) or is None."""
         from thinkrl.cli.main import app
+
         # App is either a Typer app or None
         assert app is None or hasattr(app, "command")
 
@@ -36,6 +38,7 @@ class TestCLIWithTyper:
         """Check if typer is available."""
         try:
             import typer
+
             return True
         except ImportError:
             return False
@@ -46,6 +49,7 @@ class TestCLIWithTyper:
             pytest.skip("Typer not installed")
 
         from typer.testing import CliRunner
+
         from thinkrl.cli.main import app
 
         if app is None:
@@ -63,6 +67,7 @@ class TestCLIWithTyper:
             pytest.skip("Typer not installed")
 
         from typer.testing import CliRunner
+
         from thinkrl.cli.main import app
 
         if app is None:
@@ -79,6 +84,7 @@ class TestCLIWithTyper:
             pytest.skip("Typer not installed")
 
         from typer.testing import CliRunner
+
         from thinkrl.cli.main import app
 
         if app is None:
@@ -96,6 +102,7 @@ class TestCLIWithTyper:
             pytest.skip("Typer not installed")
 
         from typer.testing import CliRunner
+
         from thinkrl.cli.main import app
 
         if app is None:
@@ -122,6 +129,7 @@ class TestCLIWithTyper:
             pytest.skip("Typer not installed")
 
         from typer.testing import CliRunner
+
         from thinkrl.cli.main import app
 
         if app is None:
@@ -134,12 +142,17 @@ class TestCLIWithTyper:
 
         try:
             runner = CliRunner()
-            result = runner.invoke(app, [
-                "train",
-                "--config", config_path,
-                "--override", "max_steps=500",
-                "--dry-run",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "train",
+                    "--config",
+                    config_path,
+                    "--override",
+                    "max_steps=500",
+                    "--dry-run",
+                ],
+            )
 
             assert result.exit_code == 0
             # Should show overridden value
@@ -153,6 +166,7 @@ class TestCLIWithTyper:
             pytest.skip("Typer not installed")
 
         from typer.testing import CliRunner
+
         from thinkrl.cli.main import app
 
         if app is None:
@@ -181,6 +195,7 @@ class TestMainFunction:
         # This is hard to test without actually removing typer
         # Just ensure main function exists and is callable
         from thinkrl.cli.main import main
+
         assert callable(main)
 
 
@@ -192,6 +207,7 @@ class TestCLIConfigValidation:
         """Check if typer is available."""
         try:
             import typer
+
             return True
         except ImportError:
             return False
@@ -202,6 +218,7 @@ class TestCLIConfigValidation:
             pytest.skip("Typer not installed")
 
         from typer.testing import CliRunner
+
         from thinkrl.cli.main import app
 
         if app is None:
@@ -226,6 +243,7 @@ class TestCLIConfigValidation:
             pytest.skip("Typer not installed")
 
         from typer.testing import CliRunner
+
         from thinkrl.cli.main import app
 
         if app is None:
@@ -238,12 +256,17 @@ class TestCLIConfigValidation:
 
         try:
             runner = CliRunner()
-            result = runner.invoke(app, [
-                "train",
-                "--config", config_path,
-                "--override", "invalid_format_no_equals",
-                "--dry-run",
-            ])
+            result = runner.invoke(
+                app,
+                [
+                    "train",
+                    "--config",
+                    config_path,
+                    "--override",
+                    "invalid_format_no_equals",
+                    "--dry-run",
+                ],
+            )
 
             assert result.exit_code != 0
             assert "expected key=value" in result.stdout.lower() or "invalid" in result.stdout.lower()
