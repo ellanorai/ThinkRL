@@ -375,7 +375,7 @@ class TestLogging:
         """Test NewLineFormatter alignment."""
         formatter = NewLineFormatter(fmt="%(message)s")
         record = logging.LogRecord("name", logging.INFO, "path", 1, "Line 1\nLine 2", (), None)
-        formatted = formatter.format(record)
+        formatter.format(record)
         # The formatter replaces \n with \r\n + indent.
         # Since fmt is just message, prefix is empty, indent is empty.
         # But wait, logic is: prefix = msg.split(message)[0].
@@ -424,7 +424,7 @@ class TestLogging:
     def test_get_module_logger(self):
         """Test get_module_logger singleton-like behavior."""
         logger1 = get_module_logger()
-        logger2 = get_module_logger()
+        get_module_logger()
         # Note: it returns the logger for thinkrl.utils.logging
         assert logger1.name == "thinkrl.utils.logging"
 
@@ -449,6 +449,3 @@ class TestLogging:
             assert (temp_dir / f"thinkrl.fallback_{datetime.now():%Y%m%d_%H%M%S}.log").exists() or list(
                 temp_dir.glob("thinkrl.fallback_*.log")
             )
-
-
-from datetime import datetime

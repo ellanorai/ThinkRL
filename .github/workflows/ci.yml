@@ -29,7 +29,7 @@ jobs:
 
     - name: Run Tests
       run: |
-        pytest tests/test_models/test_pissa.py tests/test_data/test_limits.py tests/test_models/test_loader.py tests/test_training/test_kl_controller.py -v
+        pytest tests/test_models/test_pissa.py tests/test_data/test_limits.py tests/test_models/test_loader.py tests/test_training/test_kl_controller.py tests/test_cli/test_reinforce_pp_args.py -v
 
   lint:
     runs-on: ubuntu-latest

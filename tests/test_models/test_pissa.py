@@ -9,7 +9,7 @@ from thinkrl.models.reward_model import RewardModel
 
 @pytest.fixture
 def mock_peft():
-    with patch("thinkrl.models.actor.get_peft_model") as mock:
+    with patch("thinkrl.models.actor.get_peft_model", create=True) as mock:
         yield mock
 
 

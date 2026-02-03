@@ -24,6 +24,7 @@ def mock_get_model():
 @pytest.fixture
 def mock_dataset():
     with patch("thinkrl.data.datasets.RLHFDataset") as mock:
+        mock.return_value.__len__.return_value = 100
         yield mock
 
 

@@ -16,8 +16,8 @@ import torch
 from torch.utils.data import Dataset
 
 from thinkrl.utils.distributed_sampler import (
-    DistributedSampler,
     DistributedBatchSampler,
+    DistributedSampler,
     SequentialDistributedSampler,
 )
 

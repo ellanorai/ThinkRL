@@ -10,9 +10,10 @@ Author: Archit Sood @ EllanorAI
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 import logging
 import math
-from typing import Iterator, TypeVar
+from typing import TypeVar
 
 import torch
 import torch.distributed as dist
@@ -97,9 +98,7 @@ class DistributedSampler(Sampler[_T_co]):
                 rank = 0
 
         if rank >= num_replicas or rank < 0:
-            raise ValueError(
-                f"Invalid rank {rank}, rank should be in the interval [0, {num_replicas - 1}]"
-            )
+            raise ValueError(f"Invalid rank {rank}, rank should be in the interval [0, {num_replicas - 1}]")
 
         self.dataset = dataset
         self.num_replicas = num_replicas
@@ -113,9 +112,7 @@ class DistributedSampler(Sampler[_T_co]):
         # Calculate number of samples per replica
         if self.drop_last and len(self.dataset) % self.num_replicas != 0:
             # Truncate to make evenly divisible
-            self.num_samples = math.ceil(
-                (len(self.dataset) - self.num_replicas) / self.num_replicas
-            )
+            self.num_samples = math.ceil((len(self.dataset) - self.num_replicas) / self.num_replicas)
         else:
             # Pad to make evenly divisible
             self.num_samples = math.ceil(len(self.dataset) / self.num_replicas)
@@ -151,12 +148,12 @@ class DistributedSampler(Sampler[_T_co]):
                 indices += (indices * math.ceil(padding_size / len(indices)))[:padding_size]
         else:
             # Truncate to make evenly divisible
-            indices = indices[:self.total_size]
+            indices = indices[: self.total_size]
 
         assert len(indices) == self.total_size
 
         # Subsample for this replica
-        indices = indices[self.rank:self.total_size:self.num_replicas]
+        indices = indices[self.rank : self.total_size : self.num_replicas]
         assert len(indices) == self.num_samples
 
         # Skip consumed samples (for resuming training)
@@ -186,9 +183,7 @@ class DistributedSampler(Sampler[_T_co]):
         """
         self.epoch = epoch
         self.consumed_samples = consumed_samples
-        logger.debug(
-            f"DistributedSampler epoch set: epoch={epoch}, consumed_samples={consumed_samples}"
-        )
+        logger.debug(f"DistributedSampler epoch set: epoch={epoch}, consumed_samples={consumed_samples}")
 
 
 class DistributedBatchSampler(Sampler[list[int]]):

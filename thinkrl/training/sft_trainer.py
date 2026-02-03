@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable
 from dataclasses import dataclass
 import os
-from typing import Any, Optional
+from typing import Any
 
 import torch
 from torch.utils.data import DataLoader
@@ -66,7 +66,7 @@ class SFTConfig:
     save_steps: int = 500
     logging_backend: str = "tensorboard"  # 'tensorboard', 'wandb', or 'none'
     wandb_project: str = "thinkrl-sft"
-    wandb_run_name: Optional[str] = None
+    wandb_run_name: str | None = None
 
     # Output
     output_dir: str = "./sft_output"

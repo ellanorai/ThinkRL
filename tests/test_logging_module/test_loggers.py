@@ -6,21 +6,21 @@ Comprehensive tests for logging backends.
 """
 
 import io
+from pathlib import Path
 import sys
 import tempfile
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
 from thinkrl.logging.loggers import (
+    CompositeLogger,
+    ConsoleLogger,
     Logger,
     NullLogger,
-    ConsoleLogger,
-    CompositeLogger,
+    create_logger,
     is_main_process,
     log_only_main_process,
-    create_logger,
 )
 
 

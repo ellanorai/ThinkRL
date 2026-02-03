@@ -5,7 +5,6 @@ Runs a VLLM engine that can receive weight updates from a training process via N
 """
 import argparse
 from contextlib import asynccontextmanager
-from typing import Optional
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -21,8 +20,8 @@ from thinkrl.utils.logging import get_logger
 logger = get_logger(__name__)
 
 # Global Engine
-engine: Optional[AsyncLLMEngine] = None
-communicator: Optional[PyNcclCommunicator] = None
+engine: AsyncLLMEngine | None = None
+communicator: PyNcclCommunicator | None = None
 
 # Arguments
 parser = argparse.ArgumentParser()

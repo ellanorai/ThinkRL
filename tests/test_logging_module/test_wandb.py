@@ -5,11 +5,11 @@ Tests for W&B Logger
 Tests for Weights & Biases integration.
 """
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
-from thinkrl.logging.wandb import WandBLogger, WANDB_AVAILABLE
+from thinkrl.logging.wandb import WANDB_AVAILABLE, WandBLogger
 
 
 class TestWandBAvailability:

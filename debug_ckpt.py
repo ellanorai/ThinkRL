@@ -15,19 +15,14 @@ def test_debug():
         model = nn.Linear(10, 1)
         path = temp_dir / "extra_state.pt"
 
-        print(f"Saving to {path}")
         save_checkpoint(path, model, epoch=1, custom_key="custom_value", custom_step=100)
 
-        print("Loading...")
         loaded = load_checkpoint(path, model)
-        print("Loaded keys:", loaded.keys())
 
         assert loaded.get("custom_key") == "custom_value", f"custom_key missing, got {loaded.get('custom_key')}"
         assert loaded.get("custom_step") == 100
-        print("Test PASSED")
 
-    except Exception as e:
-        print(f"Test FAILED: {e}")
+    except Exception:
         import traceback
 
         traceback.print_exc()

@@ -10,10 +10,11 @@ Author: Archit Sood @ EllanorAI
 
 from __future__ import annotations
 
+from collections.abc import Callable
 import logging
 import os
 import time
-from typing import Any, Callable
+from typing import Any
 
 
 logger = logging.getLogger(__name__)
@@ -84,9 +85,7 @@ def request_api_wrapper(
             return response.json()
 
         except requests.exceptions.RequestException as e:
-            logger.warning(
-                f"API request failed (attempt {attempt + 1}/{try_max_times}): {e}"
-            )
+            logger.warning(f"API request failed (attempt {attempt + 1}/{try_max_times}): {e}")
             if attempt < try_max_times - 1:
                 time.sleep(retry_delay)
 
@@ -184,10 +183,7 @@ class RemoteRewardModel:
             self.reward_fn = self._load_reward_fn(reward_fn_path, reward_fn_name)
 
         if not self.remote_urls and self.reward_fn is None:
-            logger.warning(
-                "No remote URLs or reward function specified. "
-                "RemoteRewardModel will return zeros."
-            )
+            logger.warning("No remote URLs or reward function specified. " "RemoteRewardModel will return zeros.")
 
     def _load_reward_fn(
         self,
@@ -276,9 +272,7 @@ class RemoteRewardModel:
                 def compute_rewards(fn, q, p, l):
                     return fn(q, prompts=p, labels=l)
 
-                future = compute_rewards.remote(
-                    self.reward_fn, batch_queries, batch_prompts, batch_labels
-                )
+                future = compute_rewards.remote(self.reward_fn, batch_queries, batch_prompts, batch_labels)
                 rewards = ray.get(future)
             else:
                 rewards = self.reward_fn(
@@ -316,9 +310,7 @@ class RemoteRewardModel:
                 batch_prompts = prompts[start:end] if prompts else None
                 batch_labels = labels[start:end] if labels else None
 
-                future = remote_rm_fn_ray.remote(
-                    url, batch_queries, batch_prompts, batch_labels
-                )
+                future = remote_rm_fn_ray.remote(url, batch_queries, batch_prompts, batch_labels)
                 futures.append(future)
 
             results = ray.get(futures)
@@ -331,7 +323,7 @@ class RemoteRewardModel:
                     # Handle failed requests
                     all_rewards.extend([0.0] * batch_size)
 
-            return all_rewards[:len(queries)]
+            return all_rewards[: len(queries)]
 
         else:
             # Sequential processing with round-robin

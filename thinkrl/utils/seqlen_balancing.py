@@ -106,13 +106,13 @@ def karmarkar_karp(
             self.items.append(item)
             self.total += value
 
-        def merge(self, other: "Set") -> "Set":
+        def merge(self, other: Set) -> Set:
             return Set(
                 items=self.items + other.items,
                 total=self.total + other.total,
             )
 
-        def __lt__(self, other: "Set") -> bool:
+        def __lt__(self, other: Set) -> bool:
             return self.total < other.total
 
     class State:
@@ -130,7 +130,7 @@ def karmarkar_karp(
             """Return partition indices."""
             return [s.items for s in self.sets]
 
-        def merge(self, i: int, j: int) -> "State":
+        def merge(self, i: int, j: int) -> State:
             """Merge two partitions into a new state."""
             new_state = State(len(self.sets) - 1)
             merged = self.sets[i].merge(self.sets[j])
@@ -142,7 +142,7 @@ def karmarkar_karp(
             new_state.sets[idx] = merged
             return new_state
 
-        def __lt__(self, other: "State") -> bool:
+        def __lt__(self, other: State) -> bool:
             return self.spread() < other.spread()
 
         def __repr__(self) -> str:
@@ -252,10 +252,7 @@ def greedy_partition(
 
         for length, orig_idx in indexed_items:
             # Find partition with smallest sum that isn't full
-            candidates = [
-                (s, p) for s, p in partition_sums
-                if partition_counts[p] < items_per_partition
-            ]
+            candidates = [(s, p) for s, p in partition_sums if partition_counts[p] < items_per_partition]
             if not candidates:
                 # All full, use any
                 min_sum, min_partition = min(partition_sums)
@@ -266,10 +263,7 @@ def greedy_partition(
             partition_counts[min_partition] += 1
 
             # Update heap
-            partition_sums = [
-                (s + length if p == min_partition else s, p)
-                for s, p in partition_sums
-            ]
+            partition_sums = [(s + length if p == min_partition else s, p) for s, p in partition_sums]
             heapq.heapify(partition_sums)
     else:
         for length, orig_idx in indexed_items:
@@ -413,9 +407,7 @@ def get_minimum_num_micro_batch_size(
 
     for length in sorted_lengths:
         if length > effective_max:
-            logger.warning(
-                f"Sequence length {length} exceeds max tokens per GPU {effective_max}"
-            )
+            logger.warning(f"Sequence length {length} exceeds max tokens per GPU {effective_max}")
 
         # First-fit: find first bin with enough space
         placed = False

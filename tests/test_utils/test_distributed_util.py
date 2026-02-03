@@ -339,7 +339,7 @@ class TestObjectCommunication:
             with patch("thinkrl.utils.distributed_util.get_rank", return_value=0):
                 with patch("torch.distributed.broadcast_object_list") as mock_broadcast:
                     obj = {"key": "value"}
-                    result = broadcast_object(obj, src=0)
+                    broadcast_object(obj, src=0)
 
                     mock_broadcast.assert_called_once()
 

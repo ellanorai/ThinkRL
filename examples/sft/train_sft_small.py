@@ -18,7 +18,6 @@ Recommended small models for 4GB VRAM:
 """
 
 from dataclasses import dataclass, field
-from typing import Optional
 
 from datasets import load_dataset
 from transformers import AutoTokenizer, HfArgumentParser
@@ -39,7 +38,7 @@ class ScriptArgs:
         default="TinyLlama/TinyLlama-1.1B-Chat-v1.0", metadata={"help": "Model name or path"}
     )
     dataset_name: str = field(default="yahma/alpaca-cleaned", metadata={"help": "HuggingFace dataset name"})
-    max_samples: Optional[int] = field(default=1000, metadata={"help": "Max samples to use. None for full dataset."})
+    max_samples: int | None = field(default=1000, metadata={"help": "Max samples to use. None for full dataset."})
     output_dir: str = field(default="./output/sft", metadata={"help": "Output directory"})
 
     # Training

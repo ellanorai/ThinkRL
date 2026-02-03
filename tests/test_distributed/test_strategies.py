@@ -6,12 +6,13 @@ Comprehensive tests for ZeRO optimization strategies.
 """
 
 import pytest
+
 from thinkrl.distributed.strategies import (
+    STRATEGIES,
     DeepSpeedStrategy,
     ZeRO1Strategy,
     ZeRO2Strategy,
     ZeRO3Strategy,
-    STRATEGIES,
     get_strategy,
 )
 
