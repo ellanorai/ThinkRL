@@ -56,26 +56,17 @@ if TYPER_AVAILABLE:
         name="thinkrl",
         help="ThinkRL: RLHF Training Framework for Reasoning Models",
         add_completion=False,
+        rich_markup_mode="rich",
     )
 
     @app.command()
     def train(
-        config: Annotated[
-            Path,
-            Option("--config", "-c", help="Path to config YAML/JSON file"),
-        ],
+        config: Annotated[Path, Option("--config", "-c", help="Path to config YAML/JSON file")],
         overrides: Annotated[
-            Optional[list[str]],
-            Option("--override", "-o", help="Config overrides (key=value)"),
+            Optional[list[str]], Option("--override", "-o", help="Config overrides (key=value)")
         ] = None,
-        resume: Annotated[
-            Optional[Path],
-            Option("--resume", "-r", help="Path to checkpoint to resume from"),
-        ] = None,
-        dry_run: Annotated[
-            bool,
-            Option("--dry-run", help="Validate config without running"),
-        ] = False,
+        resume: Annotated[Optional[Path], Option("--resume", "-r", help="Path to checkpoint to resume from")] = None,
+        dry_run: Annotated[bool, Option("--dry-run", help="Validate config without running")] = False,
     ):
         """
         Run RLHF training with the specified configuration.
@@ -128,30 +119,14 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def generate(
-        model: Annotated[
-            str,
-            Option("--model", "-m", help="Model name or path"),
-        ],
-        prompts: Annotated[
-            Path,
-            Option("--prompts", "-p", help="Path to prompts JSONL file"),
-        ],
-        output: Annotated[
-            Path,
-            Option("--output", "-o", help="Output path for generations"),
-        ] = Path("outputs/generations.jsonl"),
-        max_new_tokens: Annotated[
-            int,
-            Option("--max-new-tokens", help="Maximum tokens to generate"),
-        ] = 512,
-        temperature: Annotated[
-            float,
-            Option("--temperature", "-t", help="Sampling temperature"),
-        ] = 0.7,
-        batch_size: Annotated[
-            int,
-            Option("--batch-size", "-b", help="Batch size"),
-        ] = 8,
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        prompts: Annotated[Path, Option("--prompts", "-p", help="Path to prompts JSONL file")],
+        output: Annotated[Path, Option("--output", "-o", help="Output path for generations")] = Path(
+            "outputs/generations.jsonl"
+        ),
+        max_new_tokens: Annotated[int, Option("--max-new-tokens", help="Maximum tokens to generate")] = 512,
+        temperature: Annotated[float, Option("--temperature", "-t", help="Sampling temperature")] = 0.7,
+        batch_size: Annotated[int, Option("--batch-size", "-b", help="Batch size")] = 8,
     ):
         """
         Generate completions for prompts.
@@ -168,21 +143,11 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def merge(
-        base_model: Annotated[
-            str,
-            Option("--base-model", help="Base model name or path"),
-        ],
-        adapter: Annotated[
-            Path,
-            Option("--adapter", "-a", help="Path to LoRA adapter"),
-        ],
-        output: Annotated[
-            Path,
-            Option("--output", "-o", help="Output path for merged model"),
-        ],
+        base_model: Annotated[str, Option("--base-model", help="Base model name or path")],
+        adapter: Annotated[Path, Option("--adapter", "-a", help="Path to LoRA adapter")],
+        output: Annotated[Path, Option("--output", "-o", help="Output path for merged model")],
         push_to_hub: Annotated[
-            Optional[str],
-            Option("--push-to-hub", help="Push merged model to HuggingFace Hub"),
+            Optional[str], Option("--push-to-hub", help="Push merged model to HuggingFace Hub")
         ] = None,
     ):
         """
@@ -243,10 +208,7 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def info(
-        config: Annotated[
-            Optional[Path],
-            Option("--config", "-c", help="Show config file info"),
-        ] = None,
+        config: Annotated[Optional[Path], Option("--config", "-c", help="Show config file info")] = None,
     ):
         """
         Show ThinkRL information.
@@ -316,54 +278,22 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def sft(
-        model: Annotated[
-            str,
-            Option("--model", "-m", help="Model name or path"),
-        ],
-        dataset: Annotated[
-            str,
-            Option("--dataset", "-d", help="Dataset name or path"),
-        ],
-        output_dir: Annotated[
-            Path,
-            Option("--output-dir", "-o", help="Output directory"),
-        ] = Path("./sft_output"),
-        max_seq_length: Annotated[
-            int,
-            Option("--max-seq-length", help="Maximum sequence length"),
-        ] = 2048,
-        learning_rate: Annotated[
-            float,
-            Option("--learning-rate", "--lr", help="Learning rate"),
-        ] = 2e-5,
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Dataset name or path")],
+        output_dir: Annotated[str, Option("--output-dir", "-o", help="Output directory")] = "./sft_output",
+        max_seq_length: Annotated[int, Option("--max-seq-length", help="Maximum sequence length")] = 2048,
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 2e-5,
         num_train_epochs: Annotated[
-            int,
-            Option("--num-train-epochs", "--epochs", help="Number of training epochs"),
+            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 3,
-        per_device_train_batch_size: Annotated[
-            int,
-            Option("--batch-size", "-b", help="Per-device batch size"),
-        ] = 4,
+        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
         gradient_accumulation_steps: Annotated[
-            int,
-            Option("--gradient-accumulation-steps", "--gas", help="Gradient accumulation steps"),
+            int, Option("--gradient-accumulation-steps", "--gas", help="Gradient accumulation steps")
         ] = 1,
-        lora_r: Annotated[
-            Optional[int],
-            Option("--lora-r", help="LoRA rank (enables LoRA if set)"),
-        ] = None,
-        bf16: Annotated[
-            bool,
-            Option("--bf16/--no-bf16", help="Use bfloat16 precision"),
-        ] = True,
-        packing: Annotated[
-            bool,
-            Option("--packing/--no-packing", help="Use sequence packing"),
-        ] = False,
-        push_to_hub: Annotated[
-            Optional[str],
-            Option("--push-to-hub", help="Push to HuggingFace Hub repo"),
-        ] = None,
+        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
+        packing: Annotated[bool, Option("--packing/--no-packing", help="Use sequence packing")] = False,
+        push_to_hub: Annotated[Optional[str], Option("--push-to-hub", help="Push to HuggingFace Hub repo")] = None,
     ):
         """
         Supervised Fine-Tuning (SFT) - Similar to `trl sft`.
@@ -396,46 +326,18 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def dpo(
-        model: Annotated[
-            str,
-            Option("--model", "-m", help="Model name or path"),
-        ],
-        dataset: Annotated[
-            str,
-            Option("--dataset", "-d", help="Preference dataset name or path"),
-        ],
-        output_dir: Annotated[
-            Path,
-            Option("--output-dir", "-o", help="Output directory"),
-        ] = Path("./dpo_output"),
-        beta: Annotated[
-            float,
-            Option("--beta", help="DPO beta parameter"),
-        ] = 0.1,
-        learning_rate: Annotated[
-            float,
-            Option("--learning-rate", "--lr", help="Learning rate"),
-        ] = 1e-6,
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Preference dataset name or path")],
+        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./dpo_output"),
+        beta: Annotated[float, Option("--beta", help="DPO beta parameter")] = 0.1,
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
         num_train_epochs: Annotated[
-            int,
-            Option("--num-train-epochs", "--epochs", help="Number of training epochs"),
+            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
-        per_device_train_batch_size: Annotated[
-            int,
-            Option("--batch-size", "-b", help="Per-device batch size"),
-        ] = 4,
-        loss_type: Annotated[
-            str,
-            Option("--loss-type", help="Loss type: sigmoid, hinge, ipo"),
-        ] = "sigmoid",
-        lora_r: Annotated[
-            Optional[int],
-            Option("--lora-r", help="LoRA rank (enables LoRA if set)"),
-        ] = None,
-        bf16: Annotated[
-            bool,
-            Option("--bf16/--no-bf16", help="Use bfloat16 precision"),
-        ] = True,
+        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
+        loss_type: Annotated[str, Option("--loss-type", help="Loss type: sigmoid, hinge, ipo")] = "sigmoid",
+        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     ):
         """
         Direct Preference Optimization (DPO) - Similar to `trl dpo`.
@@ -467,50 +369,19 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def ppo(
-        model: Annotated[
-            str,
-            Option("--model", "-m", help="Model name or path"),
-        ],
-        reward_model: Annotated[
-            str,
-            Option("--reward-model", "-r", help="Reward model name or path"),
-        ],
-        dataset: Annotated[
-            str,
-            Option("--dataset", "-d", help="Prompt dataset name or path"),
-        ],
-        output_dir: Annotated[
-            Path,
-            Option("--output-dir", "-o", help="Output directory"),
-        ] = Path("./ppo_output"),
-        learning_rate: Annotated[
-            float,
-            Option("--learning-rate", "--lr", help="Learning rate"),
-        ] = 1e-6,
-        kl_coeff: Annotated[
-            float,
-            Option("--kl-coeff", help="KL penalty coefficient"),
-        ] = 0.1,
-        clip_range: Annotated[
-            float,
-            Option("--clip-range", "--epsilon", help="PPO clip range"),
-        ] = 0.2,
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        reward_model: Annotated[str, Option("--reward-model", "-r", help="Reward model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
+        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./ppo_output"),
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
+        kl_coeff: Annotated[float, Option("--kl-coeff", help="KL penalty coefficient")] = 0.1,
+        clip_range: Annotated[float, Option("--clip-range", "--epsilon", help="PPO clip range")] = 0.2,
         num_train_epochs: Annotated[
-            int,
-            Option("--num-train-epochs", "--epochs", help="Number of training epochs"),
+            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
-        per_device_train_batch_size: Annotated[
-            int,
-            Option("--batch-size", "-b", help="Per-device batch size"),
-        ] = 4,
-        lora_r: Annotated[
-            Optional[int],
-            Option("--lora-r", help="LoRA rank (enables LoRA if set)"),
-        ] = None,
-        bf16: Annotated[
-            bool,
-            Option("--bf16/--no-bf16", help="Use bfloat16 precision"),
-        ] = True,
+        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
+        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     ):
         """
         Proximal Policy Optimization (PPO).
@@ -542,50 +413,19 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def grpo(
-        model: Annotated[
-            str,
-            Option("--model", "-m", help="Model name or path"),
-        ],
-        dataset: Annotated[
-            str,
-            Option("--dataset", "-d", help="Prompt dataset name or path"),
-        ],
-        output_dir: Annotated[
-            Path,
-            Option("--output-dir", "-o", help="Output directory"),
-        ] = Path("./grpo_output"),
-        learning_rate: Annotated[
-            float,
-            Option("--learning-rate", "--lr", help="Learning rate"),
-        ] = 1e-6,
-        kl_coeff: Annotated[
-            float,
-            Option("--kl-coeff", help="KL penalty coefficient"),
-        ] = 0.1,
-        group_size: Annotated[
-            int,
-            Option("--group-size", "-g", help="Number of samples per prompt"),
-        ] = 4,
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
+        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./grpo_output"),
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
+        kl_coeff: Annotated[float, Option("--kl-coeff", help="KL penalty coefficient")] = 0.1,
+        group_size: Annotated[int, Option("--group-size", "-g", help="Number of samples per prompt")] = 4,
         num_train_epochs: Annotated[
-            int,
-            Option("--num-train-epochs", "--epochs", help="Number of training epochs"),
+            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
-        per_device_train_batch_size: Annotated[
-            int,
-            Option("--batch-size", "-b", help="Per-device batch size"),
-        ] = 4,
-        lora_r: Annotated[
-            Optional[int],
-            Option("--lora-r", help="LoRA rank (enables LoRA if set)"),
-        ] = None,
-        bf16: Annotated[
-            bool,
-            Option("--bf16/--no-bf16", help="Use bfloat16 precision"),
-        ] = True,
-        reward_fn: Annotated[
-            Optional[str],
-            Option("--reward-fn", help="Path to reward function module"),
-        ] = None,
+        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
+        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
+        reward_fn: Annotated[Optional[str], Option("--reward-fn", help="Path to reward function module")] = None,
     ):
         """
         Group Relative Policy Optimization (GRPO).
@@ -618,38 +458,16 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def reward(
-        model: Annotated[
-            str,
-            Option("--model", "-m", help="Base model name or path"),
-        ],
-        dataset: Annotated[
-            str,
-            Option("--dataset", "-d", help="Preference dataset name or path"),
-        ],
-        output_dir: Annotated[
-            Path,
-            Option("--output-dir", "-o", help="Output directory"),
-        ] = Path("./reward_output"),
-        learning_rate: Annotated[
-            float,
-            Option("--learning-rate", "--lr", help="Learning rate"),
-        ] = 1e-5,
+        model: Annotated[str, Option("--model", "-m", help="Base model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Preference dataset name or path")],
+        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./reward_output"),
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-5,
         num_train_epochs: Annotated[
-            int,
-            Option("--num-train-epochs", "--epochs", help="Number of training epochs"),
+            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
-        per_device_train_batch_size: Annotated[
-            int,
-            Option("--batch-size", "-b", help="Per-device batch size"),
-        ] = 4,
-        lora_r: Annotated[
-            Optional[int],
-            Option("--lora-r", help="LoRA rank (enables LoRA if set)"),
-        ] = None,
-        bf16: Annotated[
-            bool,
-            Option("--bf16/--no-bf16", help="Use bfloat16 precision"),
-        ] = True,
+        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
+        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     ):
         """
         Train a Reward Model.
@@ -678,42 +496,17 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def orpo(
-        model: Annotated[
-            str,
-            Option("--model", "-m", help="Model name or path"),
-        ],
-        dataset: Annotated[
-            str,
-            Option("--dataset", "-d", help="Preference dataset name or path"),
-        ],
-        output_dir: Annotated[
-            Path,
-            Option("--output-dir", "-o", help="Output directory"),
-        ] = Path("./orpo_output"),
-        beta: Annotated[
-            float,
-            Option("--beta", help="ORPO beta parameter (odds ratio weight)"),
-        ] = 0.1,
-        learning_rate: Annotated[
-            float,
-            Option("--learning-rate", "--lr", help="Learning rate"),
-        ] = 1e-5,
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Preference dataset name or path")],
+        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./orpo_output"),
+        beta: Annotated[float, Option("--beta", help="ORPO beta parameter (odds ratio weight)")] = 0.1,
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-5,
         num_train_epochs: Annotated[
-            int,
-            Option("--num-train-epochs", "--epochs", help="Number of training epochs"),
+            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
-        per_device_train_batch_size: Annotated[
-            int,
-            Option("--batch-size", "-b", help="Per-device batch size"),
-        ] = 4,
-        lora_r: Annotated[
-            Optional[int],
-            Option("--lora-r", help="LoRA rank (enables LoRA if set)"),
-        ] = None,
-        bf16: Annotated[
-            bool,
-            Option("--bf16/--no-bf16", help="Use bfloat16 precision"),
-        ] = True,
+        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
+        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     ):
         """
         Odds Ratio Preference Optimization (ORPO).
@@ -743,42 +536,17 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def kto(
-        model: Annotated[
-            str,
-            Option("--model", "-m", help="Model name or path"),
-        ],
-        dataset: Annotated[
-            str,
-            Option("--dataset", "-d", help="Dataset with binary feedback"),
-        ],
-        output_dir: Annotated[
-            Path,
-            Option("--output-dir", "-o", help="Output directory"),
-        ] = Path("./kto_output"),
-        beta: Annotated[
-            float,
-            Option("--beta", help="KTO beta parameter"),
-        ] = 0.1,
-        learning_rate: Annotated[
-            float,
-            Option("--learning-rate", "--lr", help="Learning rate"),
-        ] = 1e-6,
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Dataset with binary feedback")],
+        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./kto_output"),
+        beta: Annotated[float, Option("--beta", help="KTO beta parameter")] = 0.1,
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
         num_train_epochs: Annotated[
-            int,
-            Option("--num-train-epochs", "--epochs", help="Number of training epochs"),
+            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
-        per_device_train_batch_size: Annotated[
-            int,
-            Option("--batch-size", "-b", help="Per-device batch size"),
-        ] = 4,
-        lora_r: Annotated[
-            Optional[int],
-            Option("--lora-r", help="LoRA rank (enables LoRA if set)"),
-        ] = None,
-        bf16: Annotated[
-            bool,
-            Option("--bf16/--no-bf16", help="Use bfloat16 precision"),
-        ] = True,
+        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
+        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     ):
         """
         Kahneman-Tversky Optimization (KTO).
@@ -808,94 +576,40 @@ if TYPER_AVAILABLE:
 
     @app.command()
     def reinforce_pp(
-        model: Annotated[
-            str,
-            Option("--model", "-m", help="Model name or path"),
-        ],
-        dataset: Annotated[
-            str,
-            Option("--dataset", "-d", help="Prompt dataset name or path"),
-        ],
-        dataset_split: Annotated[
-            str,
-            Option("--dataset-split", help="Dataset split to load"),
-        ] = "train",
-        prompt_column: Annotated[
-            str,
-            Option("--prompt-column", "-pc", help="Column name for prompts"),
-        ] = "prompt",
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
+        dataset_split: Annotated[str, Option("--dataset-split", help="Dataset split to load")] = "train",
+        prompt_column: Annotated[str, Option("--prompt-column", "-pc", help="Column name for prompts")] = "prompt",
         source: Annotated[
-            str,
-            Option("--source", "-s", help="Dataset source: 'hf' (HuggingFace), 'local', 'json', 'csv'"),
+            str, Option("--source", "-s", help="Dataset source: 'hf' (HuggingFace), 'local', 'json', 'csv'")
         ] = "hf",
         ref_model: Annotated[
-            Optional[str],
-            Option("--ref-model", "-r", help="Reference model name or path (required)"),
+            Optional[str], Option("--ref-model", "-r", help="Reference model name or path (required)")
         ] = None,
-        output_dir: Annotated[
-            Path,
-            Option("--output-dir", "-o", help="Output directory"),
-        ] = Path("./reinforce_pp_output"),
-        learning_rate: Annotated[
-            float,
-            Option("--learning-rate", "--lr", help="Learning rate"),
-        ] = 1e-6,
-        mode: Annotated[
-            str,
-            Option("--mode", help="Mode: 'general' (k=1) or 'baseline' (k>1)"),
-        ] = "baseline",
-        group_size: Annotated[
-            int,
-            Option("--group-size", "-g", help="Group size (for baseline mode)"),
-        ] = 4,
-        entropy_coeff: Annotated[
-            float,
-            Option("--entropy-coeff", help="Entropy coefficient"),
-        ] = 0.01,
-        kl_loss_coeff: Annotated[
-            float,
-            Option("--kl-coeff", help="KL loss coefficient (for baseline mode)"),
-        ] = 0.1,
+        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path(
+            "./reinforce_pp_output"
+        ),
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
+        mode: Annotated[str, Option("--mode", help="Mode: 'general' (k=1) or 'baseline' (k>1)")] = "baseline",
+        group_size: Annotated[int, Option("--group-size", "-g", help="Group size (for baseline mode)")] = 4,
+        entropy_coeff: Annotated[float, Option("--entropy-coeff", help="Entropy coefficient")] = 0.01,
+        kl_loss_coeff: Annotated[float, Option("--kl-coeff", help="KL loss coefficient (for baseline mode)")] = 0.1,
         num_train_epochs: Annotated[
-            int,
-            Option("--num-train-epochs", "--epochs", help="Number of training epochs"),
+            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
-        per_device_train_batch_size: Annotated[
-            int,
-            Option("--batch-size", "-b", help="Per-device batch size"),
-        ] = 4,
-        lora_r: Annotated[
-            Optional[int],
-            Option("--lora-r", help="LoRA rank (enables LoRA if set)"),
-        ] = None,
-        grad_accum: Annotated[
-            int,
-            Option("--grad-accum", "-ga", help="Gradient accumulation steps"),
-        ] = 1,
-        bf16: Annotated[
-            bool,
-            Option("--bf16/--no-bf16", help="Use bfloat16 precision"),
-        ] = True,
+        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
+        lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        grad_accum: Annotated[int, Option("--grad-accum", "-ga", help="Gradient accumulation steps")] = 1,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
         use_flash_attention: Annotated[
-            bool,
-            Option("--flash-attn/--no-flash-attn", help="Use Flash Attention 2"),
+            bool, Option("--flash-attn/--no-flash-attn", help="Use Flash Attention 2")
         ] = False,
         reward_fn: Annotated[
-            Optional[str],
-            Option("--reward-fn", help="Path to reward function (module.py:func_name)"),
+            Optional[str], Option("--reward-fn", help="Path to reward function (module.py:func_name)")
         ] = None,
-        deepspeed: Annotated[
-            Optional[str],
-            Option("--deepspeed", help="Path to DeepSpeed configuration file"),
-        ] = None,
-        use_vllm: Annotated[
-            bool,
-            Option("--use-vllm", help="Use VLLM for generation"),
-        ] = False,
-        vllm_group_port: Annotated[
-            int,
-            Option("--vllm-group-port", help="NCCL group port for VLLM sync"),
-        ] = 51216,
+        deepspeed: Annotated[Optional[str], Option("--deepspeed", help="Path to DeepSpeed configuration file")] = None,
+        use_vllm: Annotated[bool, Option("--use-vllm", help="Use VLLM for generation")] = False,
+        vllm_group_port: Annotated[int, Option("--vllm-group-port", help="NCCL group port for VLLM sync")] = 51216,
         gradient_checkpointing: Annotated[
             bool,
             Option(
@@ -904,12 +618,10 @@ if TYPER_AVAILABLE:
             ),
         ] = False,
         logging_backend: Annotated[
-            str,
-            Option("--logging-backend", help="Logging backend: 'tensorboard', 'wandb', or 'none'"),
+            str, Option("--logging-backend", help="Logging backend: 'tensorboard', 'wandb', or 'none'")
         ] = "tensorboard",
         wandb_project: Annotated[
-            str,
-            Option("--wandb-project", help="WandB project name (if using wandb)"),
+            str, Option("--wandb-project", help="WandB project name (if using wandb)")
         ] = "thinkrl-reinforce-pp",
     ):
         """
@@ -1122,6 +834,18 @@ def main():
         app()
     else:
         sys.exit("ThinkRL CLI requires typer. Install with: pip install typer")
+
+
+def reinforce_pp_entry():
+    """Entry point for standalone 'reinforce-pp' command."""
+    if not TYPER_AVAILABLE:
+        sys.exit("ThinkRL CLI requires typer. Install with: pip install typer")
+
+    if len(sys.argv) > 1 and sys.argv[1] == "reinforce-pp":
+        pass
+    else:
+        sys.argv.insert(1, "reinforce-pp")
+    app()
 
 
 if __name__ == "__main__":
