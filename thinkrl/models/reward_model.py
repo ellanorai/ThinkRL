@@ -65,6 +65,7 @@ class RewardModel(nn.Module):
         lora_rank: int = 0,
         lora_alpha: int = 16,
         lora_dropout: float = 0.05,
+        lora_init_type: str = "default",
         target_modules: list[str] | None = None,
         device_map: str | dict | None = None,
         trust_remote_code: bool = False,
@@ -169,6 +170,7 @@ class RewardModel(nn.Module):
                 target_modules=target_modules,
                 task_type=TaskType.SEQ_CLS,
                 bias="none",
+                init_lora_weights=True if lora_init_type == "default" else lora_init_type,
             )
 
             self.model = get_peft_model(self.model, lora_config)

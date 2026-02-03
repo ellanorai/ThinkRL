@@ -90,6 +90,8 @@ class TestModelLoader(unittest.TestCase):
             target_modules=None,
             device_map=None,
             trust_remote_code=False,
+            fp16=False,
+            lora_init_type="default",
         )
         assert model == mock_instance
 

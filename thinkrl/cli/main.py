@@ -599,6 +599,9 @@ if TYPER_AVAILABLE:
         ] = 1,
         per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
         lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        lora_init: Annotated[
+            str, Option("--lora-init", help="LoRA init type: 'default', 'garbage', 'pissa', 'pissa_niter_[n]'")
+        ] = "default",
         grad_accum: Annotated[int, Option("--grad-accum", "-ga", help="Gradient accumulation steps")] = 1,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
         fp16: Annotated[bool, Option("--fp16/--no-fp16", help="Use float16 precision")] = False,
@@ -650,6 +653,8 @@ if TYPER_AVAILABLE:
         typer.echo(f"Mode: {mode}")
         typer.echo(f"Group Size: {group_size}")
         typer.echo(f"Learning rate: {learning_rate}")
+        typer.echo(f"LoRA Rank: {lora_r}")
+        typer.echo(f"LoRA Init: {lora_init}")
         typer.echo(f"Entropy Coeff: {entropy_coeff}")
         typer.echo(f"KL Coeff: {kl_loss_coeff}")
         typer.echo(f"Epochs: {num_train_epochs}")
@@ -696,6 +701,7 @@ if TYPER_AVAILABLE:
             fp16=fp16,
             trust_remote_code=True,
             lora_rank=lora_r if lora_r else 0,
+            lora_init_type=lora_init,
             use_flash_attention=use_flash_attention,
             device_map={"": local_rank} if torch.cuda.is_available() else None,
         )
@@ -710,6 +716,7 @@ if TYPER_AVAILABLE:
                 bf16=bf16,
                 fp16=fp16,
                 trust_remote_code=True,
+                lora_init_type=lora_init,
                 use_flash_attention=use_flash_attention,
                 device_map={"": local_rank} if torch.cuda.is_available() else None,
             )
