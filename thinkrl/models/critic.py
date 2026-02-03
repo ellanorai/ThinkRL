@@ -23,12 +23,14 @@ logger = logging.getLogger(__name__)
 # Optional imports
 try:
     from transformers import AutoConfig, AutoModel
+
     _TRANSFORMERS_AVAILABLE = True
 except ImportError:
     _TRANSFORMERS_AVAILABLE = False
 
 try:
-    from peft import LoraConfig, get_peft_model, TaskType
+    from peft import LoraConfig, TaskType, get_peft_model
+
     _PEFT_AVAILABLE = True
 except ImportError:
     _PEFT_AVAILABLE = False
@@ -58,6 +60,7 @@ class Critic(nn.Module):
         pretrained_model: str | nn.Module,
         use_flash_attention: bool = True,
         bf16: bool = True,
+        fp16: bool = False,
         load_in_4bit: bool = False,
         lora_rank: int = 0,
         lora_alpha: int = 16,
@@ -74,6 +77,7 @@ class Critic(nn.Module):
             pretrained_model: Model name or pre-loaded model
             use_flash_attention: Use Flash Attention 2 if available
             bf16: Use bfloat16 precision
+            fp16: Use float16 precision
             load_in_4bit: Load model in 4-bit quantization
             lora_rank: LoRA rank (0 to disable)
             lora_alpha: LoRA alpha scaling
@@ -85,9 +89,7 @@ class Critic(nn.Module):
         super().__init__()
 
         if not _TRANSFORMERS_AVAILABLE:
-            raise ImportError(
-                "transformers is required. Install with: pip install transformers"
-            )
+            raise ImportError("transformers is required. Install with: pip install transformers")
 
         # Load base model if string provided
         if isinstance(pretrained_model, str):
@@ -108,6 +110,8 @@ class Critic(nn.Module):
 
             if bf16:
                 load_kwargs["torch_dtype"] = torch.bfloat16
+            elif fp16:
+                load_kwargs["torch_dtype"] = torch.float16
 
             if device_map is not None:
                 load_kwargs["device_map"] = device_map
@@ -115,6 +119,7 @@ class Critic(nn.Module):
             if load_in_4bit:
                 try:
                     from transformers import BitsAndBytesConfig
+
                     load_kwargs["quantization_config"] = BitsAndBytesConfig(
                         load_in_4bit=True,
                         bnb_4bit_compute_dtype=torch.bfloat16,
@@ -143,9 +148,7 @@ class Critic(nn.Module):
         # Apply LoRA if specified
         if lora_rank > 0:
             if not _PEFT_AVAILABLE:
-                raise ImportError(
-                    "peft is required for LoRA. Install with: pip install peft"
-                )
+                raise ImportError("peft is required for LoRA. Install with: pip install peft")
 
             if target_modules is None:
                 target_modules = self._get_default_target_modules()
@@ -162,19 +165,28 @@ class Critic(nn.Module):
             self.model = get_peft_model(self.model, lora_config)
             logger.info(f"Applied LoRA with rank={lora_rank}")
 
-            # Cast non-LoRA layers to bf16 if needed
+            # Cast non-LoRA layers to target precision if needed
             if bf16:
                 for name, param in self.model.named_parameters():
                     if "lora_" not in name:
                         param.data = param.data.to(torch.bfloat16)
+            elif fp16:
+                for name, param in self.model.named_parameters():
+                    if "lora_" not in name:
+                        param.data = param.data.to(torch.float16)
 
         self.lora_rank = lora_rank
 
     def _get_default_target_modules(self) -> list[str]:
         """Get default LoRA target modules based on model architecture."""
         return [
-            "q_proj", "k_proj", "v_proj", "o_proj",
-            "gate_proj", "up_proj", "down_proj",
+            "q_proj",
+            "k_proj",
+            "v_proj",
+            "o_proj",
+            "gate_proj",
+            "up_proj",
+            "down_proj",
             "query_key_value",
         ]
 
@@ -277,25 +289,21 @@ class Critic(nn.Module):
         else:
             trainable = sum(p.numel() for p in self.parameters() if p.requires_grad)
             total = sum(p.numel() for p in self.parameters())
-            logger.info(
-                f"Trainable: {trainable:,} / {total:,} = {100 * trainable / total:.2f}%"
-            )
+            logger.info(f"Trainable: {trainable:,} / {total:,} = {100 * trainable / total:.2f}%")
 
     def save_pretrained(self, save_directory: str, **kwargs):
         """Save the model."""
         self.model.save_pretrained(save_directory, **kwargs)
         # Save value head separately
-        torch.save(
-            self.value_head.state_dict(),
-            f"{save_directory}/value_head.pt"
-        )
+        torch.save(self.value_head.state_dict(), f"{save_directory}/value_head.pt")
 
     @classmethod
-    def from_pretrained(cls, model_path: str, **kwargs) -> "Critic":
+    def from_pretrained(cls, model_path: str, **kwargs) -> Critic:
         """Load a saved Critic model."""
         critic = cls(pretrained_model=model_path, **kwargs)
         # Try to load value head if it exists
         import os
+
         value_head_path = os.path.join(model_path, "value_head.pt")
         if os.path.exists(value_head_path):
             critic.value_head.load_state_dict(torch.load(value_head_path))

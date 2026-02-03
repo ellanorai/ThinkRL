@@ -601,6 +601,7 @@ if TYPER_AVAILABLE:
         lora_r: Annotated[Optional[int], Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
         grad_accum: Annotated[int, Option("--grad-accum", "-ga", help="Gradient accumulation steps")] = 1,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
+        fp16: Annotated[bool, Option("--fp16/--no-fp16", help="Use float16 precision")] = False,
         use_flash_attention: Annotated[
             bool, Option("--flash-attn/--no-flash-attn", help="Use Flash Attention 2")
         ] = False,
@@ -623,6 +624,10 @@ if TYPER_AVAILABLE:
         wandb_project: Annotated[
             str, Option("--wandb-project", help="WandB project name (if using wandb)")
         ] = "thinkrl-reinforce-pp",
+        max_length: Annotated[int, Option("--max-length", help="Maximum sequence length")] = 512,
+        max_samples: Annotated[
+            Optional[int], Option("--max-samples", help="Maximum number of samples to load from dataset")
+        ] = None,
     ):
         """
         REINFORCE++ Policy Optimization.
@@ -649,9 +654,18 @@ if TYPER_AVAILABLE:
         typer.echo(f"KL Coeff: {kl_loss_coeff}")
         typer.echo(f"Epochs: {num_train_epochs}")
         typer.echo(f"Batch size: {per_device_train_batch_size}")
+        typer.echo(f"BF16 Enabled: {bf16}")
+        typer.echo(f"FP16 Enabled: {fp16}")
         typer.echo(f"VLLM Enabled: {use_vllm}")
         typer.echo(f"Logging Backend: {logging_backend}")
+        typer.echo(f"Max Length: {max_length}")
+        typer.echo(f"Max Samples: {max_samples if max_samples else 'All'}")
         typer.echo()
+
+        # Handle precision overlap: if fp16 is requested, disable bf16
+        if fp16 and bf16:
+            bf16 = False
+            typer.echo("Note: Both BF16 and FP16 requested. Prioritizing FP16 (BF16 disabled).")
 
         # Custom imports inside command to avoid circular deps / startup costs
         import importlib.util
@@ -679,6 +693,7 @@ if TYPER_AVAILABLE:
             model,
             model_type="actor",
             bf16=bf16,
+            fp16=fp16,
             trust_remote_code=True,
             lora_rank=lora_r if lora_r else 0,
             use_flash_attention=use_flash_attention,
@@ -693,6 +708,7 @@ if TYPER_AVAILABLE:
                 ref_model,
                 model_type="ref",
                 bf16=bf16,
+                fp16=fp16,
                 trust_remote_code=True,
                 use_flash_attention=use_flash_attention,
                 device_map={"": local_rank} if torch.cuda.is_available() else None,
@@ -712,6 +728,8 @@ if TYPER_AVAILABLE:
             split=dataset_split,
             prompt_column=prompt_column,
             source=source,
+            max_length=max_length,
+            max_samples=max_samples,
         )
 
         # 3. Load Reward Function

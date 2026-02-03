@@ -95,6 +95,7 @@ class RLHFDataset(BaseRLHFDataset):
         prompt_column: str = "prompt",
         response_column: str | None = None,
         max_length: int = 512,
+        max_samples: int | None = None,
         split: str = "train",
         preprocess_fn: Callable | None = None,
         **kwargs,
@@ -113,6 +114,8 @@ class RLHFDataset(BaseRLHFDataset):
         # Filter and load data into memory to handle invalid rows efficiently
         self.data = []
         for item in self.dataset:
+            if max_samples and len(self.data) >= max_samples:
+                break
             # Custom preprocessing first
             if self.preprocess_fn:
                 try:
@@ -178,6 +181,7 @@ class PreferenceDataset(BaseRLHFDataset):
         chosen_column: str = "chosen",
         rejected_column: str = "rejected",
         max_length: int = 512,
+        max_samples: int | None = None,
         split: str = "train",
         **kwargs,
     ):
@@ -195,6 +199,8 @@ class PreferenceDataset(BaseRLHFDataset):
         # Filter data
         self.data = []
         for item in self.dataset:
+            if max_samples and len(self.data) >= max_samples:
+                break
             prompt = item.get(self.prompt_column)
             chosen = item.get(self.chosen_column)
             rejected = item.get(self.rejected_column)
