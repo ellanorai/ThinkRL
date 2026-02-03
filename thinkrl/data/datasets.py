@@ -128,7 +128,13 @@ class RLHFDataset(BaseRLHFDataset):
             item[self.prompt_column] = prompt.strip()
             self.data.append(item)
 
-        logger.info(f"Loaded {len(self.data)} valid samples from {dataset_name_or_path}")
+        if not self.data:
+            logger.warning(
+                f"No valid samples found in {dataset_name_or_path} with prompt_column='{prompt_column}'. "
+                f"Dataset length: {len(self.dataset)}"
+            )
+        else:
+            logger.info(f"Loaded {len(self.data)} valid samples from {dataset_name_or_path}")
 
     def __getitem__(self, idx: int) -> dict[str, Any]:
         sample = self.data[idx]

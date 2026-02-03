@@ -384,7 +384,8 @@ EXTRAS_REQUIRE = {
 # Console scripts for CLI tools
 CONSOLE_SCRIPTS = {
     # Core training commands
-    "thinkrl": "thinkrl.scripts.train:main",
+    "thinkrl": "thinkrl.cli.main:main",
+    "reinforce-pp": "thinkrl.cli.main:reinforce_pp_entry",
     "thinkrl-train": "thinkrl.scripts.train:main",
     # Evaluation commands
     "thinkrl-eval": "thinkrl.scripts.evaluate:main",
