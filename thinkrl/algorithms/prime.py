@@ -95,7 +95,7 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
             **kwargs,
         )
 
-        self.config = config
+        self.config: PRIMEConfig = config
 
         # 1. Setup Reference Model (Frozen)
         # If not provided, clone from policy (SFT start)

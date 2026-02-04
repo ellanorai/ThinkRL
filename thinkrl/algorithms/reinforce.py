@@ -95,7 +95,7 @@ class REINFORCEAlgorithm(BaseRLHFAlgorithm):
             **kwargs,
         )
 
-        self.config = config
+        self.config: REINFORCEConfig = config
 
         # Moving average baseline state
         self._baseline_mean: float = 0.0

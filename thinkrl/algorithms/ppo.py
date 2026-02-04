@@ -107,7 +107,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
             **kwargs,
         )
 
-        self.config = config
+        self.config: PPOConfig = config
         self.value_model = value_model
 
         # Handle Optimizers

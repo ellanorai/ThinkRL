@@ -80,7 +80,7 @@ class PAPOAlgorithm(GRPOAlgorithm):
             **kwargs,
         )
 
-        self.config = config
+        self.config: PAPOConfig = config
 
         # Initialize PAPO Loss Function
         # Note: PAPOLoss computes KL ref internally, unlike GRPOLoss

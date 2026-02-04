@@ -110,7 +110,7 @@ class IPOAlgorithm(BaseRLHFAlgorithm):
             **kwargs,
         )
 
-        self.config = config
+        self.config: IPOConfig = config
         self.accum_steps = 0  # Counter for gradient accumulation
 
         if self.ref_model is None:

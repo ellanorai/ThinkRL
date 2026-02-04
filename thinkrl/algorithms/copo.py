@@ -163,7 +163,7 @@ class COPOAlgorithm(BaseRLHFAlgorithm):
         tokenizer: Any | None = None,
         **kwargs,
     ):
-        self.config = config or COPOConfig()
+        self.config: COPOConfig = config
 
         super().__init__(
             policy_model=policy_model,

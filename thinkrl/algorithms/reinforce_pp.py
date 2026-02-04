@@ -105,7 +105,7 @@ class REINFORCEPPAlgorithm(BaseRLHFAlgorithm):
             learning_rate=config.learning_rate,
             **kwargs,
         )
-        self.config = config
+        self.config: REINFORCEPPConfig = config
 
         # Ensure reference model exists
         if self.ref_model is None:
