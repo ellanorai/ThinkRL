@@ -99,6 +99,32 @@ class TensorBoardLogger(Logger):
         if self._writer:
             self._writer.add_text(key, text, global_step=step or 0)
 
+    def log_table(
+        self,
+        key: str,
+        columns: list[str],
+        data: list[list[Any]],
+        step: int | None = None,
+    ) -> None:
+        """Log tabular data as a Markdown table."""
+        if not self._writer:
+            return
+
+        # Simple Markdown table generation
+        header = "| " + " | ".join(str(c) for c in columns) + " |"
+        separator = "| " + " | ".join(["---"] * len(columns)) + " |"
+
+        rows = []
+        for row in data:
+            # Convert all cells to string and sanitize newlines
+            row_str = [str(cell).replace("\n", " ") for cell in row]
+            rows.append("| " + " | ".join(row_str) + " |")
+
+        table_md = "\n".join([header, separator] + rows)
+
+        # Log as text (Markdown supported by TensorBoard)
+        self._writer.add_text(key, table_md, global_step=step or 0)
+
     def log_histogram(
         self,
         key: str,
