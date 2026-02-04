@@ -84,6 +84,18 @@ class NullLogger(Logger):
     def finish(self) -> None:
         pass
 
+    def log_text(self, key: str, text: str, step: int | None = None) -> None:
+        pass
+
+    def log_table(
+        self,
+        key: str,
+        columns: list[str],
+        data: list[list[Any]],
+        step: int | None = None,
+    ) -> None:
+        pass
+
 
 class ConsoleLogger(Logger):
     """Logger that prints to console."""
@@ -137,6 +149,20 @@ class ConsoleLogger(Logger):
 
     def finish(self) -> None:
         pass
+
+    def log_text(self, key: str, text: str, step: int | None = None) -> None:
+        print(f"{self.prefix}Text [{key}]: {text}", file=self.stream)
+        self.stream.flush()
+
+    def log_table(
+        self,
+        key: str,
+        columns: list[str],
+        data: list[list[Any]],
+        step: int | None = None,
+    ) -> None:
+        print(f"{self.prefix}Table [{key}]: {len(data)} rows", file=self.stream)
+        self.stream.flush()
 
 
 class CompositeLogger(Logger):

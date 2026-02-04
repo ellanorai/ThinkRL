@@ -100,7 +100,7 @@ class DrGRPOAlgorithm(BaseRLHFAlgorithm):
             **kwargs,
         )
 
-        self.config = config
+        self.config: DrGRPOConfig = config
 
         # Initialize Loss Functions
         self.loss_fn = GRPOLoss(clip_eps=config.epsilon, beta=config.kl_coeff)

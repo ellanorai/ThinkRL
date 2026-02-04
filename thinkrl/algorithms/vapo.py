@@ -109,7 +109,7 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
             **kwargs,
         )
 
-        self.config = config
+        self.config: VAPOConfig = config
         self.value_model = value_model
 
         # Initialize Value Optimizer

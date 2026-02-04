@@ -76,8 +76,9 @@ class TensorBoardLogger(Logger):
         return self._writer
 
     def log(self, metrics: dict[str, float | int], step: int) -> None:
-        for key, value in metrics.items():
-            self._writer.add_scalar(key, value, step)
+        if self._writer:
+            for key, value in metrics.items():
+                self._writer.add_scalar(key, value, step)
 
     def log_hyperparams(self, params: dict[str, Any]) -> None:
         # TensorBoard uses hparams for hyperparameter logging
@@ -91,10 +92,38 @@ class TensorBoardLogger(Logger):
             else:
                 scalar_params[key] = str(value)
 
-        self._writer.add_hparams(scalar_params, {})
+        if self._writer:
+            self._writer.add_hparams(scalar_params, {})
 
     def log_text(self, key: str, text: str, step: int | None = None) -> None:
-        self._writer.add_text(key, text, global_step=step or 0)
+        if self._writer:
+            self._writer.add_text(key, text, global_step=step or 0)
+
+    def log_table(
+        self,
+        key: str,
+        columns: list[str],
+        data: list[list[Any]],
+        step: int | None = None,
+    ) -> None:
+        """Log tabular data as a Markdown table."""
+        if not self._writer:
+            return
+
+        # Simple Markdown table generation
+        header = "| " + " | ".join(str(c) for c in columns) + " |"
+        separator = "| " + " | ".join(["---"] * len(columns)) + " |"
+
+        rows = []
+        for row in data:
+            # Convert all cells to string and sanitize newlines
+            row_str = [str(cell).replace("\n", " ") for cell in row]
+            rows.append("| " + " | ".join(row_str) + " |")
+
+        table_md = "\n".join([header, separator] + rows)
+
+        # Log as text (Markdown supported by TensorBoard)
+        self._writer.add_text(key, table_md, global_step=step or 0)
 
     def log_histogram(
         self,
@@ -104,7 +133,8 @@ class TensorBoardLogger(Logger):
         bins: str = "tensorflow",
     ) -> None:
         """Log a histogram of values."""
-        self._writer.add_histogram(key, values, step, bins=bins)
+        if self._writer:
+            self._writer.add_histogram(key, values, step, bins=bins)
 
     def log_image(
         self,
@@ -114,7 +144,8 @@ class TensorBoardLogger(Logger):
         dataformats: str = "CHW",
     ) -> None:
         """Log an image."""
-        self._writer.add_image(key, image, step, dataformats=dataformats)
+        if self._writer:
+            self._writer.add_image(key, image, step, dataformats=dataformats)
 
     def finish(self) -> None:
         if self._writer is not None:

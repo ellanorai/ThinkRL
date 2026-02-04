@@ -212,7 +212,7 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
             **kwargs,
         )
 
-        self.config = config
+        self.config: DAPOConfig = config
         self.sampling_buffer = DynamicSamplingBuffer(config)
         self._validate_model()
 

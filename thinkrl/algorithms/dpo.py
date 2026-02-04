@@ -84,7 +84,7 @@ class DPOAlgorithm(BaseRLHFAlgorithm):
             **kwargs,
         )
 
-        self.config = config
+        self.config: DPOConfig = config
 
         # Type check to satisfy strict linters since base class defines it as Optional
         if self.ref_model is None:
