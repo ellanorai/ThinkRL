@@ -57,7 +57,7 @@ def test_reinforce_pp_args_fp16(mock_trainer, mock_get_model, mock_dataset, mock
             "fake_dataset",
             "--fp16",
             "--batch-size",
-            "1",
+            "4",
         ],
     )
 

@@ -19,11 +19,15 @@
         <img alt="License" src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" />
       </a>
       <br>
+      <img alt="Development Status" src="https://img.shields.io/badge/status-alpha%20%2F%20work--in--progress-yellow" />
+      <br>
       <em>Innovate / Optimize / Scale / Reasoning-Centric</em>
     </p>
 </div>
 
 <hr>
+
+> **⚠️ Alpha / Work in Progress**: ThinkRL is under active development. Core infrastructure is production-ready, but some training loops and features are still being implemented. See [Implementation Status](#implementation-status) below.
 
 ThinkRL is a **modular, high-performance, and reasoning-centric** open-source library for Reinforcement Learning from Human and AI Feedback (RLHF & RLAIF). It integrates **vLLM-based generation** with advanced policy optimization to enable scalable training of reasoning models (System 2) and standard LLMs.
 
@@ -32,6 +36,7 @@ ThinkRL is a **modular, high-performance, and reasoning-centric** open-source li
 ## 📖 Table of Contents
 
 - [🗞️ News](#news)
+- [📊 Implementation Status](#implementation-status) - What's Ready vs In Progress
 - [🏗️ Architecture](#architecture-foundation-vllm--pytorch) - vLLM + PyTorch Infrastructure
 - [🎯 Reasoning Paradigm](#design-paradigm-reasoning-centric-execution) - Unified Reasoning Pipelines
 - [🚀 Algorithms](#state-of-the-art-algorithms) - VAPO, DAPO, COPO, PAPO, GRPO
@@ -48,6 +53,7 @@ ThinkRL is a **modular, high-performance, and reasoning-centric** open-source li
 <details>
 <summary>View Latest Updates</summary>
 
+- **[2026/02]** **Alpha Release**: ThinkRL now publicly available. Core infrastructure production-ready, training loops in active development.
 - **[2026/01]** **ThinkRL 1.0**: Full support for **STaR (Self-Taught Reasoner)** and **Process Reward Models (PRM)**.
 - **[2026/01]** Integrated **PAPO (Perception-Aware Policy Optimization)** for multimodal reasoning.
 - **[2025/12]** Added **COPO (Count-based Online Preference Optimization)** for exploration-heavy tasks.
@@ -187,6 +193,32 @@ See `examples/` for detailed scripts:
 - [DPO / Online DPO](./examples/scripts/train_dpo.sh)
 - [PRM Training](./examples/scripts/train_prm.sh)
 - [Multimodal PAPO](./examples/scripts/train_papo.sh)
+
+---
+
+<a id="implementation-status"></a>
+## 📊 Implementation Status
+
+### ✅ Production-Ready
+- **Core Algorithms**: PPO, GRPO, DPO, IPO, VAPO, DAPO, COPO, REINFORCE++
+- **Models**: Actor, Critic, Reward Model, Process Reward Model (PRM)
+- **Loss Functions**: Comprehensive loss module with 15+ implementations
+- **Distributed Training**: DeepSpeed integration (ZeRO-2/3), distributed utilities
+- **Data Pipeline**: Datasets, loaders, packing, processors
+- **Utilities**: Metrics (GPU-accelerated), checkpointing, logging, KL controller
+- **PEFT**: LoRA/QLoRA integration with multiple initialization strategies
+- **vLLM Integration**: High-throughput generation client/worker
+
+### 🚧 In Development
+- **Training Loops**: SFT, DPO, PPO, GRPO CLI commands (infrastructure ready, trainers in progress)
+- **CoT/ToT Trainers**: Chain-of-Thought and Tree-of-Thought training modules
+- **Multimodal Training**: PAPO implementation for vision-language models
+- **Complete Examples**: End-to-end training scripts
+
+### 📋 Planned
+- Evaluation harness integration
+- Model serving infrastructure
+- Additional reasoning algorithms (STaR fully integrated)
 
 ---
 
