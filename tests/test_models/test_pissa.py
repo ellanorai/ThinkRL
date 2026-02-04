@@ -22,21 +22,22 @@ def mock_transformers():
 def test_actor_pissa_init(mock_transformers, mock_peft):
     """Test Actor initializes with PiSSA config."""
     with patch("thinkrl.models.actor._PEFT_AVAILABLE", True):
-        Actor(pretrained_model="gpt2", lora_rank=8, lora_init_type="pissa")
-
         # Check that LoraConfig was created with init_lora_weights="pissa"
         # We need to mock LoraConfig to check its args
-        with patch("thinkrl.models.actor.LoraConfig") as mock_config:
-            # Re-init to capture mock
-            Actor(pretrained_model="gpt2", lora_rank=8, lora_init_type="pissa")
-            _, kwargs = mock_config.call_args
-            assert kwargs.get("init_lora_weights") == "pissa"
+        with patch("thinkrl.models.actor.TaskType", create=True):
+            with patch("thinkrl.models.actor.LoraConfig", create=True) as mock_config:
+                # Re-init to capture mock
+                Actor(pretrained_model="gpt2", lora_rank=8, lora_init_type="pissa")
+                _, kwargs = mock_config.call_args
+                assert kwargs.get("init_lora_weights") == "pissa"
 
 
 def test_actor_default_lora_init(mock_transformers, mock_peft):
     """Test Actor maps 'default' to True."""
     with patch("thinkrl.models.actor._PEFT_AVAILABLE", True):
-        with patch("thinkrl.models.actor.LoraConfig") as mock_config:
-            Actor(pretrained_model="gpt2", lora_rank=8, lora_init_type="default")
-            _, kwargs = mock_config.call_args
-            assert kwargs.get("init_lora_weights") is True
+        # We need to inject both LoraConfig and TaskType since they won't exist if peft is missing
+        with patch("thinkrl.models.actor.TaskType", create=True):
+            with patch("thinkrl.models.actor.LoraConfig", create=True) as mock_config:
+                Actor(pretrained_model="gpt2", lora_rank=8, lora_init_type="default")
+                _, kwargs = mock_config.call_args
+                assert kwargs.get("init_lora_weights") is True
