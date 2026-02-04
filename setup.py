@@ -407,7 +407,7 @@ CONSOLE_SCRIPTS = {
 # Project classifiers
 CLASSIFIERS = [
     # Development status
-    "Development Status :: 4 - Beta",
+    "Development Status :: 3 - Alpha",
     # Intended audience
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
