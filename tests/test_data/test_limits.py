@@ -2,7 +2,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from thinkrl.data.datasets import PreferenceDataset, RLHFDataset
+
+# Skip all tests in this module if datasets is not installed
+pytest.importorskip("datasets")
 
 
 @pytest.fixture
@@ -14,6 +16,8 @@ def mock_tokenizer():
 
 def test_rlhf_dataset_max_samples(mock_tokenizer):
     """Test max_samples limit."""
+    from thinkrl.data.datasets import RLHFDataset
+
     # Mock dataset with 10 samples
     mock_data = [{"prompt": f"p{i}"} for i in range(10)]
 
@@ -27,6 +31,8 @@ def test_rlhf_dataset_max_samples(mock_tokenizer):
 
 def test_preference_dataset_max_samples(mock_tokenizer):
     """Test max_samples limit on preference dataset."""
+    from thinkrl.data.datasets import PreferenceDataset
+
     mock_data = [{"prompt": f"p{i}", "chosen": "c", "rejected": "r"} for i in range(10)]
 
     dataset = PreferenceDataset(dataset_name_or_path=mock_data, tokenizer=mock_tokenizer, max_samples=3)
