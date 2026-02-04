@@ -22,8 +22,6 @@ def mock_transformers():
 def test_actor_pissa_init(mock_transformers, mock_peft):
     """Test Actor initializes with PiSSA config."""
     with patch("thinkrl.models.actor._PEFT_AVAILABLE", True):
-        Actor(pretrained_model="gpt2", lora_rank=8, lora_init_type="pissa")
-
         # Check that LoraConfig was created with init_lora_weights="pissa"
         # We need to mock LoraConfig to check its args
         with patch("thinkrl.models.actor.TaskType", create=True):
