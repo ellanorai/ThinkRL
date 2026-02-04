@@ -147,12 +147,18 @@ ThinkRL provides a full-stack solution for modern alignment:
 
 ### Installation
 
+> **Note**: ThinkRL is currently not available on PyPI. Please install from source.
+
 ```bash
-# Core installation
-pip install thinkrl
+# Clone the repository
+git clone https://github.com/ellanorai/ThinkRL.git
+cd ThinkRL
+
+# Install from source
+pip install -e .
 
 # With vLLM and DeepSpeed support (Recommended)
-pip install thinkrl[all]
+pip install -e .[all]
 ```
 
 ### Typical Workflow
