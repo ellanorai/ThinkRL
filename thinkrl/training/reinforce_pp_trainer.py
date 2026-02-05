@@ -63,12 +63,18 @@ class ReinforcePPTrainer:
         self.vllm_client = None
 
         # Setup generation config
+        # Setup generation config
+        num_return_sequences = 1
+        if config and config.mode == "baseline":
+            num_return_sequences = config.group_size
+
         self.generation_config = generation_config or GenerationConfig(
             max_new_tokens=128,
             do_sample=True,
             temperature=1.0,
             pad_token_id=tokenizer.pad_token_id,
             eos_token_id=tokenizer.eos_token_id,
+            num_return_sequences=num_return_sequences,
         )
 
         # Create Algorithm
@@ -157,6 +163,14 @@ class ReinforcePPTrainer:
                         rollout_data["generated_ids"], skip_special_tokens=True
                     )
 
+                # Expand prompts if needed for reward fn
+                num_return_sequences = self.generation_config.num_return_sequences
+                if num_return_sequences > 1:
+                    expanded_prompts = []
+                    for p in prompts_text:
+                        expanded_prompts.extend([p] * num_return_sequences)
+                    prompts_text = expanded_prompts
+
                 rewards = self.reward_fn(prompts_text, completions_text).to(self.device)
 
                 # Handle batch size mismatch (if last batch is smaller)
@@ -205,6 +219,15 @@ class ReinforcePPTrainer:
         prompts_text = batch_prompts["prompt_text"]
         input_ids = batch_prompts["input_ids"].to(self.device)
         attention_mask = batch_prompts["attention_mask"].to(self.device)
+
+        # Expand prompts if generating multiple sequences per prompt
+        num_return_sequences = self.generation_config.num_return_sequences
+        if num_return_sequences > 1:
+            # Replicate prompts: [p1, p2] -> [p1, p1, p2, p2]
+            expanded_prompts = []
+            for p in prompts_text:
+                expanded_prompts.extend([p] * num_return_sequences)
+            prompts_text = expanded_prompts
 
         if self.use_vllm:
             # --- VLLM Generation ---
@@ -309,6 +332,7 @@ class ReinforcePPTrainer:
                     temperature=self.generation_config.temperature,
                     top_p=self.generation_config.top_p,
                     top_k=self.generation_config.top_k,
+                    num_return_sequences=self.generation_config.num_return_sequences,
                     pad_token_id=self.tokenizer.pad_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
                     return_dict_in_generate=True,
