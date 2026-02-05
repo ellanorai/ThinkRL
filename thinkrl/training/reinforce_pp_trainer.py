@@ -171,7 +171,26 @@ class ReinforcePPTrainer:
                         expanded_prompts.extend([p] * num_return_sequences)
                     prompts_text = expanded_prompts
 
-                rewards = self.reward_fn(prompts_text, completions_text).to(self.device)
+                # Expand prompts if needed for reward fn
+                num_return_sequences = self.generation_config.num_return_sequences
+                if num_return_sequences > 1:
+                    expanded_prompts = []
+                    for p in prompts_text:
+                        expanded_prompts.extend([p] * num_return_sequences)
+                    prompts_text = expanded_prompts
+
+                # Extract and expand targets if available
+                targets = batch_prompts.get("target", None)
+                kwargs = {}
+                if targets is not None:
+                    if num_return_sequences > 1:
+                        expanded_targets = []
+                        for t in targets:
+                            expanded_targets.extend([t] * num_return_sequences)
+                        targets = expanded_targets
+                    kwargs["targets"] = targets
+
+                rewards = self.reward_fn(prompts_text, completions_text, **kwargs).to(self.device)
 
                 # Handle batch size mismatch (if last batch is smaller)
                 curr_bs = len(prompts_text)

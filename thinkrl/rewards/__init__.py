@@ -1,11 +1,12 @@
 from thinkrl.rewards.pipeline import RewardPipeline
-from thinkrl.rewards.scorer import (
+from .scorer import (
     BaseScorer,
-    FunctionScorer,
-    KeywordScorer,
     LengthScorer,
+    KeywordScorer,
     RegexScorer,
+    FunctionScorer,
 )
+from .universal import UniversalReward
 
 
 __all__ = [
@@ -14,5 +15,5 @@ __all__ = [
     "KeywordScorer",
     "RegexScorer",
     "FunctionScorer",
-    "RewardPipeline",
+    "UniversalReward",
 ]
