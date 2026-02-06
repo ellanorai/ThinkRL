@@ -577,6 +577,7 @@ if TYPER_AVAILABLE:
         model: Annotated[str, Option("--model", "-m", help="Model name or path")],
         dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
         dataset_split: Annotated[str, Option("--dataset-split", help="Dataset split to load")] = "train",
+        dataset_config: Annotated[str | None, Option("--dataset-config", help="Dataset config name (e.g., 'main' for gsm8k)")] = None,
         prompt_column: Annotated[str, Option("--prompt-column", "-pc", help="Column name for prompts")] = "prompt",
         source: Annotated[
             str, Option("--source", "-s", help="Dataset source: 'hf' (HuggingFace), 'local', 'json', 'csv'")
@@ -727,7 +728,7 @@ if TYPER_AVAILABLE:
             tokenizer.pad_token = tokenizer.eos_token
 
         # 2. Load Dataset
-        typer.echo(f"Loading dataset: {dataset} (source={source}, split={dataset_split})")
+        typer.echo(f"Loading dataset: {dataset} (source={source}, split={dataset_split}, config={dataset_config})")
         train_dataset = RLHFDataset(
             dataset_name_or_path=dataset,
             tokenizer=tokenizer,
@@ -737,6 +738,7 @@ if TYPER_AVAILABLE:
             max_length=max_length,
             max_samples=max_samples,
             target_column=target_column,
+            dataset_config=dataset_config,
         )
 
         # 3. Load Reward Function

@@ -59,6 +59,7 @@ class BaseRLHFDataset(Dataset):
             source = kwargs.pop("source", None)
 
             if isinstance(dataset_name_or_path, str):
+                dataset_config = kwargs.pop("dataset_config", None)
                 if source and source != "hf":
                     # Load from local files with specific format (json, csv, text)
                     self.dataset = load_dataset(source, data_files=dataset_name_or_path, split=split)
@@ -66,8 +67,11 @@ class BaseRLHFDataset(Dataset):
                     # Auto-detect JSON
                     self.dataset = load_dataset("json", data_files=dataset_name_or_path, split=split)
                 else:
-                    # Default HF hub loading
-                    self.dataset = load_dataset(dataset_name_or_path, split=split)
+                    # Default HF hub loading (with optional config)
+                    if dataset_config:
+                        self.dataset = load_dataset(dataset_name_or_path, dataset_config, split=split)
+                    else:
+                        self.dataset = load_dataset(dataset_name_or_path, split=split)
             else:
                 self.dataset = dataset_name_or_path
         else:
