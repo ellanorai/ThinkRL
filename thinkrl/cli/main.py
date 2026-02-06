@@ -629,6 +629,7 @@ if TYPER_AVAILABLE:
         max_samples: Annotated[
             int | None, Option("--max-samples", help="Maximum number of samples to load from dataset")
         ] = None,
+        target_column: Annotated[str, Option("--target-column", help="Column name for target answers")] = "answer",
     ):
         """
         REINFORCE++ Policy Optimization.
@@ -735,6 +736,7 @@ if TYPER_AVAILABLE:
             source=source,
             max_length=max_length,
             max_samples=max_samples,
+            target_column=target_column,
         )
 
         # 3. Load Reward Function

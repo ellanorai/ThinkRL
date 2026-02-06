@@ -110,6 +110,7 @@ class RLHFDataset(BaseRLHFDataset):
         )
         self.prompt_column = prompt_column
         self.response_column = response_column
+        self.target_column = kwargs.get("target_column", "answer")
 
         # Filter and load data into memory to handle invalid rows efficiently
         self.data = []
@@ -129,6 +130,11 @@ class RLHFDataset(BaseRLHFDataset):
 
             # Basic cleaning
             item[self.prompt_column] = prompt.strip()
+            
+            # Store target if available
+            if self.target_column in item:
+                item[self.target_column] = str(item[self.target_column]).strip()
+                
             self.data.append(item)
 
         if not self.data:
@@ -164,6 +170,7 @@ class RLHFDataset(BaseRLHFDataset):
             "input_ids": encodings["input_ids"].squeeze(0),
             "attention_mask": encodings["attention_mask"].squeeze(0),
             "prompt_text": prompt,
+            "target": sample.get(self.target_column, ""),
         }
 
 
