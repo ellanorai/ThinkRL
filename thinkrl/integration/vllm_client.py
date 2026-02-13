@@ -28,16 +28,16 @@ import torch.distributed as dist
 
 from thinkrl.utils.logging import get_logger
 
+logger = get_logger(__name__)
 
 try:
     if importlib.util.find_spec("vllm"):
         pass  # Imports verified inside methods to be safe
-except (ImportError, ValueError):
-    pass
-
-logger = get_logger(__name__)
+except (ImportError, ValueError) as exc:
+    logger.debug("vLLM module detection failed; treating 'vllm' as unavailable: %s", exc)
 
 # Default HTTP timeouts (seconds)
+_DEFAULT_GENERATE_TIMEOUT = 300  # 5 min for generation (large batches)
 _DEFAULT_GENERATE_TIMEOUT = 300  # 5 min for generation (large batches)
 _DEFAULT_CONTROL_TIMEOUT = 30  # 30s for control endpoints
 
