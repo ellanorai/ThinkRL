@@ -260,8 +260,17 @@ class DrGRPOAlgorithm(BaseRLHFAlgorithm):
         return self.get_log_probs(outputs, batch["labels"])
 
     def train_on_rollout(self, rollout: dict[str, Any]) -> list[dict[str, Any]]:
-        """Train on collected rollout data."""
-        old_log_probs = self.compute_rollout_log_probs(rollout)
+        """Train on collected rollout data.
+
+        Args:
+            rollout: Rollout batch. May contain pre-computed "old_log_probs"
+                     from vLLM generation to avoid a redundant forward pass.
+        """
+        # Use pre-computed old_log_probs if available (e.g. from vLLM)
+        if "old_log_probs" in rollout:
+            old_log_probs = rollout["old_log_probs"]
+        else:
+            old_log_probs = self.compute_rollout_log_probs(rollout)
 
         epoch_metrics = []
         for epoch in range(self.config.n_epochs):

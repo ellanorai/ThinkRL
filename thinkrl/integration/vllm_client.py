@@ -1,11 +1,24 @@
 """
-ThinkRL vLLM Client (Improved)
-==============================
-Robust client for interacting with vLLM server with dynamic distributed support.
+ThinkRL vLLM Client
+===================
+
+Client for interacting with vLLM server with distributed training support.
 Handles Multi-GPU (DDP/FSDP) training environments correctly.
+
+Weight synchronization uses NCCL broadcast with flattened parameter buffers
+for efficient transfer. The protocol is:
+
+1. Client sends HTTP POST to /update_weights (server returns immediately,
+   spawns a background thread for NCCL receives)
+2. Client broadcasts flattened weight buffers grouped by dtype
+3. NCCL internally synchronizes sender/receiver
+
+This avoids the deadlock where the client waits for an HTTP response while
+the server waits for NCCL data.
 """
+
 import contextlib
-import importlib.util  # for checking availability
+import importlib.util
 import os
 from typing import Any
 
@@ -15,30 +28,44 @@ import torch.distributed as dist
 
 from thinkrl.utils.logging import get_logger
 
+logger = get_logger(__name__)
 
 try:
     if importlib.util.find_spec("vllm"):
         pass  # Imports verified inside methods to be safe
-except ImportError:
-    pass
+except (ImportError, ValueError) as exc:
+    logger.debug("vLLM module detection failed; treating 'vllm' as unavailable: %s", exc)
 
-logger = get_logger(__name__)
+# Default HTTP timeouts (seconds)
+_DEFAULT_GENERATE_TIMEOUT = 300  # 5 min for generation (large batches)
+_DEFAULT_GENERATE_TIMEOUT = 300  # 5 min for generation (large batches)
+_DEFAULT_CONTROL_TIMEOUT = 30  # 30s for control endpoints
 
 
 class VLLMClient:
-    def __init__(self, url: str = "http://localhost:8000", group_port: int = 51216, sync_world_size: int = 2):
+    def __init__(
+        self,
+        url: str = "http://localhost:8000",
+        group_port: int = 51216,
+        sync_world_size: int = 2,
+        generate_timeout: float = _DEFAULT_GENERATE_TIMEOUT,
+        control_timeout: float = _DEFAULT_CONTROL_TIMEOUT,
+    ):
         self.url = url
         self.group_port = group_port
         self.communicator = None
+        self._nccl_stream: torch.cuda.Stream | None = None
 
-        # We define the "Bridge" topology strictly
-        # Rank 0 = This Client (Trainer)
-        # Rank 1 = The vLLM Server
+        # Bridge topology: Rank 0 = Client (Trainer), Rank 1 = vLLM Server
         self.client_rank = 0
         self.server_rank = 1
         self.sync_world_size = sync_world_size
 
-        # Check if we are in a distributed training setup
+        # HTTP timeouts
+        self.generate_timeout = generate_timeout
+        self.control_timeout = control_timeout
+
+        # Distributed training info
         self.is_distributed = dist.is_available() and dist.is_initialized()
         self.is_main_process = True
         self.rank = 0
@@ -47,6 +74,17 @@ class VLLMClient:
             self.rank = dist.get_rank()
             # Only Rank 0 of the training cluster should talk to vLLM
             self.is_main_process = self.rank == 0
+
+    def health_check(self) -> bool:
+        """Check if vLLM server is reachable and healthy."""
+        if not self.is_main_process:
+            return True  # Non-main processes don't interact with server
+
+        try:
+            resp = requests.get(f"{self.url}/health", timeout=5)
+            return resp.status_code == 200
+        except requests.RequestException:
+            return False
 
     def generate(
         self,
@@ -76,13 +114,10 @@ class VLLMClient:
             return {"text": [], "token_ids": [], "log_probs": []}
 
         try:
-            # Request log_probs from vLLM to avoid double forward pass
             request_params = {**params}
             if return_logprobs:
-                # vLLM parameter: logprobs=N returns top N logprobs. We usually just need the performed action.
-                # However, vLLM returns a list of dicts. We set N=1 for efficiency.
                 request_params["logprobs"] = 1
-                request_params["prompt_logprobs"] = None  # Don't need prompt logprobs usually
+                request_params["prompt_logprobs"] = None
 
             resp = requests.post(
                 f"{self.url}/generate",
@@ -90,6 +125,7 @@ class VLLMClient:
                     "prompts": prompts,
                     **request_params,
                 },
+                timeout=self.generate_timeout,
             )
             resp.raise_for_status()
             result = resp.json()
@@ -100,7 +136,6 @@ class VLLMClient:
                 output["token_ids"] = result["token_ids"]
                 output["log_probs"] = result["log_probs"]
             elif return_logprobs:
-                # Fallback: server didn't return logprobs, caller will need to compute
                 logger.warning(
                     "vLLM server did not return log_probs. "
                     "Ensure server supports logprobs=1 parameter. "
@@ -117,8 +152,11 @@ class VLLMClient:
 
     def init_weight_sync(self, device: torch.device) -> None:
         """
-        Initializes the NCCL bridge.
+        Initialize the NCCL bridge for weight synchronization.
         Only the main training process initializes the communicator.
+
+        Creates a dedicated CUDA stream for NCCL operations to avoid
+        interfering with computation on the default stream.
         """
         if not self.is_main_process:
             return
@@ -127,17 +165,12 @@ class VLLMClient:
             from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
             from vllm.distributed.utils import StatelessProcessGroup
         except ImportError as e:
-            raise ImportError("vLLM is required for weight sync. Install with `pip install vllm`.") from e
+            raise ImportError(
+                "vLLM is required for weight sync. Install with `pip install vllm`."
+            ) from e
 
         logger.info(f"Initializing NCCL bridge on device {device} (Client Rank {self.client_rank})")
 
-        # Get server IP from URL if needed, usually passed separately or env var
-        # For now assume localhost or env var config for PyNccl
-        # PyNcclCommunicator mostly relies on 'host' being resolvable
-
-        # Create the Stateless Group for the Bridge
-        # This isolates the training traffic from the inference sync traffic
-        # Note: vLLM worker uses `socket.gethostbyname(socket.gethostname())` usually
         host = os.environ.get("VLLM_NCCL_HOST", "127.0.0.1")
 
         pg = StatelessProcessGroup.create(
@@ -145,12 +178,26 @@ class VLLMClient:
         )
 
         self.communicator = PyNcclCommunicator(pg, device=device)
+
+        # Dedicated CUDA stream for NCCL weight transfer
+        if isinstance(device, torch.device) and device.type == "cuda":
+            self._nccl_stream = torch.cuda.Stream(device=device)
+        elif isinstance(device, str) and "cuda" in device:
+            self._nccl_stream = torch.cuda.Stream(device=torch.device(device))
+
         logger.info("NCCL bridge initialized successfully.")
 
     def update_model_weights(self, model: torch.nn.Module) -> None:
         """
-        Broadcasts model weights to the vLLM server.
+        Broadcast model weights to the vLLM server.
         Handles FSDP/DDP contexts by ensuring we operate on the main process.
+
+        Protocol:
+        1. Send HTTP POST to /update_weights. The server returns immediately
+           after spawning a background thread that enters the NCCL receive loop.
+        2. Broadcast flattened weight buffers grouped by dtype. NCCL internally
+           synchronizes: the sender-side broadcast blocks until the receiver
+           has also called broadcast, so no explicit handshake is needed.
         """
         if not self.is_main_process:
             return
@@ -159,38 +206,68 @@ class VLLMClient:
             logger.error("Attempted to update weights without initialized communicator.")
             raise RuntimeError("Communicator not initialized. Call init_weight_sync() first.")
 
-        # 1. Trigger Server Sync
-        # We MUST tell the server to enter the recv loop.
+        # 1. Trigger server to enter receive mode.
+        #    The server endpoint returns immediately after spawning a background
+        #    NCCL receive task, breaking the deadlock where both sides wait.
         try:
-            resp = requests.post(f"{self.url}/update_weights")
+            resp = requests.post(
+                f"{self.url}/update_weights",
+                timeout=self.control_timeout,
+            )
             resp.raise_for_status()
         except requests.RequestException as e:
             logger.error(f"Failed to trigger weight update on server: {e}")
             raise RuntimeError(f"Weight update trigger failed: {e}") from e
 
-        # 2. Broadcast Weights
-        # logger.debug("Broadcasting model weights to vLLM server...")
-
-        # Handle FSDP: Gather full params on Rank 0
+        # 2. Broadcast weights using flattened buffers
         from torch.distributed.fsdp import FullyShardedDataParallel as FSDP
 
-        context = contextlib.nullcontext()
+        fsdp_ctx = contextlib.nullcontext()
         if isinstance(model, FSDP):
-            # Writeback=False because we just want to read for broadcast, not persist the gathering
-            context = FSDP.summon_full_params(model, writeback=False, rank0_only=True)
+            fsdp_ctx = FSDP.summon_full_params(model, writeback=False, rank0_only=True)
 
-        with context:
-            # Flatten parameters for efficient single-tensor broadcast
-            # This requires the server to know the structure to unflatten,
-            # OR we broadcast layer-by-layer.
-            # Layer-by-layer is slower but robust to architecture mismatches if handled by name.
-            # Flattening is much faster. Let's do flattening if possible, but for stability now,
-            # we will iterate. *Optimization: Bucket buffers.*
+        stream_ctx = (
+            torch.cuda.stream(self._nccl_stream)
+            if self._nccl_stream is not None
+            else contextlib.nullcontext()
+        )
 
-            # Simple iteration for v1 safety
-            for _, param in model.named_parameters():
-                # We strictly broadcast from Client (0) to Server (1)
-                # using the 'src' rank relative to the bridge group.
-                self.communicator.broadcast(param.data, src=self.client_rank)
+        with fsdp_ctx, stream_ctx:
+            self._broadcast_weights_flat(model)
 
-        return
+        # Synchronize NCCL stream before returning
+        if self._nccl_stream is not None:
+            self._nccl_stream.synchronize()
+
+    def _broadcast_weights_flat(self, model: torch.nn.Module) -> None:
+        """
+        Broadcast all model weights using flattened per-dtype buffers.
+
+        Groups parameters by dtype (preserving iteration order), flattens each
+        group into a single contiguous tensor, and broadcasts once per group.
+        This is significantly faster than per-parameter broadcast for models
+        with hundreds of parameters.
+
+        Both client and server must iterate model.named_parameters() in the same
+        order, which is guaranteed for the same model architecture.
+        """
+        # Group parameters by dtype, preserving insertion order
+        dtype_groups: dict[torch.dtype, list[torch.Tensor]] = {}
+        for _, param in model.named_parameters():
+            dt = param.data.dtype
+            if dt not in dtype_groups:
+                dtype_groups[dt] = []
+            dtype_groups[dt].append(param.data)
+
+        for _, params in dtype_groups.items():
+            flat = torch.cat([p.reshape(-1) for p in params])
+            self.communicator.broadcast(flat, src=self.client_rank)
+
+    def shutdown_server(self) -> None:
+        """Send a graceful shutdown signal to the vLLM server."""
+        if not self.is_main_process:
+            return
+        try:
+            requests.post(f"{self.url}/shutdown", timeout=5)
+        except requests.RequestException:
+            pass  # Server may already be down
