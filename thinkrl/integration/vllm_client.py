@@ -5,7 +5,6 @@ Robust client for interacting with vLLM server with dynamic distributed support.
 Handles Multi-GPU (DDP/FSDP) training environments correctly.
 """
 import contextlib
-import importlib.util  # for checking availability
 import os
 from typing import Any
 
@@ -17,10 +16,18 @@ from thinkrl.utils.logging import get_logger
 
 
 try:
-    if importlib.util.find_spec("vllm"):
-        pass  # Imports verified inside methods to be safe
+    import vllm
+    from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
+    from vllm.distributed.utils import StatelessProcessGroup
 except ImportError:
-    pass
+    # We only raise this if the user *tries* to instantiate the client.
+    # But for module level, we can just set a flag or let it fail later.
+    # However, since the user explicitly wants "Linux only" and "Fix it",
+    # we should probably just let it be a hard dependency for this module.
+    # If this module is imported, vllm should be there.
+    # But to be safe for the rest of the codebase (e.g. strict type checking imports), we keep it safe.
+    vllm = None
+
 
 logger = get_logger(__name__)
 
@@ -123,11 +130,8 @@ class VLLMClient:
         if not self.is_main_process:
             return
 
-        try:
-            from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
-            from vllm.distributed.utils import StatelessProcessGroup
-        except ImportError as e:
-            raise ImportError("vLLM is required for weight sync. Install with `pip install vllm`.") from e
+        if vllm is None:
+            raise ImportError("vLLM is not installed. Please install vllm to use VLLMClient.")
 
         logger.info(f"Initializing NCCL bridge on device {device} (Client Rank {self.client_rank})")
 
@@ -140,12 +144,46 @@ class VLLMClient:
         # Note: vLLM worker uses `socket.gethostbyname(socket.gethostname())` usually
         host = os.environ.get("VLLM_NCCL_HOST", "127.0.0.1")
 
-        pg = StatelessProcessGroup.create(
-            host=host, port=self.group_port, rank=self.client_rank, world_size=self.sync_world_size
-        )
+        try:
+            pg = StatelessProcessGroup.create(
+                host=host, port=self.group_port, rank=self.client_rank, world_size=self.sync_world_size
+            )
+            self.communicator = PyNcclCommunicator(pg, device=device)
+        except Exception as e:
+            logger.error(f"Failed to initialize NCCL bridge: {e}")
+            raise RuntimeError(f"NCCL init failed. Ensure you are on Linux and 'pynccl' is working: {e}") from e
 
-        self.communicator = PyNcclCommunicator(pg, device=device)
         logger.info("NCCL bridge initialized successfully.")
+
+    def check_weights(self, model: torch.nn.Module) -> None:
+        """
+        Verifies that the local model structure matches the remote vLLM model.
+        """
+        if not self.is_main_process:
+            return
+
+        logger.info("Verifying model structure with vLLM server...")
+        params = {n: list(p.shape) for n, p in model.named_parameters()}
+
+        try:
+            resp = requests.post(
+                f"{self.url}/check_weights",
+                json={"params": params},
+            )
+            resp.raise_for_status()
+            result = resp.json()
+
+            if result.get("status") != "ok":
+                details = result.get("details", [])
+                logger.error(f"Model structure mismatch! vLLM sync will fail. details={details}")
+                raise RuntimeError(f"vLLM model mismatch: {details[:3]}...")
+
+            logger.info("Model structure verification passed.")
+
+        except requests.RequestException as e:
+            logger.error(f"Failed to verify weights: {e}")
+            # We might want to warn instead of crash if the server doesn't support this endpoint yet
+            logger.warning("Could not verify weights (server might be old). Proceeding with caution.")
 
     def update_model_weights(self, model: torch.nn.Module) -> None:
         """

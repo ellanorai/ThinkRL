@@ -117,6 +117,50 @@ async def generate(request: Request):
     return JSONResponse({"text": texts, "token_ids": token_ids, "log_probs": log_probs})
 
 
+@app.post("/check_weights")
+async def check_weights(request: Request):
+    """
+    Verify if the client's model structure matches the vLLM model structure.
+    Returns:
+        {"status": "ok"} if matches
+        {"status": "mismatch", "details": ...} if mismatch
+    """
+    try:
+        data = await request.json()
+        client_params = data.get("params", {})  # Dict[name, shape_list]
+
+        # Locate model (reuse logic - ideally refactor into helper)
+        if hasattr(engine.engine, "model_executor"):
+            model = engine.engine.model_executor.driver_worker.model_runner.model
+        elif hasattr(engine.engine, "workers"):
+            model = engine.engine.workers[0].model
+        else:
+            return JSONResponse({"error": "Could not locate vLLM model"}, status_code=500)
+
+        # Compare
+        vllm_params = {n: list(p.shape) for n, p in model.named_parameters()}
+
+        mismatches = []
+        for name, shape in client_params.items():
+            if name not in vllm_params:
+                mismatches.append(f"Missing in vLLM: {name}")
+            elif vllm_params[name] != shape:
+                mismatches.append(f"Shape mismatch {name}: Client {shape} vs vLLM {vllm_params[name]}")
+
+        # Check for extra params in vLLM (might be fine, but good to know)
+        extras = [n for n in vllm_params if n not in client_params]
+
+        if mismatches:
+            logger.error(f"Weight sync mismatch detected: {mismatches[:5]}...")
+            return JSONResponse({"status": "mismatch", "details": mismatches, "extras": extras})
+
+        return JSONResponse({"status": "ok", "extras": extras})
+
+    except Exception as e:
+        logger.error(f"Check weights failed: {e}")
+        return JSONResponse({"error": str(e)}, status_code=500)
+
+
 @app.post("/update_weights")
 async def update_weights():
     """Trigger weight update from trainer."""
@@ -125,20 +169,23 @@ async def update_weights():
 
     logger.info("Receiving new weights...")
 
-    # We need to perform the NCCL recv on the model parameters
-    # This must match the order/structure of the sender
-    # We assume the engine model is available via engine.engine.model_executor.driver_worker.model_runner.model
-    # This acts on the *local* GPU model.
-
-    # Accessing the underlying model in vLLM is tricky and depends on version.
-    # For single-GPU vLLM, it's straightforward.
     try:
-        # HACK: Access internal model. This is fragile.
-        # vLLM > 0.4.0 structure
-        model_executor = engine.engine.model_executor
-        model_runner = model_executor.driver_worker.model_runner
-        model = model_runner.model
+        # Accessing the underlying model in vLLM is tricky and depends on version.
+        # We try to locate it robustly.
+        model = None
+        if hasattr(engine.engine, "model_executor"):
+            # vLLM > 0.4.0
+            model = engine.engine.model_executor.driver_worker.model_runner.model
+        elif hasattr(engine.engine, "workers"):
+            # Ray / older
+            model = engine.engine.workers[0].model
 
+        if model is None:
+            raise RuntimeError("Could not locate vLLM model to update.")
+
+        # Broadcast weights from Rank 0 (Trainer) to here (Rank 1)
+        # Note: We assume strict parameter order match.
+        # Use /check_weights before this to ensure safety.
         for _, param in model.named_parameters():
             communicator.broadcast(param.data, src=0)
 

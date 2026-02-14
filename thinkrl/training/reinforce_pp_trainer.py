@@ -99,6 +99,8 @@ class ReinforcePPTrainer:
             self.vllm_client = VLLMClient(group_port=vllm_group_port)
             # Initialize weight sync on proper device
             self.vllm_client.init_weight_sync(self.device)
+            # Verify compatibility before starting
+            self.vllm_client.check_weights(self.algorithm.policy_model)
 
     def train(self, steps: int = 1000, batch_size: int = 4, log_interval: int = 10):
         """
