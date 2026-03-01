@@ -5,7 +5,7 @@ import torch
 import torch.nn as nn
 from transformers import GenerationConfig, PreTrainedTokenizer
 
-from thinkrl.algorithms.reinforce_pp import REINFORCEPPAlgorithm, REINFORCEPPConfig, create_reinforce_pp
+from thinkrl.algorithms.grpo import GRPOAlgorithm, GRPOConfig
 from thinkrl.data.datasets import RLHFDataset
 from thinkrl.data.loaders import RLHFDataLoader
 from thinkrl.integration.vllm_client import VLLMClient
@@ -15,15 +15,15 @@ from thinkrl.utils.logging import get_logger
 logger = get_logger(__name__)
 
 
-class ReinforcePPTrainer:
+class GRPOTrainer:
     """
-    Trainer for REINFORCE++.
+    Trainer for Group Relative Policy Optimization (GRPO).
 
     Orchestrates the training process:
     1. Sampling prompts from dataset
-    2. Generating completions (rollouts)
+    2. Generating a group of completions per prompt (rollouts)
     3. Computing rewards (using provided reward_fn)
-    4. Updating policy using REINFORCEPPAlgorithm
+    4. Updating policy using GRPOAlgorithm
     """
 
     def __init__(
@@ -33,7 +33,7 @@ class ReinforcePPTrainer:
         tokenizer: PreTrainedTokenizer,
         dataset: RLHFDataset,
         reward_fn: Callable[[list[str], list[str]], torch.Tensor],
-        config: REINFORCEPPConfig | None = None,
+        config: GRPOConfig | None = None,
         optimizer: torch.optim.Optimizer | None = None,
         generation_config: GenerationConfig | None = None,
         device: Union[str, torch.device] | None = None,
@@ -48,12 +48,12 @@ class ReinforcePPTrainer:
             tokenizer: Tokenizer for encoding/decoding.
             dataset: Dataset containing prompts.
             reward_fn: Callable taking (prompts, completions) and returning rewards tensor [B].
-            config: Algorithm configuration.
+            config: GRPO configuration.
             optimizer: Optimizer.
             generation_config: Configuration for generation (sampling).
             device: Device to train on.
             use_vllm: Whether to use VLLM for generation.
-            **algo_kwargs: Args passed to create_reinforce_pp if config is None.
+            **algo_kwargs: Additional kwargs for Algorithm.
         """
         self.tokenizer = tokenizer
         self.dataset = dataset
@@ -62,13 +62,14 @@ class ReinforcePPTrainer:
         self.use_vllm = use_vllm
         self.vllm_client = None
 
-        # Setup generation config
-        num_return_sequences = 1
-        if config and config.mode == "baseline":
-            num_return_sequences = config.group_size
+        self.config = config
+
+        # GRPO generates a group of outputs per prompt (G samples)
+        # Determine group_size from provided config or default
+        num_return_sequences = (self.config.group_size if self.config else GRPOConfig().group_size)
 
         self.generation_config = generation_config or GenerationConfig(
-            max_new_tokens=128,
+            max_new_tokens=256,
             do_sample=True,
             temperature=1.0,
             pad_token_id=tokenizer.pad_token_id,
@@ -78,17 +79,23 @@ class ReinforcePPTrainer:
 
         # Create Algorithm
         if config is None:
-            # Create from simple args
-            self.algorithm = create_reinforce_pp(
+            # Create from simple kwargs using the factory method
+            from thinkrl.algorithms.grpo import create_grpo
+            self.algorithm = create_grpo(
                 policy_model=model, ref_model=ref_model, optimizer=optimizer, **algo_kwargs
             )
         else:
-            self.algorithm = REINFORCEPPAlgorithm(
+            # Initialize explicitly with the provided config object
+            self.algorithm = GRPOAlgorithm(
                 policy_model=model,
                 ref_model=ref_model,
                 optimizer=optimizer,
                 config=config,
+                **algo_kwargs
             )
+        
+        # Ensure we bind to the instantiated config in the algorithm
+        self.config = self.algorithm.config
 
         # Ensure models are on device
         self.algorithm.to(self.device)
@@ -96,7 +103,6 @@ class ReinforcePPTrainer:
         # Initialize VLLM Client if needed
         if self.use_vllm:
             self.vllm_client = VLLMClient(group_port=vllm_group_port)
-            # Initialize weight sync on proper device
             self.vllm_client.init_weight_sync(self.device)
 
     def train(self, steps: int = 1000, batch_size: int = 4, log_interval: int = 10):
@@ -106,11 +112,9 @@ class ReinforcePPTrainer:
         try:
             from tqdm import tqdm
         except ImportError:
-
             def tqdm(x, **kwargs):
                 return x
 
-        # Check for wandb
         import sys
 
         is_wandb_active = False
@@ -120,11 +124,11 @@ class ReinforcePPTrainer:
             if wandb.run is not None:
                 is_wandb_active = True
 
-        logger.info(f"Starting REINFORCE++ training for {steps} steps...")
+        logger.info(f"Starting GRPO training for {steps} steps...")
         if self.use_vllm:
             logger.info("Using VLLM for generation.")
 
-        # Create DataLoader using RLHFDataLoader from loaders.py
+        # Create DataLoader
         dataloader = RLHFDataLoader(
             dataset=self.dataset,
             tokenizer=self.tokenizer,
@@ -143,61 +147,58 @@ class ReinforcePPTrainer:
                 if step >= steps:
                     break
 
-                # Sync weights if using VLLM (every step or every N steps?)
-                # For basic PPO/Reinforce++, we sync every step because policy changes.
                 if self.use_vllm:
                     self.vllm_client.update_model_weights(self.algorithm.policy_model)
 
                 # 1. Generate Rollouts
+                # `make_experience` handles either local Hugging Face `generate` or vLLM server requests.
+                # Output: `rollout_data` containing expanded `input_ids`, `generated_ids`, and `completions_text`.
                 rollout_data = self.make_experience(batch_prompts)
 
                 # 2. Compute Rewards
+                # For GRPO, the reward function must evaluate each prompt against G=group_size generated completions.
                 prompts_text = batch_prompts["prompt_text"]
-                # Decode if we used local generation (VLLM gives text directly)
                 if "completions_text" in rollout_data:
                     completions_text = rollout_data["completions_text"]
                 else:
-                    # Decoding from generated_ids
                     completions_text = self.tokenizer.batch_decode(
                         rollout_data["generated_ids"], skip_special_tokens=True
                     )
 
-                # Expand prompts if needed for reward fn
+                # Expand prompts for reward fn
                 num_return_sequences = self.generation_config.num_return_sequences
-                if num_return_sequences > 1:
-                    expanded_prompts = []
-                    for p in prompts_text:
-                        expanded_prompts.extend([p] * num_return_sequences)
-                    prompts_text = expanded_prompts
+                expanded_prompts = []
+                for p in prompts_text:
+                    expanded_prompts.extend([p] * num_return_sequences)
+                prompts_text = expanded_prompts
 
                 # Extract and expand targets if available
                 targets = batch_prompts.get("target", None)
                 kwargs = {}
                 if targets is not None:
-                    if num_return_sequences > 1:
-                        expanded_targets = []
-                        for t in targets:
-                            expanded_targets.extend([t] * num_return_sequences)
-                        targets = expanded_targets
-                    kwargs["targets"] = targets
+                    expanded_targets = []
+                    for t in targets:
+                        expanded_targets.extend([t] * num_return_sequences)
+                    kwargs["targets"] = expanded_targets
 
                 rewards = self.reward_fn(prompts_text, completions_text, **kwargs).to(self.device)
 
-                # Handle batch size mismatch (if last batch is smaller)
+                # Trim if batch size mismatch
                 curr_bs = len(prompts_text)
                 if rewards.shape[0] != curr_bs:
                     rewards = rewards[:curr_bs]
 
                 rollout_data["rewards"] = rewards
 
-                # 3. Train Step (with gradient accumulation)
-                grad_accum_steps = self.algorithm.config.gradient_accumulation_steps
-                is_accumulating = (step + 1) % grad_accum_steps != 0
-
-                # Train step handles its own backward, but we control optimizer step
-                metrics = self.algorithm.train_on_rollout(rollout_data, accumulate_grad=is_accumulating)
-                # Take the last epoch metrics
+                # 3. Train Step
+                # Executes the GRPO Inner Loop via `train_on_rollout`, computing group-relative
+                # advantages, clipping losses, and maintaining KL-divergence constraints.
+                metrics = self.algorithm.train_on_rollout(rollout_data)
                 step_metrics = metrics[-1] if metrics else {}
+
+                # 4. Clean up Memory
+                del rollout_data
+                torch.cuda.empty_cache()
 
                 # Log to WandB
                 if is_wandb_active:
@@ -212,7 +213,7 @@ class ReinforcePPTrainer:
                         loss_val = loss_val.item()
                     reward_val = rewards.mean().item()
 
-                    logger.info(f"Step {step}: Loss={loss_val:.4f}, " f"Reward={reward_val:.4f}")
+                    logger.info(f"Step {step}: Loss={loss_val:.4f}, Reward={reward_val:.4f}")
                     progress_bar.set_postfix({"loss": f"{loss_val:.3f}", "reward": f"{reward_val:.3f}"})
 
                 progress_bar.update(1)
@@ -225,29 +226,31 @@ class ReinforcePPTrainer:
     def make_experience(self, batch_prompts: dict[str, Any]) -> dict[str, torch.Tensor]:
         """
         Generate rollouts and compute log probs.
+
+        Workflow:
+        1. Expand each prompt G times (where G = `group_size`).
+        2. Leverage `use_vllm` to dispatch high-throughput generation requests to the vLLM server,
+           or perform local `policy_model.generate`.
+        3. Splice generation chunks, append `labels`, and extract `old_log_probs` natively.
         """
         prompts_text = batch_prompts["prompt_text"]
         input_ids = batch_prompts["input_ids"].to(self.device)
         attention_mask = batch_prompts["attention_mask"].to(self.device)
 
-        # Expand prompts if generating multiple sequences per prompt
         num_return_sequences = self.generation_config.num_return_sequences
-        if num_return_sequences > 1:
+        
+        if self.use_vllm:
             expanded_prompts = []
             for p in prompts_text:
                 expanded_prompts.extend([p] * num_return_sequences)
             prompts_text = expanded_prompts
 
-            # Also expand input_ids and attention_mask to match
             input_ids = input_ids.repeat_interleave(num_return_sequences, dim=0)
             attention_mask = attention_mask.repeat_interleave(num_return_sequences, dim=0)
-
-        if self.use_vllm:
-            # --- VLLM Generation ---
             params = {
                 "max_tokens": self.generation_config.max_new_tokens,
                 "temperature": self.generation_config.temperature,
-                "top_p": self.generation_config.top_p if self.generation_config.top_p else 1.0,
+                "top_p": getattr(self.generation_config, 'top_p', 1.0),
             }
 
             output = self.vllm_client.generate(prompts_text, params, return_logprobs=True)
@@ -256,37 +259,27 @@ class ReinforcePPTrainer:
             token_ids_list = output["token_ids"]
             log_probs_list = output["log_probs"]
 
-            # Convert token ID lists to tensors and pad
             generated_ids = [torch.tensor(ids, dtype=torch.long, device=self.device) for ids in token_ids_list]
             generated_ids_padded = torch.nn.utils.rnn.pad_sequence(
                 generated_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
             )
 
-            # Build full sequences, labels, and aligned old_log_probs
             full_sequences = []
             labels = []
             old_log_probs_list = []
             has_valid_logprobs = bool(log_probs_list) and all(len(lp) > 0 for lp in log_probs_list)
 
             for i in range(len(prompts_text)):
-                # Get unpadded prompt tokens
                 curr_input_ids = input_ids[i][attention_mask[i] == 1]
                 curr_gen_ids = generated_ids[i]
 
                 curr_full = torch.cat([curr_input_ids, curr_gen_ids])
                 full_sequences.append(curr_full)
 
-                # Labels: -100 for prompt tokens
                 curr_labels = curr_full.clone()
                 curr_labels[: len(curr_input_ids)] = -100
                 labels.append(curr_labels)
 
-                # Construct aligned old_log_probs for the full sequence.
-                # The algorithm's get_log_probs() applies a causal shift: logits[t]
-                # predicts labels[t+1], so log_probs[t] = log P(token[t+1] | context[0:t]).
-                # After the shift, generated token logprobs start at position
-                # (num_prompt_tokens - 1) in the output tensor. vLLM's logprobs[k]
-                # is the log prob of generating the k-th token, matching this alignment.
                 if has_valid_logprobs:
                     curr_log_probs = torch.tensor(
                         log_probs_list[i], dtype=torch.float, device=self.device
@@ -299,7 +292,6 @@ class ReinforcePPTrainer:
                     full_log_probs[start_pos:end_pos] = curr_log_probs[:use_len]
                     old_log_probs_list.append(full_log_probs)
 
-            # Pad everything
             full_sequences_padded = torch.nn.utils.rnn.pad_sequence(
                 full_sequences, batch_first=True, padding_value=self.tokenizer.pad_token_id
             )
@@ -313,8 +305,6 @@ class ReinforcePPTrainer:
                 "completions_text": completions_text,
             }
 
-            # Include pre-computed old_log_probs if vLLM returned valid logprobs.
-            # This avoids a redundant forward pass in train_on_rollout().
             if has_valid_logprobs and old_log_probs_list:
                 result["old_log_probs"] = torch.nn.utils.rnn.pad_sequence(
                     old_log_probs_list, batch_first=True, padding_value=0.0
@@ -323,7 +313,6 @@ class ReinforcePPTrainer:
             return result
 
         else:
-            # --- Local Generation ---
             with torch.no_grad():
                 self.algorithm.policy_model.eval()
                 outputs = self.algorithm.policy_model.generate(
@@ -332,8 +321,8 @@ class ReinforcePPTrainer:
                     max_new_tokens=self.generation_config.max_new_tokens,
                     do_sample=self.generation_config.do_sample,
                     temperature=self.generation_config.temperature,
-                    top_p=self.generation_config.top_p,
-                    top_k=self.generation_config.top_k,
+                    top_p=getattr(self.generation_config, 'top_p', 1.0),
+                    top_k=getattr(self.generation_config, 'top_k', 50),
                     num_return_sequences=self.generation_config.num_return_sequences,
                     pad_token_id=self.tokenizer.pad_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
@@ -341,7 +330,6 @@ class ReinforcePPTrainer:
                     output_scores=True,
                 )
 
-                # Set model back to train mode after generation
                 self.algorithm.policy_model.train()
 
                 full_sequences = outputs.sequences

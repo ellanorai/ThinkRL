@@ -216,7 +216,7 @@ See `examples/` for detailed scripts:
 - **vLLM Integration**: High-throughput generation client/worker
 
 ### 🚧 In Development
-- **Training Loops**: SFT, DPO, PPO, GRPO CLI commands (infrastructure ready, trainers in progress)
+- **Training Loops**: GRPO CLI commands and Standalone scripts are fully Production-Ready. SFT, DPO, PPO are in progress.
 - **CoT/ToT Trainers**: Chain-of-Thought and Tree-of-Thought training modules
 - **Multimodal Training**: PAPO implementation for vision-language models
 - **Complete Examples**: End-to-end training scripts

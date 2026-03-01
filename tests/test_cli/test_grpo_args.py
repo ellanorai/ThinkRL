@@ -11,7 +11,7 @@ runner = CliRunner()
 
 @pytest.fixture
 def mock_trainer():
-    with patch("thinkrl.training.reinforce_pp_trainer.ReinforcePPTrainer") as mock:
+    with patch("thinkrl.training.grpo_trainer.GRPOTrainer") as mock:
         yield mock
 
 
@@ -43,12 +43,12 @@ def mock_tokenizer():
         yield mock
 
 
-def test_reinforce_pp_args_fp16(mock_trainer, mock_get_model, mock_dataset, mock_tokenizer):
+def test_grpo_args_fp16(mock_trainer, mock_get_model, mock_dataset, mock_tokenizer):
     """Test that --fp16 flag is correctly passed."""
     result = runner.invoke(
         app,
         [
-            "reinforce-pp",
+            "grpo",
             "--model",
             "gpt2",
             "--ref-model",
@@ -70,12 +70,12 @@ def test_reinforce_pp_args_fp16(mock_trainer, mock_get_model, mock_dataset, mock
     assert kwargs.get("bf16") is False
 
 
-def test_reinforce_pp_args_lora_init(mock_trainer, mock_dataset, mock_tokenizer, mock_get_model):
+def test_grpo_args_lora_init(mock_trainer, mock_dataset, mock_tokenizer, mock_get_model):
     """Test that --lora-init flag is passed."""
     result = runner.invoke(
         app,
         [
-            "reinforce-pp",
+            "grpo",
             "--model",
             "gpt2",
             "--ref-model",
@@ -93,12 +93,12 @@ def test_reinforce_pp_args_lora_init(mock_trainer, mock_dataset, mock_tokenizer,
     assert kwargs.get("lora_init_type") == "pissa"
 
 
-def test_reinforce_pp_args_max_samples(mock_trainer, mock_get_model, mock_dataset, mock_tokenizer):
-    """Test that --max-samples and --max-length are passed."""
+def test_grpo_args_max_samples(mock_trainer, mock_get_model, mock_dataset, mock_tokenizer):
+    """Test that --max-samples, --max-length, and --group-size are passed."""
     result = runner.invoke(
         app,
         [
-            "reinforce-pp",
+            "grpo",
             "--model",
             "gpt2",
             "--ref-model",
@@ -109,6 +109,8 @@ def test_reinforce_pp_args_max_samples(mock_trainer, mock_get_model, mock_datase
             "100",
             "--max-length",
             "256",
+            "--group-size",
+            "16",
             "--dry-run",
         ],
     )
@@ -119,3 +121,7 @@ def test_reinforce_pp_args_max_samples(mock_trainer, mock_get_model, mock_datase
     _, kwargs = mock_dataset.call_args
     assert kwargs.get("max_samples") == 100
     assert kwargs.get("max_length") == 256
+
+    # Check config initialization in trainer
+    _, kwargs_trainer = mock_trainer.call_args
+    assert kwargs_trainer.get("config").group_size == 16
