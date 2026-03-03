@@ -334,9 +334,12 @@ class GRPOAlgorithm(BaseRLHFAlgorithm):
         Returns:
             List of metrics dicts, one per epoch
         """
-        # Freeze old policy distribution (Algorithm 1, Line 6/7 context)
-        # In this implementation, 'batch' corresponds to D_b sampled from pi_theta_old
-        old_log_probs = self.compute_rollout_log_probs(batch)
+        # Use pre-computed old_log_probs if available (e.g. from vLLM),
+        # otherwise compute via forward pass
+        if "old_log_probs" in batch:
+            old_log_probs = batch["old_log_probs"]
+        else:
+            old_log_probs = self.compute_rollout_log_probs(batch)
 
         epoch_metrics = []
         for epoch in range(self.config.n_epochs):
@@ -353,3 +356,20 @@ class GRPOAlgorithm(BaseRLHFAlgorithm):
                 break
 
         return epoch_metrics
+
+def create_grpo(
+    policy_model: nn.Module,
+    ref_model: nn.Module | None = None,
+    optimizer: Optimizer | None = None,
+    **kwargs,
+) -> GRPOAlgorithm:
+    """
+    Factory function to create a GRPOAlgorithm instance.
+    """
+    config = GRPOConfig(**kwargs)
+    return GRPOAlgorithm(
+        policy_model=policy_model,
+        ref_model=ref_model,
+        optimizer=optimizer,
+        config=config,
+    )
