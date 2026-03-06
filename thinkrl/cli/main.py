@@ -409,50 +409,9 @@ if TYPER_AVAILABLE:
         typer.echo("Note: PPO training implementation pending")
         typer.echo("This will use thinkrl.algorithms.PPOAlgorithm")
 
-    @app.command()
-    def grpo(
-        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
-        dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
-        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./grpo_output"),
-        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
-        kl_coeff: Annotated[float, Option("--kl-coeff", help="KL penalty coefficient")] = 0.1,
-        group_size: Annotated[int, Option("--group-size", "-g", help="Number of samples per prompt")] = 4,
-        num_train_epochs: Annotated[
-            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
-        ] = 1,
-        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
-        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
-        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
-        reward_fn: Annotated[str | None, Option("--reward-fn", help="Path to reward function module")] = None,
-    ):
-        """
-        Group Relative Policy Optimization (GRPO).
+    from thinkrl.cli.grpo import app as grpo_app
 
-        Critic-free RL algorithm using group-relative advantages.
-        Similar to DeepSeek-R1's training approach.
-
-        Example:
-            thinkrl grpo --model meta-llama/Llama-3.1-8B --dataset math_dataset --group-size 8
-        """
-        typer.echo("=" * 60)
-        typer.echo("ThinkRL Group Relative Policy Optimization (GRPO)")
-        typer.echo("=" * 60)
-        typer.echo(f"Model: {model}")
-        typer.echo(f"Dataset: {dataset}")
-        typer.echo(f"Output: {output_dir}")
-        typer.echo(f"Learning rate: {learning_rate}")
-        typer.echo(f"KL coefficient: {kl_coeff}")
-        typer.echo(f"Group size: {group_size}")
-        typer.echo(f"Epochs: {num_train_epochs}")
-        typer.echo(f"Batch size: {per_device_train_batch_size}")
-        typer.echo(f"LoRA rank: {lora_r if lora_r else 'Disabled'}")
-        typer.echo(f"BF16: {bf16}")
-        typer.echo(f"Reward function: {reward_fn if reward_fn else 'Default'}")
-        typer.echo()
-
-        # TODO: Implement GRPO training
-        typer.echo("Note: GRPO training implementation pending")
-        typer.echo("This will use thinkrl.algorithms.GRPOAlgorithm")
+    app.add_typer(grpo_app)
 
     @app.command()
     def reward(
@@ -631,6 +590,7 @@ if TYPER_AVAILABLE:
             int | None, Option("--max-samples", help="Maximum number of samples to load from dataset")
         ] = None,
         target_column: Annotated[str, Option("--target-column", help="Column name for target answers")] = "answer",
+        dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
     ):
         """
         REINFORCE++ Policy Optimization.
@@ -809,10 +769,16 @@ if TYPER_AVAILABLE:
             use_vllm=use_vllm,
         )
 
+        if dry_run:
+            typer.echo("Dry run: exiting before training.")
+            raise typer.Exit(0)
+
         # 5. Train
         typer.echo("Starting training...")
         # Calculate steps from epochs
-        steps_per_epoch = len(train_dataset) // per_device_train_batch_size
+        per_device_train_batch_size = int(per_device_train_batch_size)
+        dataset_len = int(len(train_dataset))
+        steps_per_epoch = dataset_len // per_device_train_batch_size
         total_steps = steps_per_epoch * num_train_epochs
         trainer.train(steps=total_steps, batch_size=per_device_train_batch_size)
 

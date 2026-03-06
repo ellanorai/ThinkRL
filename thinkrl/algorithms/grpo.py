@@ -22,7 +22,6 @@ from dataclasses import dataclass
 
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim import Optimizer
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
@@ -134,50 +133,6 @@ class GRPOAlgorithm(BaseRLHFAlgorithm):
 
         # Flatten back to [BatchSize]
         return advantages.view(-1)
-
-    def get_log_probs(
-        self,
-        outputs: dict[str, torch.Tensor] | torch.Tensor,
-        labels: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Extract per-token log probabilities.
-
-        Args:
-            outputs: Model outputs containing logits.
-            labels: Input IDs (used as targets), with -100 for masked (prompt) tokens.
-
-        Returns:
-            Log probs of shape [B, S]. Masked positions are 0.
-        """
-        if isinstance(outputs, dict):
-            logits = outputs["logits"]
-        else:
-            logits = outputs
-
-        # Logits: [B, S, V]
-        # We predict the next token, so logits at position t predict labels at position t+1.
-        shift_logits = logits[..., :-1, :].contiguous()
-        shift_labels = labels[..., 1:].contiguous()
-
-        log_probs = F.log_softmax(shift_logits, dim=-1)
-
-        # Create a gather index, replacing -100 with 0 to avoid index errors
-        gather_index = shift_labels.clone()
-        gather_index[gather_index == -100] = 0
-
-        # Gather log probs of the ground truth tokens
-        token_log_probs = torch.gather(log_probs, -1, gather_index.unsqueeze(-1)).squeeze(-1)
-
-        # Apply mask (zero out log probs where label was -100)
-        # Using multiplication is safer for gradients than in-place assignment
-        token_log_probs = token_log_probs * (shift_labels != -100).float()
-
-        # Pad one token at the end to maintain length [B, S]
-        # We use torch.cat to be explicit and match DAPO implementation style
-        padding = torch.zeros(token_log_probs.size(0), 1, device=token_log_probs.device, dtype=token_log_probs.dtype)
-
-        return torch.cat([token_log_probs, padding], dim=1)
 
     def compute_loss(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """
@@ -356,3 +311,21 @@ class GRPOAlgorithm(BaseRLHFAlgorithm):
                 break
 
         return epoch_metrics
+
+
+def create_grpo(
+    policy_model: nn.Module,
+    ref_model: nn.Module | None = None,
+    optimizer: Optimizer | None = None,
+    **kwargs,
+) -> GRPOAlgorithm:
+    """
+    Factory function to create a GRPOAlgorithm instance.
+    """
+    config = GRPOConfig(**kwargs)
+    return GRPOAlgorithm(
+        policy_model=policy_model,
+        ref_model=ref_model,
+        optimizer=optimizer,
+        config=config,
+    )

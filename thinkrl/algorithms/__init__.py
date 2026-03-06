@@ -28,7 +28,7 @@ from thinkrl.algorithms.base import BaseRLHFAlgorithm
 from thinkrl.algorithms.dapo import DAPOAlgorithm, DAPOConfig, create_dapo
 from thinkrl.algorithms.dpo import DPOAlgorithm, DPOConfig, create_dpo
 from thinkrl.algorithms.dr_grpo import DrGRPOAlgorithm, DrGRPOConfig, create_dr_grpo
-from thinkrl.algorithms.grpo import GRPOAlgorithm, GRPOConfig
+from thinkrl.algorithms.grpo import GRPOAlgorithm, GRPOConfig, create_grpo
 from thinkrl.algorithms.ipo import IPOAlgorithm, IPOConfig, create_ipo
 from thinkrl.algorithms.kto import KTOAlgorithm, KTOConfig, create_kto
 from thinkrl.algorithms.orpo import ORPOAlgorithm, ORPOConfig, create_orpo
@@ -111,6 +111,7 @@ __all__ = [
     # GRPO
     "GRPOAlgorithm",
     "GRPOConfig",
+    "create_grpo",
     # DPO
     "DPOAlgorithm",
     "DPOConfig",

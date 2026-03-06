@@ -173,9 +173,14 @@ class VLLMClient:
 
         host = os.environ.get("VLLM_NCCL_HOST", "127.0.0.1")
 
-        pg = StatelessProcessGroup.create(
-            host=host, port=self.group_port, rank=self.client_rank, world_size=self.sync_world_size
-        )
+        try:
+            pg = StatelessProcessGroup.create(
+                host=host, port=self.group_port, rank=self.client_rank, world_size=self.sync_world_size
+            )
+            self.communicator = PyNcclCommunicator(pg, device=device)
+        except Exception as e:
+            logger.error(f"Failed to initialize NCCL bridge: {e}")
+            raise RuntimeError(f"NCCL init failed. Ensure you are on Linux and 'pynccl' is working: {e}") from e
 
         self.communicator = PyNcclCommunicator(pg, device=device)
 
@@ -186,6 +191,36 @@ class VLLMClient:
             self._nccl_stream = torch.cuda.Stream(device=torch.device(device))
 
         logger.info("NCCL bridge initialized successfully.")
+
+    def check_weights(self, model: torch.nn.Module) -> None:
+        """
+        Verifies that the local model structure matches the remote vLLM model.
+        """
+        if not self.is_main_process:
+            return
+
+        logger.info("Verifying model structure with vLLM server...")
+        params = {n: list(p.shape) for n, p in model.named_parameters()}
+
+        try:
+            resp = requests.post(
+                f"{self.url}/check_weights",
+                json={"params": params},
+            )
+            resp.raise_for_status()
+            result = resp.json()
+
+            if result.get("status") != "ok":
+                details = result.get("details", [])
+                logger.error(f"Model structure mismatch! vLLM sync will fail. details={details}")
+                raise RuntimeError(f"vLLM model mismatch: {details[:3]}...")
+
+            logger.info("Model structure verification passed.")
+
+        except requests.RequestException as e:
+            logger.error(f"Failed to verify weights: {e}")
+            # We might want to warn instead of crash if the server doesn't support this endpoint yet
+            logger.warning("Could not verify weights (server might be old). Proceeding with caution.")
 
     def update_model_weights(self, model: torch.nn.Module) -> None:
         """

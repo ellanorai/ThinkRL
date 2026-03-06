@@ -1,0 +1,26 @@
+# GRPO Algorithm Configuration
+# Matches GRPOConfig dataclass defaults (thinkrl/algorithms/grpo.py)
+
+# Learning rate for policy optimizer
+learning_rate: 1.0e-6
+
+# Group size (G in the paper) — number of outputs sampled per prompt
+group_size: 64
+
+# PPO-style clipping epsilon
+clip_epsilon: 0.2
+
+# KL penalty coefficient (beta in Eq 19 of DeepSeekMath)
+beta: 0.04
+
+# Number of optimization epochs per rollout (mu in Algorithm 1)
+n_epochs: 1
+
+# Gradient clipping max norm
+clip_grad_norm: 1.0
+
+# Epsilon added to std to avoid division by zero in advantage normalization
+advantage_eps: 1.0e-8
+
+# Whether to use vLLM for high-throughput generation
+use_vllm: false
