@@ -66,7 +66,7 @@ class GRPOTrainer:
 
         # GRPO generates a group of outputs per prompt (G samples)
         # Determine group_size from provided config or default
-        num_return_sequences = (self.config.group_size if self.config else GRPOConfig().group_size)
+        num_return_sequences = self.config.group_size if self.config else GRPOConfig().group_size
 
         self.generation_config = generation_config or GenerationConfig(
             max_new_tokens=256,
@@ -81,19 +81,14 @@ class GRPOTrainer:
         if config is None:
             # Create from simple kwargs using the factory method
             from thinkrl.algorithms.grpo import create_grpo
-            self.algorithm = create_grpo(
-                policy_model=model, ref_model=ref_model, optimizer=optimizer, **algo_kwargs
-            )
+
+            self.algorithm = create_grpo(policy_model=model, ref_model=ref_model, optimizer=optimizer, **algo_kwargs)
         else:
             # Initialize explicitly with the provided config object
             self.algorithm = GRPOAlgorithm(
-                policy_model=model,
-                ref_model=ref_model,
-                optimizer=optimizer,
-                config=config,
-                **algo_kwargs
+                policy_model=model, ref_model=ref_model, optimizer=optimizer, config=config, **algo_kwargs
             )
-        
+
         # Ensure we bind to the instantiated config in the algorithm
         self.config = self.algorithm.config
 
@@ -112,6 +107,7 @@ class GRPOTrainer:
         try:
             from tqdm import tqdm
         except ImportError:
+
             def tqdm(x, **kwargs):
                 return x
 
@@ -238,7 +234,7 @@ class GRPOTrainer:
         attention_mask = batch_prompts["attention_mask"].to(self.device)
 
         num_return_sequences = self.generation_config.num_return_sequences
-        
+
         if self.use_vllm:
             expanded_prompts = []
             for p in prompts_text:
@@ -250,7 +246,7 @@ class GRPOTrainer:
             params = {
                 "max_tokens": self.generation_config.max_new_tokens,
                 "temperature": self.generation_config.temperature,
-                "top_p": getattr(self.generation_config, 'top_p', 1.0),
+                "top_p": getattr(self.generation_config, "top_p", 1.0),
             }
 
             output = self.vllm_client.generate(prompts_text, params, return_logprobs=True)
@@ -281,9 +277,7 @@ class GRPOTrainer:
                 labels.append(curr_labels)
 
                 if has_valid_logprobs:
-                    curr_log_probs = torch.tensor(
-                        log_probs_list[i], dtype=torch.float, device=self.device
-                    )
+                    curr_log_probs = torch.tensor(log_probs_list[i], dtype=torch.float, device=self.device)
                     full_log_probs = torch.zeros(len(curr_full), device=self.device)
                     num_prompt_tokens = len(curr_input_ids)
                     start_pos = num_prompt_tokens - 1
@@ -321,18 +315,16 @@ class GRPOTrainer:
                     max_new_tokens=self.generation_config.max_new_tokens,
                     do_sample=self.generation_config.do_sample,
                     temperature=self.generation_config.temperature,
-                    top_p=getattr(self.generation_config, 'top_p', 1.0),
-                    top_k=getattr(self.generation_config, 'top_k', 50),
+                    top_p=getattr(self.generation_config, "top_p", 1.0),
+                    top_k=getattr(self.generation_config, "top_k", 50),
                     num_return_sequences=self.generation_config.num_return_sequences,
                     pad_token_id=self.tokenizer.pad_token_id,
                     eos_token_id=self.tokenizer.eos_token_id,
-                    return_dict_in_generate=True,
-                    output_scores=True,
                 )
 
                 self.algorithm.policy_model.train()
 
-                full_sequences = outputs.sequences
+                full_sequences = outputs
 
                 input_len = input_ids.shape[1]
                 generated_ids = full_sequences[:, input_len:]

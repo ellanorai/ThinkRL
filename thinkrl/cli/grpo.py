@@ -56,7 +56,7 @@ def grpo(
         str | None, Option("--reward-fn", help="Path to reward function (module.py:func_name)")
     ] = None,
     deepspeed: Annotated[str | None, Option("--deepspeed", help="Path to DeepSpeed configuration file")] = None,
-    use_vllm: Annotated[bool, Option("--use-vllm", help="Use VLLM for generation")] = False,
+    use_vllm: Annotated[str, Option("--use-vllm", help="Use VLLM for generation (true/false)")] = "false",
     vllm_group_port: Annotated[int, Option("--vllm-group-port", help="NCCL group port for VLLM sync")] = 51216,
     gradient_checkpointing: Annotated[
         bool,
@@ -229,7 +229,7 @@ def grpo(
             beta=kl_coeff,
             n_epochs=num_train_epochs,
         ),
-        use_vllm=use_vllm,
+        use_vllm=(str(use_vllm).lower() == "true"),
         vllm_group_port=vllm_group_port,
     )
 
