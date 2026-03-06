@@ -581,8 +581,12 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
         Returns:
             List of metrics dicts, one per epoch
         """
-        # Compute old_log_probs ONCE before any updates (θ_old frozen)
-        old_log_probs = self.compute_rollout_log_probs(batch)
+        # Use pre-computed old_log_probs if available (e.g. from vLLM),
+        # otherwise compute via forward pass (θ_old frozen)
+        if "old_log_probs" in batch:
+            old_log_probs = batch["old_log_probs"]
+        else:
+            old_log_probs = self.compute_rollout_log_probs(batch)
 
         all_metrics = []
         for epoch in range(self.config.n_epochs):

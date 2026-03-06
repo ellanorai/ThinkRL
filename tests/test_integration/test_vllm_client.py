@@ -48,6 +48,13 @@ class TestVLLMClient:
             assert client.is_main_process is True
             assert client.url == "http://localhost:8000"
 
+    def test_init_with_timeouts(self):
+        # Test custom timeout configuration
+        with patch("torch.distributed.is_available", return_value=False):
+            client = VLLMClient(generate_timeout=60, control_timeout=10)
+            assert client.generate_timeout == 60
+            assert client.control_timeout == 10
+
     def test_init_distributed_rank1(self):
         # Test init on non-main process
         with patch("torch.distributed.is_available", return_value=True), patch(
@@ -82,6 +89,20 @@ class TestVLLMClient:
         assert kwargs["json"]["logprobs"] == 1
 
     @patch("requests.post")
+    def test_generate_has_timeout(self, mock_post, client):
+        """Test that generate passes timeout to requests.post."""
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"text": ["out"]}
+        mock_response.raise_for_status.return_value = None
+        mock_post.return_value = mock_response
+
+        client.generate(["input"], params={}, return_logprobs=False)
+
+        args, kwargs = mock_post.call_args
+        assert "timeout" in kwargs
+        assert kwargs["timeout"] == client.generate_timeout
+
+    @patch("requests.post")
     def test_generate_error(self, mock_post, client):
         mock_post.side_effect = requests.RequestException("Connection refused")
 
@@ -113,8 +134,8 @@ class TestVLLMClient:
 
     @pytest.mark.skip(reason="Torch LIBRARY registration conflicts in test environment")
     @patch("requests.post")
-    def test_update_model_weights(self, mock_post, client):
-        # Mock HTTP call
+    def test_update_model_weights_flat_broadcast(self, mock_post, client):
+        """Test weight update uses flattened buffer broadcast."""
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_post.return_value = mock_response
@@ -123,13 +144,13 @@ class TestVLLMClient:
         mock_comm_instance = MagicMock()
         client.communicator = mock_comm_instance
 
-        # Create a simple model
+        # Create a simple model (Linear has weight + bias, both float32)
         model = torch.nn.Linear(1, 1)
 
         client.update_model_weights(model)
 
-        # Should broadcast twice (weight and bias)
-        assert mock_comm_instance.broadcast.call_count == 2
+        # With flattened broadcast, all float32 params are sent in one call
+        assert mock_comm_instance.broadcast.call_count == 1
 
     def test_update_model_weights_no_init(self, client):
         client.communicator = None
@@ -138,29 +159,23 @@ class TestVLLMClient:
 
     @pytest.mark.skip(reason="Torch LIBRARY registration conflicts in test environment")
     @patch("requests.post")
-    def test_update_model_weights_fsdp(self, mock_post, client):
-        """Test weight update triggers server sync and handles FSDP context."""
-        # Mock server response for /update_weights
+    def test_update_model_weights_triggers_server(self, mock_post, client):
+        """Test weight update triggers server sync via HTTP."""
         mock_response = MagicMock()
         mock_response.raise_for_status.return_value = None
         mock_post.return_value = mock_response
 
-        # Setup communicator mock
         mock_comm_instance = MagicMock()
         client.communicator = mock_comm_instance
 
-        # Create a simple model (not actually FSDP, but tests the path)
         model = torch.nn.Linear(1, 1)
-
         client.update_model_weights(model)
 
-        # Verify HTTP call to trigger server sync
+        # Verify HTTP call to trigger server sync with timeout
         mock_post.assert_called_once()
         args, kwargs = mock_post.call_args
         assert "/update_weights" in args[0]
-
-        # Verify broadcast called for both params
-        assert mock_comm_instance.broadcast.call_count == 2
+        assert "timeout" in kwargs
 
     def test_generate_no_logprobs(self, client):
         """Test generate when server doesn't return logprobs."""
@@ -175,3 +190,43 @@ class TestVLLMClient:
             assert result["text"] == ["output"]
             assert result["token_ids"] == []  # Fallback
             assert result["log_probs"] == []
+
+    @patch("requests.get")
+    def test_health_check_success(self, mock_get, client):
+        """Test health check returns True when server is healthy."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_get.return_value = mock_response
+
+        assert client.health_check() is True
+        mock_get.assert_called_once()
+
+    @patch("requests.get")
+    def test_health_check_failure(self, mock_get, client):
+        """Test health check returns False when server is down."""
+        mock_get.side_effect = requests.RequestException("Connection refused")
+
+        assert client.health_check() is False
+
+    def test_health_check_non_main_process(self):
+        """Test health check is skipped on non-main process."""
+        with patch("torch.distributed.is_available", return_value=True), patch(
+            "torch.distributed.is_initialized", return_value=True
+        ), patch("torch.distributed.get_rank", return_value=1):
+            client = VLLMClient()
+            assert client.health_check() is True  # Always True for non-main
+
+    @patch("requests.post")
+    def test_shutdown_server(self, mock_post, client):
+        """Test shutdown_server sends POST to /shutdown."""
+        client.shutdown_server()
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert "/shutdown" in args[0]
+
+    @patch("requests.post")
+    def test_shutdown_server_when_down(self, mock_post, client):
+        """Test shutdown_server handles connection errors gracefully."""
+        mock_post.side_effect = requests.RequestException("Already down")
+        # Should not raise
+        client.shutdown_server()

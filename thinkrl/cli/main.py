@@ -536,9 +536,7 @@ if TYPER_AVAILABLE:
         model: Annotated[str, Option("--model", "-m", help="Model name or path")],
         dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
         dataset_split: Annotated[str, Option("--dataset-split", help="Dataset split to load")] = "train",
-        dataset_config: Annotated[
-            str | None, Option("--dataset-config", help="Dataset config name (e.g., 'main' for gsm8k)")
-        ] = None,
+        dataset_config: Annotated[str | None, Option("--dataset-config", help="Dataset config name (e.g., 'main' for gsm8k)")] = None,
         prompt_column: Annotated[str, Option("--prompt-column", "-pc", help="Column name for prompts")] = "prompt",
         source: Annotated[
             str, Option("--source", "-s", help="Dataset source: 'hf' (HuggingFace), 'local', 'json', 'csv'")

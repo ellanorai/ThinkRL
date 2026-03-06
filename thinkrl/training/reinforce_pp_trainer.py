@@ -63,7 +63,6 @@ class ReinforcePPTrainer:
         self.vllm_client = None
 
         # Setup generation config
-        # Setup generation config
         num_return_sequences = 1
         if config and config.mode == "baseline":
             num_return_sequences = config.group_size
@@ -173,14 +172,6 @@ class ReinforcePPTrainer:
                         expanded_prompts.extend([p] * num_return_sequences)
                     prompts_text = expanded_prompts
 
-                # Expand prompts if needed for reward fn
-                num_return_sequences = self.generation_config.num_return_sequences
-                if num_return_sequences > 1:
-                    expanded_prompts = []
-                    for p in prompts_text:
-                        expanded_prompts.extend([p] * num_return_sequences)
-                    prompts_text = expanded_prompts
-
                 # Extract and expand targets if available
                 targets = batch_prompts.get("target", None)
                 kwargs = {}
@@ -244,15 +235,17 @@ class ReinforcePPTrainer:
         # Expand prompts if generating multiple sequences per prompt
         num_return_sequences = self.generation_config.num_return_sequences
         if num_return_sequences > 1:
-            # Replicate prompts: [p1, p2] -> [p1, p1, p2, p2]
             expanded_prompts = []
             for p in prompts_text:
                 expanded_prompts.extend([p] * num_return_sequences)
             prompts_text = expanded_prompts
 
+            # Also expand input_ids and attention_mask to match
+            input_ids = input_ids.repeat_interleave(num_return_sequences, dim=0)
+            attention_mask = attention_mask.repeat_interleave(num_return_sequences, dim=0)
+
         if self.use_vllm:
             # --- VLLM Generation ---
-            # Extract generation params
             params = {
                 "max_tokens": self.generation_config.max_new_tokens,
                 "temperature": self.generation_config.temperature,
@@ -263,83 +256,73 @@ class ReinforcePPTrainer:
 
             completions_text = output["text"]
             token_ids_list = output["token_ids"]
-            log_probs_list = output["log_probs"]  # List of list of floats
+            log_probs_list = output["log_probs"]
 
-            # Need to convert these lists back to tensors and pad them
-            # And crucially, reconstruct the full sequence input_ids + generated_ids
-            # This is complex because lengths vary.
-
-            # For simplicity, we assume we need to return padded tensors similar to local gen
+            # Convert token ID lists to tensors and pad
             generated_ids = [torch.tensor(ids, dtype=torch.long, device=self.device) for ids in token_ids_list]
             generated_ids_padded = torch.nn.utils.rnn.pad_sequence(
                 generated_ids, batch_first=True, padding_value=self.tokenizer.pad_token_id
             )
 
-            # Construct full sequences
-            # Note: input_ids might be padded on left or right. Standard HF is right padded usually for Enc,
-            # but for Gen usually Left padded. The collator right-padded everything.
-            # We need to concatenate carefully.
-
-            # Ideally, we re-tokenize the prompt + completion to get clean full sequences
-            # But we can also just concat.
+            # Build full sequences, labels, and aligned old_log_probs
             full_sequences = []
             labels = []
             old_log_probs_list = []
+            has_valid_logprobs = bool(log_probs_list) and all(len(lp) > 0 for lp in log_probs_list)
 
             for i in range(len(prompts_text)):
-                # Reconstruct per sample
-                # input_len = len(batch_prompts["input_ids"][i]) - padding
-                # Simplest: just use the valid tokens
+                # Get unpadded prompt tokens
                 curr_input_ids = input_ids[i][attention_mask[i] == 1]
                 curr_gen_ids = generated_ids[i]
 
                 curr_full = torch.cat([curr_input_ids, curr_gen_ids])
                 full_sequences.append(curr_full)
 
-                # Labels: -100 for prompt
+                # Labels: -100 for prompt tokens
                 curr_labels = curr_full.clone()
                 curr_labels[: len(curr_input_ids)] = -100
                 labels.append(curr_labels)
 
-                # Old Log Probs:
-                # We have log probs for the generated part.
-                # We need to construct a tensor matching the generated part.
-                curr_log_probs = torch.tensor(log_probs_list[i], dtype=torch.float, device=self.device)
-                old_log_probs_list.append(curr_log_probs)
+                # Construct aligned old_log_probs for the full sequence.
+                # The algorithm's get_log_probs() applies a causal shift: logits[t]
+                # predicts labels[t+1], so log_probs[t] = log P(token[t+1] | context[0:t]).
+                # After the shift, generated token logprobs start at position
+                # (num_prompt_tokens - 1) in the output tensor. vLLM's logprobs[k]
+                # is the log prob of generating the k-th token, matching this alignment.
+                if has_valid_logprobs:
+                    curr_log_probs = torch.tensor(
+                        log_probs_list[i], dtype=torch.float, device=self.device
+                    )
+                    full_log_probs = torch.zeros(len(curr_full), device=self.device)
+                    num_prompt_tokens = len(curr_input_ids)
+                    start_pos = num_prompt_tokens - 1
+                    end_pos = min(start_pos + len(curr_log_probs), len(full_log_probs))
+                    use_len = end_pos - start_pos
+                    full_log_probs[start_pos:end_pos] = curr_log_probs[:use_len]
+                    old_log_probs_list.append(full_log_probs)
 
             # Pad everything
             full_sequences_padded = torch.nn.utils.rnn.pad_sequence(
                 full_sequences, batch_first=True, padding_value=self.tokenizer.pad_token_id
             )
             labels_padded = torch.nn.utils.rnn.pad_sequence(labels, batch_first=True, padding_value=-100)
-            # Log probs need padding?
-            # The algorithm expects log_probs for the *generated* part usually, aligned with actions.
-            # REINFORCEPPAlgorithm.get_log_probs expects (logits, labels) usually.
-            # But we are bypassing the forward pass for old_log_probs.
-            # If we pass old_log_probs explicitly, the algorithm must handle it.
-            # Standard REINFORCEPPAlgorithm computes it internally if not provided.
-            # We need to ensure REINFORCEPPAlgorithm accepts pre-computed old_log_probs.
-            # Checking `reinforce_pp.py` ... it likely computes it.
-            # If we want to optimize, we should modify the algorithm to accept it.
-            # For now, let's just return what we have.
 
-            # To avoid modifying `reinforce_pp.py` right now, we can just ignore VLLM logprobs
-            # and recompute them in `train_on_rollout` (Standard PPO approach),
-            # BUT user asked for "everything", implying optimization.
-            # Let's assume we recompute for safety, as VLLM logprobs are sometimes slightly diff from Train-mode model.
-
-            # Correction: User wants VLLM integration.
-            # I will return the basic data. The algorithm will likely run a forward pass
-            # to get the gradient flow anyway.
-
-            return {
+            result = {
                 "input_ids": full_sequences_padded,
                 "attention_mask": (full_sequences_padded != self.tokenizer.pad_token_id).long(),
                 "labels": labels_padded,
                 "generated_ids": generated_ids_padded,
                 "completions_text": completions_text,
-                # "old_log_probs": ... (Optional optimization)
             }
+
+            # Include pre-computed old_log_probs if vLLM returned valid logprobs.
+            # This avoids a redundant forward pass in train_on_rollout().
+            if has_valid_logprobs and old_log_probs_list:
+                result["old_log_probs"] = torch.nn.utils.rnn.pad_sequence(
+                    old_log_probs_list, batch_first=True, padding_value=0.0
+                )
+
+            return result
 
         else:
             # --- Local Generation ---

@@ -12,10 +12,12 @@ from torch.nn.utils.rnn import pad_sequence
 from torch.utils.data import DataLoader
 
 
-def create_rlhf_collate_fn(tokenizer, padding_side="right"):
+def create_rlhf_collate_fn(tokenizer, padding_side=None):
     """
     Create a collate function that handles variable length sequences and padding.
     """
+    if padding_side is None:
+        padding_side = getattr(tokenizer, "padding_side", "right")
 
     def collate_fn(batch: list[dict[str, Any]]) -> dict[str, torch.Tensor]:
         if not batch:
@@ -72,7 +74,7 @@ class RLHFDataLoader(DataLoader):
         batch_size=32,
         shuffle=True,
         drop_last=True,
-        padding_side="right",
+        padding_side=None,
         **kwargs,
     ):
         collate_fn = create_rlhf_collate_fn(tokenizer, padding_side)
@@ -93,7 +95,7 @@ def create_rlhf_dataloader(
     batch_size: int = 32,
     shuffle: bool = True,
     drop_last: bool = True,
-    padding_side: str = "right",
+    padding_side: str = None,
     num_workers: int = 0,
     pin_memory: bool = False,
     **kwargs,
