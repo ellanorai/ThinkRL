@@ -201,7 +201,6 @@ class DrGRPOAlgorithm(BaseRLHFAlgorithm):
             num_tokens = token_mask.sum().clamp(min=1.0)
 
             metrics = {
-                "loss": total_loss.item(),
                 "kl_mean": (kl_div * token_mask).sum().item() / num_tokens.item(),
                 "advantage_mean": advantages.mean().item(),
                 "advantage_std": advantages.std().item(),
@@ -281,11 +280,19 @@ class DrGRPOAlgorithm(BaseRLHFAlgorithm):
 
 def create_dr_grpo(
     policy_model,
+    ref_model=None,
+    optimizer=None,
     config: DrGRPOConfig | None = None,
     **kwargs,
 ) -> DrGRPOAlgorithm:
     """Factory function to create Dr.GRPO algorithm."""
-    return DrGRPOAlgorithm(policy_model, config, **kwargs)
+    return DrGRPOAlgorithm(
+        policy_model=policy_model,
+        ref_model=ref_model,
+        optimizer=optimizer,
+        config=config,
+        **kwargs,
+    )
 
 
 __all__ = ["DrGRPOConfig", "DrGRPOAlgorithm", "create_dr_grpo"]

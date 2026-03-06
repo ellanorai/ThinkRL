@@ -386,6 +386,7 @@ CONSOLE_SCRIPTS = {
     # Core training commands
     "thinkrl": "thinkrl.cli.main:main",
     "reinforce-pp": "thinkrl.cli.main:reinforce_pp_entry",
+    "grpo": "thinkrl.cli.grpo:main",
     "thinkrl-train": "thinkrl.scripts.train:main",
     # Evaluation commands
     "thinkrl-eval": "thinkrl.scripts.evaluate:main",
