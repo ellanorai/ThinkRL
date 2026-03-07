@@ -56,6 +56,7 @@ def grpo(
         str | None, Option("--reward-fn", help="Path to reward function (module.py:func_name)")
     ] = None,
     deepspeed: Annotated[str | None, Option("--deepspeed", help="Path to DeepSpeed configuration file")] = None,
+    local_rank: Annotated[int, Option("--local_rank", "--local-rank", hidden=True)] = -1,
     use_vllm: Annotated[str, Option("--use-vllm", help="Use VLLM for generation (true/false)")] = "false",
     vllm_group_port: Annotated[int, Option("--vllm-group-port", help="NCCL group port for VLLM sync")] = 51216,
     gradient_checkpointing: Annotated[
