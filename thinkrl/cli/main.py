@@ -409,9 +409,9 @@ if TYPER_AVAILABLE:
         typer.echo("Note: PPO training implementation pending")
         typer.echo("This will use thinkrl.algorithms.PPOAlgorithm")
 
-    from thinkrl.cli.grpo import app as grpo_app
+    from thinkrl.cli.grpo import grpo as grpo_cmd
 
-    app.add_typer(grpo_app)
+    app.command(name="grpo")(grpo_cmd)
 
     @app.command()
     def reward(
@@ -536,7 +536,9 @@ if TYPER_AVAILABLE:
         model: Annotated[str, Option("--model", "-m", help="Model name or path")],
         dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
         dataset_split: Annotated[str, Option("--dataset-split", help="Dataset split to load")] = "train",
-        dataset_config: Annotated[str | None, Option("--dataset-config", help="Dataset config name (e.g., 'main' for gsm8k)")] = None,
+        dataset_config: Annotated[
+            str | None, Option("--dataset-config", help="Dataset config name (e.g., 'main' for gsm8k)")
+        ] = None,
         prompt_column: Annotated[str, Option("--prompt-column", "-pc", help="Column name for prompts")] = "prompt",
         source: Annotated[
             str, Option("--source", "-s", help="Dataset source: 'hf' (HuggingFace), 'local', 'json', 'csv'")
