@@ -256,7 +256,7 @@ class BaseRLHFAlgorithm(ABC):
 
     def get_log_probs(
         self,
-        outputs: dict[str, torch.Tensor] | torch.Tensor,
+        outputs: dict[str, torch.Tensor] | torch.Tensor | tuple,
         labels: torch.Tensor,
     ) -> torch.Tensor:
         """
@@ -266,13 +266,24 @@ class BaseRLHFAlgorithm(ABC):
         masks positions where labels == -100.
 
         Args:
-            outputs: Model outputs (dict with 'logits' key or raw logits tensor)
+            outputs: Model outputs (dict with 'logits', raw logits tensor, or Actor pre-computed tuple)
             labels: Target token IDs [B, S], with -100 for masked positions
 
         Returns:
             Log probabilities [B, S] with 0.0 at masked positions
         """
-        if isinstance(outputs, dict):
+        if isinstance(outputs, tuple):
+            if outputs[0].dim() == 2:
+                # It's an Actor model emitting pre-computed gathered_log_probs [B, S-1]
+                token_log_probs = outputs[0]
+                padding = torch.zeros(
+                    token_log_probs.size(0), 1, device=token_log_probs.device, dtype=token_log_probs.dtype
+                )
+                return torch.cat([token_log_probs, padding], dim=1)
+            else:
+                # HuggingFace raw tuple fallback
+                logits = outputs[0]
+        elif isinstance(outputs, dict):
             logits = outputs["logits"]
         else:
             logits = outputs

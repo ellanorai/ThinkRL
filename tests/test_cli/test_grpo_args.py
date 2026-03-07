@@ -58,7 +58,6 @@ def test_grpo_args_fp16(mock_trainer, mock_get_model, mock_dataset, mock_tokeniz
             "--fp16",
             "--batch-size",
             "4",
-            "--dry-run",
         ],
     )
 
@@ -84,7 +83,6 @@ def test_grpo_args_lora_init(mock_trainer, mock_dataset, mock_tokenizer, mock_ge
             "fake_dataset",
             "--lora-init",
             "pissa",
-            "--dry-run",
         ],
     )
 
@@ -111,7 +109,6 @@ def test_grpo_args_max_samples(mock_trainer, mock_get_model, mock_dataset, mock_
             "256",
             "--group-size",
             "16",
-            "--dry-run",
         ],
     )
 
