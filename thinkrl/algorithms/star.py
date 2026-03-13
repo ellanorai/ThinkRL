@@ -103,7 +103,6 @@ class STaRAlgorithm(BaseRLHFAlgorithm):
 
         # Get log probs for SFTLoss
         log_probs = torch.log_softmax(logits, dim=-1)
-        
         policy_log_probs = self.get_log_probs(outputs, labels)
         
         loss = self.loss_fn(policy_log_probs, labels, attention_mask=attention_mask)
