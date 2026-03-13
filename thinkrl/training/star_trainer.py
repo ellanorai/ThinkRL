@@ -1,7 +1,6 @@
 from collections.abc import Callable
 from typing import Union
 import copy
-import os
 
 import torch
 import torch.nn as nn
