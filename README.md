@@ -118,6 +118,7 @@ ThinkRL implements standard baselines and cutting-edge **Reasoning-Aware** algor
 | **DAPO** | **Dynamic Asymmetric Policy Opt.** | Long-horizon reasoning stability |
 | **COPO** | **Count-based Online Pref. Opt.** | Exploration-heavy environments |
 | **PAPO** | **Perception-Aware Policy Opt.** | Multimodal reasoning & grounding |
+| **STaR** | **Self-Taught Reasoner** | Bootstrapping reasoning with hints |
 
 ---
 
