@@ -82,7 +82,6 @@ def star(
 
     init_distributed()
     local_rank = get_local_rank()
-    device = torch.device(f"cuda:{local_rank}" if torch.cuda.is_available() else "cpu")
 
     typer.echo("Loading model...")
     policy_model = get_model(
