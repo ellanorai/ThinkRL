@@ -1,150 +1,159 @@
 """
-ThinkRL STaR Algorithm
-======================
+STaR (Self-Taught Reasoner) Algorithm Implementation
+=====================================================
 
-STaR (Self-Taught Reasoner) bootstraps reasoning capabilities by
-training on self-generated rationales that lead to correct answers.
-
-Key features:
-- Self-generated chain-of-thought rationales
-- Bootstrap reasoning from correct answers
-- Rationalization: generate rationale given answer
-- Iterative self-improvement
+STaR leverages a model's own reasoning capabilities to improve itself iterativey:
+1. Bootstrapping: Sample multiple rationales for each problem.
+2. Filtering: Select rationales that lead to the correct answer.
+3. Rationalization: For failed problems, provide the correct answer as a hint
+   to "reason backward" and generate a valid rationale.
+4. Fine-tuning: Update the model on the combined set of successful rationales.
 
 Reference:
-- STaR: Self-Taught Reasoner - Bootstrapping Reasoning With Reasoning
-- Zelikman et al., 2022
+    "STaR: Bootstrapping Reasoning with Reasoning"
+    Zelikman et al., 2022. https://arxiv.org/abs/2203.14465
 
-Author: EllanorAI
+Author: Antigravity @ DeepMind
 """
 
-from __future__ import annotations
-
 from dataclasses import dataclass
-from typing import Any, Literal
+
+import torch
+import torch.nn as nn
+from torch.optim import Optimizer
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
+from thinkrl.models.loss import SFTLoss
+from thinkrl.utils.logging import get_logger
+
+
+logger = get_logger(__name__)
 
 
 @dataclass
 class STaRConfig:
     """Configuration for STaR algorithm."""
 
-    # Learning rate
-    learning_rate: float = 1e-5
+    learning_rate: float = 1e-6
+    max_iterations: int = 40  # Number of outer loops
 
-    # Generation settings
-    num_rationale_samples: int = 1
-    generation_temperature: float = 0.7
-    max_rationale_tokens: int = 512
+    # Training schedule from paper
+    warmup_steps: int = 100
+    base_training_steps: int = 40
+    step_scaling_factor: float = 1.2
 
-    # Rationalization (generate rationale given correct answer)
-    use_rationalization: bool = True
-    rationalization_temperature: float = 0.7
+    # Batch sizes
+    generation_batch_size: int = 4
+    train_batch_size: int = 4
 
-    # Answer verification
-    answer_extraction_method: Literal["regex", "model", "exact"] = "regex"
-    answer_pattern: str | None = None  # Regex pattern to extract answer
+    # Rationalization
+    rationalization_hint_format: str = "The correct answer is {answer}. Let's think step by step:"
 
-    # Iteration settings
-    num_iterations: int = 3
-    filter_correct_only: bool = True  # Only train on rationales leading to correct answers
-
-    # Training
-    n_epochs: int = 1
-    batch_size: int = 64
-    gradient_accumulation_steps: int = 1
-
-    # Loss weighting
-    rationale_loss_weight: float = 1.0
-    answer_loss_weight: float = 1.0
-
-    # Gradient clipping
+    # Stability
     clip_grad_norm: float = 1.0
+
+    # Dataset processing
+    max_length: int = 512
 
 
 class STaRAlgorithm(BaseRLHFAlgorithm):
     """
-    STaR (Self-Taught Reasoner) Algorithm.
+    STaR Algorithm (Self-Taught Reasoner).
 
-    Bootstraps reasoning by:
-    1. Generate rationale + answer for each problem
-    2. Filter to keep only correct answers
-    3. Train on (problem, rationale, answer) triples
-    4. For incorrect answers, use "rationalization":
-       - Provide the correct answer
-       - Generate rationale that leads to it
-       - Add to training set
-    5. Repeat iteratively
-
-    TODO: Implement algorithm
+    Essentially performs Supervised Fine-Tuning (SFT) over a dynamically
+    collected dataset of successful reasoning chains.
     """
 
     def __init__(
         self,
-        policy_model,
+        policy_model: nn.Module,
+        ref_model: nn.Module | None = None,
+        optimizer: Optimizer | None = None,
         config: STaRConfig | None = None,
         **kwargs,
     ):
-        raise NotImplementedError("STaR algorithm not yet implemented")
+        config = config or STaRConfig()
 
-    def generate_rationales(
-        self,
-        problems: list[str],
-    ) -> tuple[list[str], list[str]]:
-        """Generate rationales and extract answers."""
-        raise NotImplementedError
+        # STaR doesn't strictly need a ref_model for KL during SFT
+        # (the paper uses reset-to-base model M instead), but we keep the interface.
+        super().__init__(
+            policy_model=policy_model,
+            ref_model=ref_model,
+            optimizer=optimizer,
+            learning_rate=config.learning_rate,
+            clip_grad_norm=config.clip_grad_norm,
+            **kwargs,
+        )
 
-    def verify_answers(
-        self,
-        predicted: list[str],
-        ground_truth: list[str],
-    ) -> list[bool]:
-        """Verify if predicted answers are correct."""
-        raise NotImplementedError
+        self.config: STaRConfig = config
+        self.loss_fn = SFTLoss()
 
-    def rationalize(
-        self,
-        problems: list[str],
-        correct_answers: list[str],
-    ) -> list[str]:
-        """Generate rationales given correct answers (rationalization)."""
-        raise NotImplementedError
+    def compute_loss(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
+        """
+        Compute SFT Loss over reasoning chains.
 
-    def create_training_data(
-        self,
-        problems: list[str],
-        rationales: list[str],
-        answers: list[str],
-        correct_mask: list[bool],
-    ) -> dict[str, Any]:
-        """Create training data from generated rationales."""
-        raise NotImplementedError
+        Args:
+            batch: Dict containing:
+                - input_ids: [B, S]
+                - attention_mask: [B, S]
+                - labels: [B, S] (with -100 for prompt tokens)
+        """
+        input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
+        labels = batch["labels"]
 
-    def compute_loss(self, batch: dict[str, Any]) -> dict[str, Any]:
-        """Compute STaR loss (standard LM loss on rationales)."""
-        raise NotImplementedError
+        self.policy_model.train()
+        outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
 
-    def training_step(self, batch: dict[str, Any]) -> dict[str, Any]:
-        """Perform a single training step."""
-        raise NotImplementedError
+        # Get per-token log probs for SFTLoss
+        policy_log_probs = self.get_log_probs(outputs, labels)
 
-    def run_iteration(
-        self,
-        problems: list[str],
-        ground_truth_answers: list[str],
-    ) -> dict[str, Any]:
-        """Run a single STaR iteration."""
-        raise NotImplementedError
+        # Let SFTLoss derive the mask from labels (labels != -100)
+        # instead of using attention_mask which masks padding, not prompt tokens
+        loss = self.loss_fn(policy_log_probs, labels)
+
+        return {
+            "loss": loss,
+            "loss_val": loss.detach(),
+        }
+
+    def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, float]:
+        """
+        Perform a single SFT training update.
+        """
+        self.policy_model.train()
+        self.optimizer.zero_grad()
+
+        loss_dict = self.compute_loss(batch)
+        loss = loss_dict["loss"]
+
+        loss.backward()
+
+        grad_norm = nn.utils.clip_grad_norm_(
+            self.policy_model.parameters(),
+            self.config.clip_grad_norm,
+        )
+
+        self.optimizer.step()
+
+        # Return scalars
+        metrics = {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in loss_dict.items()}
+        metrics["grad_norm"] = grad_norm.item()
+
+        return metrics
 
 
 def create_star(
-    policy_model,
-    config: STaRConfig | None = None,
+    policy_model: nn.Module,
+    optimizer: Optimizer | None = None,
     **kwargs,
 ) -> STaRAlgorithm:
-    """Factory function to create STaR algorithm."""
-    return STaRAlgorithm(policy_model, config, **kwargs)
-
-
-__all__ = ["STaRConfig", "STaRAlgorithm", "create_star"]
+    """
+    Factory function to create a STaRAlgorithm instance.
+    """
+    config = STaRConfig(**kwargs)
+    return STaRAlgorithm(
+        policy_model=policy_model,
+        optimizer=optimizer,
+        config=config,
+    )

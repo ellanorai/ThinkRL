@@ -410,8 +410,10 @@ if TYPER_AVAILABLE:
         typer.echo("This will use thinkrl.algorithms.PPOAlgorithm")
 
     from thinkrl.cli.grpo import grpo as grpo_cmd
+    from thinkrl.cli.star import star as star_cmd
 
     app.command(name="grpo")(grpo_cmd)
+    app.command(name="star")(star_cmd)
 
     @app.command()
     def reward(
