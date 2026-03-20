@@ -3,13 +3,7 @@ import sys
 import types
 from unittest.mock import MagicMock, patch
 
-
-# Mock deepspeed *before* importing CLI to prevent DeprecationWarning from distutils
-if "deepspeed" not in sys.modules:
-    mock_deepspeed = MagicMock()
-    mock_deepspeed.__spec__ = importlib.machinery.ModuleSpec("deepspeed", None)
-    sys.modules["deepspeed"] = mock_deepspeed
-
+# Removed global deepspeed mock to prevent breaking downstream tests
 import pytest
 from typer.testing import CliRunner
 
