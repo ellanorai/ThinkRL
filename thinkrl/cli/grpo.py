@@ -77,6 +77,9 @@ def grpo(
         int | None, Option("--max-samples", help="Maximum number of samples to load from dataset")
     ] = None,
     target_column: Annotated[str, Option("--target-column", help="Column name for target answers")] = "answer",
+    system_prompt: Annotated[
+        str | None, Option("--system-prompt", help="System prompt to prepend to each input")
+    ] = "You are a helpful arithmetic reasoning assistant. Your task is to solve the given math problem. You must think step-by-step and write out your complete train of thought inside <think></think> tags. After you have finished thinking, you must provide your final numerical answer enclosed exactly inside <answer></answer> tags.",
     dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
 ):
     """
@@ -111,6 +114,7 @@ def grpo(
     typer.echo(f"Logging Backend: {logging_backend}")
     typer.echo(f"Max Length: {max_length}")
     typer.echo(f"Max Samples: {max_samples if max_samples else 'All'}")
+    typer.echo(f"System Prompt: {system_prompt}")
     typer.echo()
 
     if fp16 and bf16:
@@ -174,6 +178,7 @@ def grpo(
         max_samples=max_samples,
         target_column=target_column,
         dataset_config=dataset_config,
+        system_prompt=system_prompt,
     )
 
     if reward_fn:

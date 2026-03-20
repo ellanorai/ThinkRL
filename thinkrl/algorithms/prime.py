@@ -52,6 +52,7 @@ class PRIMEConfig:
 
     # Policy Optimization (PPO)
     clip_epsilon: float = 0.2
+    clip_grad_norm: float = 1.0  # Gradient clipping norm
     n_epochs: int = 1
     batch_size: int = 64
 
@@ -331,6 +332,65 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
         metrics["prime/implicit_reward_mean"] = implicit_rewards[action_mask.bool()].mean().item()
 
         return [metrics]
+
+    def compute_loss(self, batch: dict[str, torch.Tensor]) -> torch.Tensor:
+        """
+        Compute the combined loss for PRIME (PRM loss + Policy loss).
+        """
+        # PRM Update loss
+        input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
+        outcome_labels = batch["rewards"]
+
+        self.prm_model.train()
+        prm_outputs = self.prm_model(input_ids=input_ids, attention_mask=attention_mask)
+        prm_log_probs = self.get_log_probs(prm_outputs.logits, input_ids)
+
+        with torch.no_grad():
+            ref_outputs = self.ref_model(input_ids=input_ids, attention_mask=attention_mask)
+            ref_log_probs = self.get_log_probs(ref_outputs.logits, input_ids)
+
+        if "labels" in batch:
+            action_mask = (batch["labels"] != -100).float()
+        else:
+            action_mask = attention_mask.float()
+
+        prm_loss, _ = self.prime_loss_fn(
+            log_probs=prm_log_probs,
+            ref_log_probs=ref_log_probs,
+            outcome_labels=outcome_labels,
+            action_mask=action_mask,
+        )
+
+        # Policy loss
+        with torch.no_grad():
+            outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
+            old_log_probs = self.get_log_probs(outputs.logits, input_ids)
+
+        implicit_rewards = self.compute_implicit_rewards(input_ids, attention_mask)
+        implicit_rewards = implicit_rewards * action_mask
+
+        advantages = self.compute_advantages(
+            implicit_rewards=implicit_rewards,
+            outcome_rewards=batch["rewards"],
+            action_mask=action_mask,
+            group_size=self.config.num_generations_per_prompt,
+        )
+
+        outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
+        log_probs = self.get_log_probs(outputs.logits, input_ids)
+
+        policy_loss, _ = self.policy_loss_fn(
+            log_probs=log_probs, old_log_probs=old_log_probs, advantages=advantages, action_mask=action_mask
+        )
+
+        return prm_loss + policy_loss
+
+    def training_step(self, batch: dict[str, torch.Tensor]) -> dict[str, float]:
+        """
+        Execute one training step for PRIME.
+        """
+        return self.train_on_rollout(batch)[0]
 
 
 def create_prime(

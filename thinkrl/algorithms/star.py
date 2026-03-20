@@ -26,6 +26,7 @@ from thinkrl.algorithms.base import BaseRLHFAlgorithm
 from thinkrl.models.loss import SFTLoss
 from thinkrl.utils.logging import get_logger
 
+
 logger = get_logger(__name__)
 
 
@@ -35,18 +36,22 @@ class STaRConfig:
 
     learning_rate: float = 1e-6
     max_iterations: int = 40  # Number of outer loops
-    
+
     # Training schedule from paper
     warmup_steps: int = 100
     base_training_steps: int = 40
     step_scaling_factor: float = 1.2
-    
+
+    # Batch sizes
+    generation_batch_size: int = 4
+    train_batch_size: int = 4
+
     # Rationalization
     rationalization_hint_format: str = "The correct answer is {answer}. Let's think step by step:"
-    
+
     # Stability
     clip_grad_norm: float = 1.0
-    
+
     # Dataset processing
     max_length: int = 512
 
@@ -54,8 +59,8 @@ class STaRConfig:
 class STaRAlgorithm(BaseRLHFAlgorithm):
     """
     STaR Algorithm (Self-Taught Reasoner).
-    
-    Essentially performs Supervised Fine-Tuning (SFT) over a dynamically 
+
+    Essentially performs Supervised Fine-Tuning (SFT) over a dynamically
     collected dataset of successful reasoning chains.
     """
 
@@ -68,8 +73,8 @@ class STaRAlgorithm(BaseRLHFAlgorithm):
         **kwargs,
     ):
         config = config or STaRConfig()
-        
-        # STaR doesn't strictly need a ref_model for KL during SFT 
+
+        # STaR doesn't strictly need a ref_model for KL during SFT
         # (the paper uses reset-to-base model M instead), but we keep the interface.
         super().__init__(
             policy_model=policy_model,
@@ -79,14 +84,14 @@ class STaRAlgorithm(BaseRLHFAlgorithm):
             clip_grad_norm=config.clip_grad_norm,
             **kwargs,
         )
-        
+
         self.config: STaRConfig = config
         self.loss_fn = SFTLoss()
 
     def compute_loss(self, batch: dict[str, torch.Tensor]) -> dict[str, torch.Tensor]:
         """
         Compute SFT Loss over reasoning chains.
-        
+
         Args:
             batch: Dict containing:
                 - input_ids: [B, S]
@@ -99,13 +104,13 @@ class STaRAlgorithm(BaseRLHFAlgorithm):
 
         self.policy_model.train()
         outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
-        logits = outputs.logits
 
-        # Get log probs for SFTLoss
-        log_probs = torch.log_softmax(logits, dim=-1)
+        # Get per-token log probs for SFTLoss
         policy_log_probs = self.get_log_probs(outputs, labels)
-        
-        loss = self.loss_fn(policy_log_probs, labels, attention_mask=attention_mask)
+
+        # Let SFTLoss derive the mask from labels (labels != -100)
+        # instead of using attention_mask which masks padding, not prompt tokens
+        loss = self.loss_fn(policy_log_probs, labels)
 
         return {
             "loss": loss,

@@ -47,7 +47,9 @@ def star(
     ] = "default",
     bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     fp16: Annotated[bool, Option("--fp16/--no-fp16", help="Use float16 precision")] = False,
-    flash_attention: Annotated[bool, Option("--flash-attention/--no-flash-attention", help="Use Flash Attention 2")] = True,
+    flash_attention: Annotated[
+        bool, Option("--flash-attention/--no-flash-attention", help="Use Flash Attention 2")
+    ] = True,
     reward_fn: Annotated[
         str | None, Option("--reward-fn", help="Path to reward function (module.py:func_name)")
     ] = None,
@@ -84,6 +86,8 @@ def star(
     local_rank = get_local_rank()
 
     typer.echo("Loading model...")
+    if fp16:
+        bf16 = False
     policy_model = get_model(
         model,
         model_type="actor",
@@ -131,7 +135,8 @@ def star(
         typer.echo("Warning: No reward function provided. Using dummy equality-based reward.")
 
         def reward_func_callable(prompts, completions, targets=None, **kwargs):
-            if not targets: return torch.zeros(len(completions))
+            if not targets:
+                return torch.zeros(len(completions))
             # Rough equality check
             return torch.tensor([1.0 if t.strip() in c else 0.0 for c, t in zip(completions, targets)])
 

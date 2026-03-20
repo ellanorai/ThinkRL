@@ -114,6 +114,7 @@ class RLHFDataset(BaseRLHFDataset):
         )
         self.prompt_column = prompt_column
         self.response_column = response_column
+        self.system_prompt = kwargs.get("system_prompt", None)
         self.target_column = kwargs.get("target_column", "answer")
 
         # Filter and load data into memory to handle invalid rows efficiently
@@ -134,11 +135,11 @@ class RLHFDataset(BaseRLHFDataset):
 
             # Basic cleaning
             item[self.prompt_column] = prompt.strip()
-            
+
             # Store target if available
             if self.target_column in item:
                 item[self.target_column] = str(item[self.target_column]).strip()
-                
+
             self.data.append(item)
 
         if not self.data:
@@ -152,8 +153,10 @@ class RLHFDataset(BaseRLHFDataset):
     def __getitem__(self, idx: int) -> dict[str, Any]:
         sample = self.data[idx]
 
-        # Extract text
         prompt = sample.get(self.prompt_column)
+
+        if self.system_prompt:
+            prompt = f"{self.system_prompt}\n\n{prompt}"
 
         # Add response if available (SFT mode)
         text = prompt
