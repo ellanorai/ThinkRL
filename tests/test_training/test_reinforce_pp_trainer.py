@@ -2,6 +2,7 @@
 Tests for ReinforcePPTrainer
 ============================
 """
+import sys
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -16,18 +17,24 @@ mock_utils = MagicMock()
 mock_vllm.distributed.device_communicators.pynccl.PyNcclCommunicator = mock_pynccl
 mock_vllm.distributed.utils.StatelessProcessGroup = mock_utils
 
-with patch.dict(
-    "sys.modules",
-    {
-        "vllm": mock_vllm,
-        "vllm.distributed": mock_vllm.distributed,
-        "vllm.distributed.device_communicators": mock_vllm.distributed.device_communicators,
-        "vllm.distributed.device_communicators.pynccl": mock_vllm.distributed.device_communicators.pynccl,
-        "vllm.distributed.utils": mock_vllm.distributed.utils,
-    },
-):
-    from thinkrl.algorithms.reinforce_pp import REINFORCEPPConfig
-    from thinkrl.training.reinforce_pp_trainer import ReinforcePPTrainer
+# Install the vllm stubs permanently rather than through patch.dict.
+# patch.dict("sys.modules", ...) restores the dict it snapshotted on exit, which
+# removes every module first imported inside the block. The imports below pull in
+# most of thinkrl, so those real modules were evicted at collection time and
+# re-imported later as different module objects. Any later
+# patch("thinkrl.models.loader.get_model") then patched a stale object while the
+# code under test resolved the live one, and the mock silently did nothing.
+for _name, _stub in {
+    "vllm": mock_vllm,
+    "vllm.distributed": mock_vllm.distributed,
+    "vllm.distributed.device_communicators": mock_vllm.distributed.device_communicators,
+    "vllm.distributed.device_communicators.pynccl": mock_vllm.distributed.device_communicators.pynccl,
+    "vllm.distributed.utils": mock_vllm.distributed.utils,
+}.items():
+    sys.modules.setdefault(_name, _stub)
+
+from thinkrl.algorithms.reinforce_pp import REINFORCEPPConfig
+from thinkrl.training.reinforce_pp_trainer import ReinforcePPTrainer
 
 
 class MockTokenizer:
