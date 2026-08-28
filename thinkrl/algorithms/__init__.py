@@ -25,6 +25,7 @@ Author: EllanorAI
 """
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
+from thinkrl.algorithms.copo import COPOAlgorithm, COPOConfig, create_copo
 from thinkrl.algorithms.dapo import DAPOAlgorithm, DAPOConfig, create_dapo
 from thinkrl.algorithms.dpo import DPOAlgorithm, DPOConfig, create_dpo
 from thinkrl.algorithms.dr_grpo import DrGRPOAlgorithm, DrGRPOConfig, create_dr_grpo
@@ -32,6 +33,7 @@ from thinkrl.algorithms.grpo import GRPOAlgorithm, GRPOConfig, create_grpo
 from thinkrl.algorithms.ipo import IPOAlgorithm, IPOConfig, create_ipo
 from thinkrl.algorithms.kto import KTOAlgorithm, KTOConfig, create_kto
 from thinkrl.algorithms.orpo import ORPOAlgorithm, ORPOConfig, create_orpo
+from thinkrl.algorithms.papo import PAPOAlgorithm, PAPOConfig
 from thinkrl.algorithms.ppo import PPOAlgorithm, PPOConfig, create_ppo
 from thinkrl.algorithms.prime import PRIMEAlgorithm, PRIMEConfig, create_prime
 from thinkrl.algorithms.reinforce import REINFORCEAlgorithm, REINFORCEConfig, create_reinforce
@@ -45,9 +47,11 @@ from thinkrl.algorithms.vapo import VAPOAlgorithm, VAPOConfig
 
 # Algorithm registry for factory pattern
 ALGORITHMS = {
+    "papo": PAPOAlgorithm,
     "ppo": PPOAlgorithm,
     "grpo": GRPOAlgorithm,
     "dpo": DPOAlgorithm,
+    "copo": COPOAlgorithm,
     "dapo": DAPOAlgorithm,
     "vapo": VAPOAlgorithm,
     "reinforce": REINFORCEAlgorithm,
@@ -65,9 +69,11 @@ ALGORITHMS = {
 }
 
 CONFIGS = {
+    "papo": PAPOConfig,
     "ppo": PPOConfig,
     "grpo": GRPOConfig,
     "dpo": DPOConfig,
+    "copo": COPOConfig,
     "dapo": DAPOConfig,
     "vapo": VAPOConfig,
     "reinforce": REINFORCEConfig,
@@ -159,6 +165,13 @@ __all__ = [
     "ORPOAlgorithm",
     "ORPOConfig",
     "create_orpo",
+    # COPO
+    "COPOAlgorithm",
+    "COPOConfig",
+    "create_copo",
+    # PAPO
+    "PAPOAlgorithm",
+    "PAPOConfig",
     # Registry
     "ALGORITHMS",
     "CONFIGS",
