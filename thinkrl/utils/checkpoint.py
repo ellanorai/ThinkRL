@@ -412,6 +412,18 @@ class CheckpointManager:
                 f"New best checkpoint: {self.metric_name}={metric_value:.4f} " f"(previous: {best_metric:.4f})"
             )
 
+    def _within_checkpoint_dir(self, path):
+        """True only if path resolves inside checkpoint_dir.
+
+        A hostile checkpoint_registry.json can name any path; without this
+        _cleanup_checkpoints would shutil.rmtree it (arbitrary directory delete).
+        """
+        try:
+            Path(path).resolve().relative_to(self.checkpoint_dir.resolve())
+            return True
+        except ValueError:
+            return False
+
     def _cleanup_checkpoints(self):
         """Remove old checkpoints, keeping only the best ones."""
         if len(self.checkpoints) <= self.max_checkpoints:
@@ -437,6 +449,9 @@ class CheckpointManager:
         for ckpt in remove_checkpoints:
             ckpt_path = ckpt["path"]
             if ckpt_path.exists():
+                if not self._within_checkpoint_dir(ckpt_path):
+                    logger.warning(f"Refusing to delete path outside {self.checkpoint_dir}: {ckpt_path}")
+                    continue
                 shutil.rmtree(ckpt_path)
                 logger.debug(f"Removed old checkpoint: {ckpt_path}")
 
