@@ -158,6 +158,7 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
         rewards: torch.Tensor,
         values: torch.Tensor,
         lambdas: torch.Tensor,  # [B] or scalar
+        action_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Compute GAE with support for per-sample (adaptive) lambda.
@@ -171,7 +172,9 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
             advantages: [B, T]
         """
         advantages = torch.zeros_like(rewards)
-        last_gae_lam = 0.0
+        last_gae_lam = torch.zeros(rewards.size(0), device=rewards.device, dtype=rewards.dtype)
+
+        mask = None if action_mask is None else action_mask.to(rewards.dtype)
 
         # Ensure lambdas is [B, 1] for broadcasting
         if lambdas.dim() == 1:
@@ -187,7 +190,14 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
 
         # Vectorized GAE loop
         # delta_t = r_t + gamma * V(s_{t+1}) - V(s_t)
+        # The bootstrap past the end of a sequence is zero, so the next-value term is
+        # masked with the mask shifted one step left.
+        if mask is not None:
+            next_mask = torch.cat([mask[:, 1:], torch.zeros_like(mask[:, :1])], dim=1)
+            next_values = next_values * next_mask[:, : next_values.shape[1]]
         deltas = rewards + self.config.gamma * next_values - values
+        if mask is not None:
+            deltas = deltas * mask
 
         # We iterate backwards
         # A_t = delta_t + (gamma * lambda) * A_{t+1}
@@ -198,6 +208,9 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
             # GAE formula: A_t = delta_t + gamma * lambda * A_{t+1}
             # Note: last_gae_lam implicitly holds A_{t+1}
             last_gae_lam = deltas[:, t] + (self.config.gamma * lambdas[:, 0] * last_gae_lam)
+            if mask is not None:
+                # Zeroing here also stops a masked step from carrying anything backwards.
+                last_gae_lam = last_gae_lam * mask[:, t]
             advantages[:, t] = last_gae_lam
 
         return advantages
@@ -250,7 +263,9 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
         # A) Critic Targets (Returns): Use lambda = 1.0
         # This reduces bias for the value function (Monte Carlo-like targets)
         lambdas_critic = torch.ones(batch_size, device=device) * self.config.lambda_value
-        adv_critic = self.compute_adaptive_gae(dense_rewards, old_values, lambdas_critic)
+        adv_critic = self.compute_adaptive_gae(
+            dense_rewards, old_values, lambdas_critic, action_mask=attention_mask
+        )
         returns = adv_critic + old_values
 
         # B) Policy Advantages: Use Adaptive Lambda
@@ -265,7 +280,9 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
         lambdas_policy = 1.0 - (1.0 / (self.config.adaptive_gae_alpha * seq_lengths))
         lambdas_policy = lambdas_policy.clamp(min=0.0, max=1.0)
 
-        advantages = self.compute_adaptive_gae(dense_rewards, old_values, lambdas_policy)
+        advantages = self.compute_adaptive_gae(
+            dense_rewards, old_values, lambdas_policy, action_mask=attention_mask
+        )
 
         # --- 3. Training Loop ---
         dataset = TensorDataset(
