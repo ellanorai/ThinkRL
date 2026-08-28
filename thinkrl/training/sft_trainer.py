@@ -21,6 +21,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from thinkrl.data.packing import PackedDataset
 from thinkrl.utils.logging import get_logger
 
 
@@ -221,18 +222,33 @@ class SFTTrainer:
 
     def _default_collator(self, batch):
         """Default data collator for SFT."""
-        if isinstance(batch[0], dict):
-            # Assume tokenized inputs
-            input_ids = torch.stack([torch.tensor(x["input_ids"]) for x in batch])
-            attention_mask = torch.stack([torch.tensor(x["attention_mask"]) for x in batch])
-            labels = input_ids.clone()
-            return {
-                "input_ids": input_ids,
-                "attention_mask": attention_mask,
-                "labels": labels,
-            }
-        else:
+        if not isinstance(batch[0], dict):
             raise ValueError(f"Unsupported batch type: {type(batch[0])}")
+
+        def stack(key):
+            # as_tensor: batch entries are already tensors on the packed path.
+            return torch.stack([torch.as_tensor(x[key]) for x in batch])
+
+        input_ids = stack("input_ids")
+        attention_mask = stack("attention_mask")
+
+        # Packed sequences carry their own labels, with -100 already on the EOS
+        # separators and the padding tail. Cloning input_ids would overwrite them.
+        labels = stack("labels") if "labels" in batch[0] else input_ids.clone()
+        labels = labels.masked_fill(attention_mask == 0, -100)
+
+        collated = {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "labels": labels,
+        }
+
+        # Position ids restart at every sub-sequence in a pack; dropping them
+        # would tell the model one long sequence was seen instead of several.
+        if "position_ids" in batch[0]:
+            collated["position_ids"] = stack("position_ids")
+
+        return collated
 
     def create_dataloader(
         self,
@@ -258,13 +274,42 @@ class SFTTrainer:
             shuffle=shuffle,
             collate_fn=collator,
             num_workers=0,
-            pin_memory=True,
+            # pin_memory only helps CUDA transfers, and warns everywhere else.
+            pin_memory=torch.cuda.is_available(),
+        )
+
+    def _pack_dataset(self, dataset: Any) -> Any:
+        """Concatenate short samples into full-length sequences.
+
+        Sub-sequences are separated by EOS and get their own position ids, which
+        is the same scheme TRL uses. Attention is still causal over the whole
+        pack rather than block-diagonal per sub-sequence.
+        """
+        if self.tokenizer is None:
+            raise ValueError("packing=True requires a tokenizer: packing needs the EOS and pad token ids.")
+
+        eos_token_id = self.tokenizer.eos_token_id
+        pad_token_id = self.tokenizer.pad_token_id
+        if pad_token_id is None:
+            pad_token_id = eos_token_id
+        if eos_token_id is None:
+            raise ValueError("packing=True requires a tokenizer with an eos_token_id to separate sequences.")
+
+        sequences = [dataset[i] for i in range(len(dataset))]
+        return PackedDataset(
+            sequences,
+            max_seq_length=self.max_seq_length,
+            pad_token_id=pad_token_id,
+            eos_token_id=eos_token_id,
         )
 
     def get_train_dataloader(self) -> DataLoader:
         """Get training DataLoader."""
+        dataset = self.train_dataset
+        if self.packing:
+            dataset = self._pack_dataset(dataset)
         return self.create_dataloader(
-            self.train_dataset,
+            dataset,
             batch_size=self.args.per_device_train_batch_size,
             shuffle=True,
         )
