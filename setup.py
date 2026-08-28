@@ -47,7 +47,6 @@ def read_version():
 # Core dependencies - minimal, stable, no GPU requirements
 CORE_REQUIREMENTS = [
     "torch>=2.0.0,<3.0.0",
-    "cupy-cuda12x>=12.0.0,<13.0.0",
     "scipy>=1.10.0",
     "pyyaml>=6.0,<7.0",
     "tqdm>=4.65.0",
@@ -61,7 +60,7 @@ CORE_REQUIREMENTS = [
 # GPU Acceleration
 GPU_REQUIREMENTS = {
     "cuda": [
-        "cupy-cuda12x>=12.0.0,<13.0.0",
+        "cupy-cuda12x>=12.0.0",
     ],
     # Assuming cuda11 might still be relevant for some users
     "cuda11": [
