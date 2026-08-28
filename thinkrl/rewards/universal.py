@@ -69,15 +69,85 @@ class UniversalReward(BaseScorer):
             return self._is_number(nums[-1])
         return None
 
+    # Only expressions made purely of these characters are handed to sympy.
+    # sympify parses with eval semantics, and completions are model output.
+    _SAFE_EXPR = re.compile(r"^[0-9a-zA-Z+\-*/^(). ]{1,100}$")
+
+    def _normalize_math(self, s: str) -> str:
+        """Strip the LaTeX and formatting that carries no mathematical content."""
+        s = s.strip()
+
+        # GSM8K style: the answer is what follows the marker.
+        if "####" in s:
+            s = s.split("####")[-1]
+
+        # \boxed{42} / \text{42} -> 42, innermost first so nesting unwraps.
+        for _ in range(3):
+            new_s = re.sub(r"\\(?:boxed|text|mathrm|mbox)\{([^{}]*)\}", r"\1", s)
+            if new_s == s:
+                break
+            s = new_s
+
+        # \frac{a}{b} and \dfrac{a}{b} -> (a)/(b)
+        for _ in range(3):
+            new_s = re.sub(r"\\[dt]?frac\{([^{}]*)\}\{([^{}]*)\}", r"(\1)/(\2)", s)
+            if new_s == s:
+                break
+            s = new_s
+
+        s = s.replace("\\left", "").replace("\\right", "")
+        s = s.replace("\\!", "").replace("\\,", "").replace("\\;", "").replace("\\ ", " ")
+        s = s.replace("$", "").replace("\\%", "").replace("%", "")
+        s = re.sub(r"\^\{([^{}]*)\}", r"^(\1)", s)  # x^{2} -> x^(2)
+        s = s.rstrip(".")
+        s = s.replace(",", "")  # 1,000 -> 1000
+        return re.sub(r"\s+", "", s)
+
+    def _sympy_equal(self, pred: str, target: str) -> bool:
+        """Symbolic equivalence, e.g. 1/3 against 0.333... or (x+1)^2 against x^2+2x+1."""
+        if not (self._SAFE_EXPR.match(pred) and self._SAFE_EXPR.match(target)):
+            return False
+        try:
+            from sympy import N, simplify
+            from sympy.parsing.sympy_parser import parse_expr
+
+            difference = simplify(parse_expr(pred.replace("^", "**")) - parse_expr(target.replace("^", "**")))
+            if difference == 0:
+                return True
+            value = N(difference)
+            return bool(value.is_number) and abs(float(value)) <= self.math_tolerance
+        except Exception:  # noqa: BLE001 - unparseable input is simply not a match
+            return False
+
     def _check_math_correctness(self, pred: str, target: str) -> bool:
-        """Check mathematical equivalence."""
-        pred_val = self._extract_last_number(pred)
-        target_val = self._extract_last_number(target)
-        
+        """Check mathematical equivalence.
+
+        Exact match on normalized forms first, then numeric comparison, then
+        symbolic equivalence. Comparing only the last number in each string is
+        kept as the final fallback because it is the one that rescues answers
+        written as prose ("the answer is 4"), but it is also the one that grades
+        "12 apples cost 4 dollars" as 4, so it must not run first.
+        """
+        norm_pred = self._normalize_math(pred)
+        norm_target = self._normalize_math(target)
+
+        if norm_pred and norm_pred == norm_target:
+            return True
+
+        pred_val = self._is_number(norm_pred)
+        target_val = self._is_number(norm_target)
         if pred_val is not None and target_val is not None:
             return math.isclose(pred_val, target_val, abs_tol=self.math_tolerance)
-            
-        # Fallback to exact string match for non-numeric math answers (e.g. "x + y")
+
+        if self._sympy_equal(norm_pred, norm_target):
+            return True
+
+        pred_val = self._extract_last_number(pred)
+        target_val = self._extract_last_number(target)
+        if pred_val is not None and target_val is not None:
+            return math.isclose(pred_val, target_val, abs_tol=self.math_tolerance)
+
+        # Non-numeric math answers (e.g. "x + y")
         return self._check_text_correctness(pred, target)
 
     def _check_code_correctness(self, pred: str, target: str) -> bool:
