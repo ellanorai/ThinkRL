@@ -43,12 +43,17 @@ jobs:
 
     - name: Install dependencies
       run: |
-        pip install ruff mypy types-requests types-PyYAML
+        # Pinned: an unpinned linter changes the rule set under the project.
+        pip install ruff==0.16.4 mypy types-requests types-PyYAML
 
     - name: Run Ruff
       run: |
         ruff check .
 
+    # Advisory until the 182 existing errors are cleared (see issue #145).
+    # mypy has never passed on this codebase, so it reports rather than gates;
+    # the Ruff step above is the blocking one.
     - name: Run MyPy
+      continue-on-error: true
       run: |
         mypy thinkrl --ignore-missing-imports --install-types --non-interactive

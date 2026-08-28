@@ -8,9 +8,11 @@ A single, comprehensive reward function for Reinforce++ that supports:
 - Multilingual support (basic normalization)
 """
 
-import re
 import math
+import re
+
 import torch
+
 from .scorer import BaseScorer
 
 

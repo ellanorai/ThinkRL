@@ -6,8 +6,8 @@ The same reward with each coefficient spelled out and commented, as a starting p
 tuning. Use it with the reinforce_pp CLI via --reward-fn.
 """
 
-import torch
 from thinkrl.rewards.universal import UniversalReward
+
 
 # Initialize the UniversalReward with production-grade settings
 # Adjust these coefficients based on your specific goal

@@ -11,7 +11,10 @@ line-length = 119
 src = ["thinkrl", "tests"]
 
 [tool.ruff.lint]
-extend-select = ["E", "F", "I", "W", "UP", "B", "T", "C"]
+# select, not extend-select: extend-select adds to whatever ruff's default rule
+# set happens to be, and that set widened in ruff 0.16, which turned a green
+# lint job into 287 errors from rule families this project never opted into.
+select = ["E", "F", "I", "W", "UP", "B", "T", "C"]
 
 ignore = [
     "B028",  # warning without explicit stacklevel
