@@ -102,6 +102,7 @@ class RLHFDataset(BaseRLHFDataset):
         max_samples: int | None = None,
         split: str = "train",
         preprocess_fn: Callable | None = None,
+        apply_chat_template: bool = True,
         **kwargs,
     ):
         super().__init__(
@@ -116,6 +117,8 @@ class RLHFDataset(BaseRLHFDataset):
         self.response_column = response_column
         self.system_prompt = kwargs.get("system_prompt", None)
         self.target_column = kwargs.get("target_column", "answer")
+        self.apply_chat_template = apply_chat_template
+        self._chat_template_failed = False
 
         # Filter and load data into memory to handle invalid rows efficiently
         self.data = []
@@ -150,27 +153,76 @@ class RLHFDataset(BaseRLHFDataset):
         else:
             logger.info(f"Loaded {len(self.data)} valid samples from {dataset_name_or_path}")
 
+    def _use_chat_template(self) -> bool:
+        """Chat template applies only when asked for and the tokenizer defines one."""
+        if not self.apply_chat_template or self._chat_template_failed:
+            return False
+        if not hasattr(self.tokenizer, "apply_chat_template"):
+            return False
+        return getattr(self.tokenizer, "chat_template", None) is not None
+
+    def _render(self, prompt: str, response: str | None) -> tuple[str, str, bool]:
+        """Return (prompt_text, text, templated).
+
+        prompt_text is what the policy is asked to continue, so it carries the
+        generation prompt. text is what gets tokenized, and in SFT mode also
+        carries the response. templated says whether the chat template ran, which
+        the caller needs because a rendered template already contains the special
+        tokens the tokenizer would otherwise add a second time.
+
+        Falls back to plain concatenation for base models, for tokenizers without
+        a template, and if rendering raises.
+        """
+        if self._use_chat_template():
+            messages = []
+            if self.system_prompt:
+                messages.append({"role": "system", "content": self.system_prompt})
+            messages.append({"role": "user", "content": prompt})
+            try:
+                prompt_text = self.tokenizer.apply_chat_template(
+                    messages, tokenize=False, add_generation_prompt=True
+                )
+                if response is None:
+                    return prompt_text, prompt_text, True
+                text = self.tokenizer.apply_chat_template(
+                    [*messages, {"role": "assistant", "content": response}],
+                    tokenize=False,
+                    add_generation_prompt=False,
+                )
+                return prompt_text, text, True
+            except Exception as exc:  # noqa: BLE001 - any jinja template can raise anything
+                self._chat_template_failed = True
+                logger.warning(
+                    f"Chat template failed ({exc}); falling back to raw prompts for this dataset. "
+                    "Pass apply_chat_template=False to silence this."
+                )
+
+        prompt_text = prompt
+        if self.system_prompt:
+            prompt_text = f"{self.system_prompt}\n\n{prompt}"
+        text = prompt_text if response is None else f"{prompt_text} {response}"
+        return prompt_text, text, False
+
     def __getitem__(self, idx: int) -> dict[str, Any]:
         sample = self.data[idx]
 
         prompt = sample.get(self.prompt_column)
 
-        if self.system_prompt:
-            prompt = f"{self.system_prompt}\n\n{prompt}"
-
-        # Add response if available (SFT mode)
-        text = prompt
+        response = None
         if self.response_column and self.response_column in sample:
             response = str(sample[self.response_column]).strip()
-            text = f"{prompt} {response}"
 
-        # Tokenize
+        prompt, text, templated = self._render(prompt, response)
+
+        # Tokenize. A rendered chat template already carries BOS and the role
+        # markers, so letting the tokenizer add specials again duplicates them.
         encodings = self.tokenizer(
             text,
             max_length=self.max_length,
             padding=False,  # Padding handled by collator
             truncation=True,
             return_tensors="pt",
+            add_special_tokens=not templated,
         )
 
         return {

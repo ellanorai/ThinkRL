@@ -80,6 +80,14 @@ def grpo(
     system_prompt: Annotated[
         str | None, Option("--system-prompt", help="System prompt to prepend to each input")
     ] = "You are a helpful arithmetic reasoning assistant. Your task is to solve the given math problem. You must think step-by-step and write out your complete train of thought inside <think></think> tags. After you have finished thinking, you must provide your final numerical answer enclosed exactly inside <answer></answer> tags.",
+    chat_template: Annotated[
+        bool,
+        Option(
+            "--chat-template/--no-chat-template",
+            help="Render prompts with the tokenizer's chat template (instruct models). "
+            "Disable for base models or datasets that are already formatted.",
+        ),
+    ] = True,
     dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
 ):
     """
@@ -180,6 +188,7 @@ def grpo(
         target_column=target_column,
         dataset_config=dataset_config,
         system_prompt=system_prompt,
+        apply_chat_template=chat_template,
     )
 
     if reward_fn:
