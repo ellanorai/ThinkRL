@@ -207,7 +207,8 @@ See `examples/` for detailed scripts:
 ## 📊 Implementation Status
 
 ### ✅ Production-Ready
-- **Core Algorithms**: PPO, GRPO, DPO, IPO, VAPO, DAPO, COPO, REINFORCE++
+- **Algorithm implementations**: PPO, GRPO, DPO, IPO, VAPO, DAPO, COPO, REINFORCE++
+  (implemented and unit tested; see Training Loops below for which have a working CLI)
 - **Models**: Actor, Critic, Reward Model, Process Reward Model (PRM)
 - **Loss Functions**: Comprehensive loss module with 15+ implementations
 - **Distributed Training**: DeepSpeed integration (ZeRO-2/3), distributed utilities
@@ -217,7 +218,10 @@ See `examples/` for detailed scripts:
 - **vLLM Integration**: High-throughput generation client/worker
 
 ### 🚧 In Development
-- **Training Loops**: GRPO CLI commands and Standalone scripts are fully Production-Ready. SFT, DPO, PPO are in progress.
+- **Training Loops**: REINFORCE++ is the only algorithm validated end to end against
+  accuracy benchmarks. GRPO and STaR have working CLI commands that train, but have not
+  been benchmark validated. SFT, DPO, PPO, ORPO, KTO and reward model training are not
+  yet implemented and their CLI commands exit with an error.
 - **CoT/ToT Trainers**: Chain-of-Thought and Tree-of-Thought training modules
 - **Multimodal Training**: PAPO implementation for vision-language models
 - **Complete Examples**: End-to-end training scripts
@@ -235,18 +239,35 @@ See `examples/` for detailed scripts:
 ### Custom Reward Functions
 ThinkRL supports plug-and-play reward functions for specialized domains (coding, math):
 
+A reward function receives every completion in the batch and returns one reward per
+completion, in prompt-major order:
+
 ```python
-def math_reward(completion, answer):
-    # Custom logic
-    return 1.0 if verify_math(completion, answer) else 0.0
+# my_reward.py
+import torch
+
+def reward_fn(prompts: list[str], completions: list[str], **kwargs) -> torch.Tensor:
+    """kwargs contains 'targets' when --target-column is set."""
+    targets = kwargs.get("targets") or [None] * len(completions)
+    return torch.tensor(
+        [1.0 if t and t in c else 0.0 for c, t in zip(completions, targets)],
+        dtype=torch.float,
+    )
 ```
+
+```bash
+thinkrl grpo ... --reward-fn my_reward.py:reward_fn
+```
+
+The bundled `UniversalReward` covers math, code and `<think>`/`<answer>` structure
+checking; see `my_reward.py` in the repository root for a ready-made configuration.
 
 ### LoRA Merging
 ```bash
-python -m thinkrl.cli.merge_lora \
-    --base_model meta-llama/Llama-3-8b \
-    --lora_path ./checkpoints/final_lora \
-    --output_path ./exported_model
+thinkrl merge \
+    --base-model meta-llama/Llama-3-8b \
+    --adapter ./checkpoints/final_lora \
+    --output ./exported_model
 ```
 
 ---
