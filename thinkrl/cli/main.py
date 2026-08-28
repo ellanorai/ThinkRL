@@ -113,7 +113,8 @@ if TYPER_AVAILABLE:
         typer.echo(f"Strategy: {cfg.distributed.strategy}")
 
         # TODO: Implement actual training loop
-        typer.echo("\nNote: Training implementation pending")
+        typer.echo("Error: Training is not implemented yet.", err=True)
+        raise typer.Exit(code=1)
 
     @app.command()
     def generate(
@@ -137,7 +138,8 @@ if TYPER_AVAILABLE:
         typer.echo(f"Output: {output}")
 
         # TODO: Implement generation
-        typer.echo("\nNote: Generation implementation pending")
+        typer.echo("Error: Generation is not implemented yet.", err=True)
+        raise typer.Exit(code=1)
 
     @app.command()
     def merge(
@@ -319,8 +321,8 @@ if TYPER_AVAILABLE:
         typer.echo()
 
         # TODO: Implement SFT training
-        typer.echo("Note: SFT training implementation pending")
-        typer.echo("This will use thinkrl.training.SFTTrainer")
+        typer.echo("Error: SFT training is not implemented yet. It will use thinkrl.training.SFTTrainer.", err=True)
+        raise typer.Exit(code=1)
 
     @app.command()
     def dpo(
@@ -362,8 +364,8 @@ if TYPER_AVAILABLE:
         typer.echo()
 
         # TODO: Implement DPO training
-        typer.echo("Note: DPO training implementation pending")
-        typer.echo("This will use thinkrl.algorithms.DPOAlgorithm")
+        typer.echo("Error: DPO training is not implemented yet. It will use thinkrl.algorithms.DPOAlgorithm.", err=True)
+        raise typer.Exit(code=1)
 
     @app.command()
     def ppo(
@@ -406,8 +408,8 @@ if TYPER_AVAILABLE:
         typer.echo()
 
         # TODO: Implement PPO training
-        typer.echo("Note: PPO training implementation pending")
-        typer.echo("This will use thinkrl.algorithms.PPOAlgorithm")
+        typer.echo("Error: PPO training is not implemented yet. It will use thinkrl.algorithms.PPOAlgorithm.", err=True)
+        raise typer.Exit(code=1)
 
     from thinkrl.cli.grpo import grpo as grpo_cmd
     from thinkrl.cli.star import star as star_cmd
@@ -450,8 +452,8 @@ if TYPER_AVAILABLE:
         typer.echo()
 
         # TODO: Implement reward model training
-        typer.echo("Note: Reward model training implementation pending")
-        typer.echo("This will use thinkrl.models.RewardModel")
+        typer.echo("Error: Reward model training is not implemented yet. It will use thinkrl.models.RewardModel.", err=True)
+        raise typer.Exit(code=1)
 
     @app.command()
     def orpo(
@@ -490,8 +492,8 @@ if TYPER_AVAILABLE:
         typer.echo()
 
         # TODO: Implement ORPO training
-        typer.echo("Note: ORPO training implementation pending")
-        typer.echo("This will use thinkrl.algorithms.ORPOAlgorithm")
+        typer.echo("Error: ORPO training is not implemented yet. It will use thinkrl.algorithms.ORPOAlgorithm.", err=True)
+        raise typer.Exit(code=1)
 
     @app.command()
     def kto(
@@ -530,8 +532,8 @@ if TYPER_AVAILABLE:
         typer.echo()
 
         # TODO: Implement KTO training
-        typer.echo("Note: KTO training implementation pending")
-        typer.echo("This will use thinkrl.algorithms.KTOAlgorithm")
+        typer.echo("Error: KTO training is not implemented yet. It will use thinkrl.algorithms.KTOAlgorithm.", err=True)
+        raise typer.Exit(code=1)
 
     @app.command()
     def reinforce_pp(

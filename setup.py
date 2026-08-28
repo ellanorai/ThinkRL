@@ -388,22 +388,6 @@ CONSOLE_SCRIPTS = {
     "reinforce-pp": "thinkrl.cli.main:reinforce_pp_entry",
     "grpo": "thinkrl.cli.grpo:main",
     "star": "thinkrl.cli.star:main",
-    "thinkrl-train": "thinkrl.scripts.train:main",
-    # Evaluation commands
-    "thinkrl-eval": "thinkrl.scripts.evaluate:main",
-    "thinkrl-evaluate": "thinkrl.scripts.evaluate:main",
-    # Reasoning commands
-    "thinkrl-cot": "thinkrl.scripts.chain_of_thought:main",
-    "thinkrl-tot": "thinkrl.scripts.tree_of_thought:main",
-    "thinkrl-reason": "thinkrl.scripts.reasoning:main",
-    # Specialized training
-    "thinkrl-multimodal": "thinkrl.scripts.multimodal_train:main",
-    "thinkrl-distributed": "thinkrl.scripts.distributed_train:main",
-    # RLAIF generation
-    "thinkrl-rlaif": "thinkrl.scripts.generate_rlaif_data:main",
-    # Utilities
-    "thinkrl-convert": "thinkrl.scripts.convert:main",
-    "thinkrl-benchmark": "thinkrl.scripts.benchmark:main",
 }
 
 # Project classifiers
