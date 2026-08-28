@@ -19,21 +19,22 @@ Key design decisions:
 
 import argparse
 import asyncio
+from concurrent.futures import ThreadPoolExecutor
 import contextlib
+from contextlib import asynccontextmanager
 import os
 import threading
-from concurrent.futures import ThreadPoolExecutor
-from contextlib import asynccontextmanager
 
-import torch
-import uvicorn
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+import torch
+import uvicorn
 from vllm import AsyncEngineArgs, AsyncLLMEngine, SamplingParams
 from vllm.distributed.device_communicators.pynccl import PyNcclCommunicator
 from vllm.distributed.utils import StatelessProcessGroup
 
 from thinkrl.utils.logging import get_logger
+
 
 logger = get_logger(__name__)
 

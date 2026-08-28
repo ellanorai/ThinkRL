@@ -1,7 +1,9 @@
 
 import pytest
 import torch
+
 from thinkrl.rewards.universal import UniversalReward
+
 
 @pytest.fixture
 def universal_reward():
