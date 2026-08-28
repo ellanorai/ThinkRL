@@ -73,12 +73,14 @@ markers = [
 ]
 
 filterwarnings = [
+    # pytest gives later entries higher precedence, so "error" must come first
+    # for the ignore rules below it to take effect.
+    "error",
     "ignore:.*transformers not available.*:UserWarning",
     "ignore::UserWarning:torch.utils.checkpoint:",
     "ignore::FutureWarning:transformers.tokenization_utils_base:",
     "ignore::UserWarning:cupy.cuda.memory:",
     "ignore::DeprecationWarning",
-    "error",
 ]
 
 # ------------------------------------------------------------------
