@@ -61,6 +61,32 @@ class PRIMEConfig:
     max_new_tokens: int = 512
     temperature: float = 1.0
 
+    def __post_init__(self):
+        if self.advantage_estimator not in ("rloo", "reinforce"):
+            raise ValueError(
+                f"advantage_estimator must be 'rloo' or 'reinforce', got {self.advantage_estimator!r}"
+            )
+        if self.advantage_estimator == "reinforce":
+            raise NotImplementedError(
+                "Only the 'rloo' advantage estimator is implemented. "
+                "'reinforce' is accepted by the config but has no code path."
+            )
+        if self.num_generations_per_prompt < 2:
+            raise ValueError(
+                "num_generations_per_prompt must be >= 2: the RLOO baseline is a leave-one-out "
+                f"mean over the group and divides by K - 1, got {self.num_generations_per_prompt}"
+            )
+        if self.n_epochs < 1:
+            raise ValueError(f"n_epochs must be >= 1, got {self.n_epochs}")
+        if self.batch_size < 1:
+            raise ValueError(f"batch_size must be >= 1, got {self.batch_size}")
+        if not 0 < self.clip_epsilon < 1:
+            raise ValueError(f"clip_epsilon must be in (0, 1), got {self.clip_epsilon}")
+        if not 0 < self.gamma <= 1:
+            raise ValueError(f"gamma must be in (0, 1], got {self.gamma}")
+        if self.temperature <= 0:
+            raise ValueError(f"temperature must be positive, got {self.temperature}")
+
 
 class PRIMEAlgorithm(BaseRLHFAlgorithm):
     """
@@ -204,6 +230,16 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
         # Reshape to [Group, Sample, Seq] for broadcasting
         # Assuming batch is perfectly divisible by group_size (K)
         batch_size, seq_len = implicit_rewards.shape
+        if group_size < 2:
+            raise ValueError(
+                "group_size must be >= 2: the leave-one-out baseline divides by group_size - 1, "
+                f"so group_size={group_size} produces NaN advantages"
+            )
+        if batch_size % group_size:
+            raise ValueError(
+                f"batch_size {batch_size} is not divisible by group_size {group_size}, "
+                "so the rewards cannot be reshaped into complete groups"
+            )
         num_groups = batch_size // group_size
 
         # 1. Process Reward Advantage (Token-level RLOO)
