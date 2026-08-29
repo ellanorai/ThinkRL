@@ -80,6 +80,7 @@ def grpo(
     system_prompt: Annotated[
         str | None, Option("--system-prompt", help="System prompt to prepend to each input")
     ] = "You are a helpful arithmetic reasoning assistant. Your task is to solve the given math problem. You must think step-by-step and write out your complete train of thought inside <think></think> tags. After you have finished thinking, you must provide your final numerical answer enclosed exactly inside <answer></answer> tags.",
+    seed: Annotated[int, Option("--seed", help="Random seed for reproducibility")] = 42,
     dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
 ):
     """
@@ -95,6 +96,9 @@ def grpo(
     typer.echo("=" * 60)
     typer.echo("ThinkRL Group Relative Policy Optimization (GRPO)")
     typer.echo("=" * 60)
+    from thinkrl.utils import set_seed
+
+    set_seed(seed)
     typer.echo(f"Model: {model}")
     typer.echo(f"Ref Model: {ref_model}")
     typer.echo(f"Dataset: {dataset}")

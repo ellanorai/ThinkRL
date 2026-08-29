@@ -174,6 +174,7 @@ from .tokenizer import (
 
 
 __all__ = [
+    "set_seed",
     # Logging
     "setup_logger",
     "get_logger",
@@ -294,3 +295,13 @@ __all__ = [
     "RemoteRewardModel",
     "create_reward_server_handler",
 ]
+
+
+def set_seed(seed: int = 42) -> None:
+    """Seed python, numpy and torch (+CUDA) for reproducible runs.
+
+    Delegates to transformers.set_seed, which already covers all three.
+    """
+    from transformers import set_seed as _hf_set_seed
+
+    _hf_set_seed(seed)
