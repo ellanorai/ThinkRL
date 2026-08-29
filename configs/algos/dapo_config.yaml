@@ -1,0 +1,30 @@
+# DAPO training configuration (nested schema loaded by ThinkRLConfig).
+# Hyperparameters match DAPOConfig defaults (thinkrl/algorithms/dapo.py).
+
+model:
+  name_or_path: HuggingFaceTB/SmolLM2-135M
+  dtype: bfloat16
+
+algorithm:
+  name: dapo
+  learning_rate: 1.0e-6
+  epsilon_low: 0.2          # clip-higher: asymmetric clipping, low side
+  epsilon_high: 0.28        # clip-higher: high side, encourages exploration
+  group_size: 16
+  beta: 0.0                 # KL disabled, per the paper
+  n_epochs: 1
+
+  # Dynamic sampling over-samples and discards groups whose rewards are all equal, since
+  # they carry no gradient. Not safe under DDP; leave off for distributed runs.
+  dynamic_sampling: false
+  min_batch_size: 256
+  max_sampling_attempts: 10
+
+  # Soft overlong punishment (Eq. 13): penalty ramps over the last cache_len tokens.
+  use_overlong_punishment: true
+  max_len: 16384
+  cache_len: 4096
+
+  clip_grad_norm: 1.0
+  advantage_eps: 1.0e-8
+  entropy_coeff: 0.0

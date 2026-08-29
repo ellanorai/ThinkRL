@@ -1,0 +1,10 @@
+# Small GPT-2 class model. Useful for smoke tests: it trains on a single consumer GPU and
+# on CPU, so the pipeline can be exercised before committing to a large run.
+
+model:
+  name_or_path: gpt2
+  dtype: float32
+  use_flash_attention: false      # not supported by the GPT-2 attention implementation
+  gradient_checkpointing: false
+  device_map: null
+  trust_remote_code: false

@@ -1,0 +1,20 @@
+# REINFORCE training configuration (nested schema loaded by ThinkRLConfig).
+# Hyperparameters match REINFORCEConfig defaults (thinkrl/algorithms/reinforce.py).
+
+model:
+  name_or_path: HuggingFaceTB/SmolLM2-135M
+  dtype: bfloat16
+
+algorithm:
+  name: reinforce
+  learning_rate: 1.0e-5
+
+  # Baseline for variance reduction: none, moving_average or batch_mean.
+  baseline_type: moving_average
+  baseline_momentum: 0.99
+
+  entropy_coeff: 0.01
+  kl_coeff: 0.0
+  clip_grad_norm: 1.0
+  normalize_returns: true
+  gamma: 1.0                # 1.0 assigns the terminal reward to every response token

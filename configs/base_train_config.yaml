@@ -1,0 +1,37 @@
+# Base training configuration: every section ThinkRLConfig.from_dict understands, at its
+# dataclass default. Copy this file and override what you need; the algorithm section is
+# left for the per-algorithm files under configs/algos/.
+
+model:
+  name_or_path: meta-llama/Llama-3.1-8B
+  dtype: bfloat16
+  use_flash_attention: true
+  gradient_checkpointing: false
+  device_map: auto
+  # trust_remote_code executes code shipped with the model repository. Leave it off
+  # unless the model genuinely requires it and you trust the source.
+  trust_remote_code: false
+
+distributed:
+  strategy: zero2
+  micro_batch_size: 4
+  gradient_accumulation_steps: 4
+  offload_optimizer: false
+  offload_param: false
+  bf16: true
+  fp16: false
+
+data:
+  dataset: null            # required: HuggingFace dataset id or local path
+  max_length: 2048
+  max_prompt_length: 1024
+  max_response_length: 1024
+  batch_size: 4
+  prompt_column: prompt
+  response_column: response
+  apply_chat_template: true
+
+logging:
+  wandb_project: thinkrl
+  log_every_n_steps: 10
+  output_dir: ./outputs
