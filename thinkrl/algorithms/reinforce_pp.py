@@ -178,9 +178,11 @@ class REINFORCEPPAlgorithm(BaseRLHFAlgorithm):
         if tensor.numel() <= 1:
             return tensor.mean(), torch.tensor(1.0, device=tensor.device)
 
-        # If not distributed, standard mean/std
+        # If not distributed, standard mean/std. correction=0 gives the population standard
+        # deviation, matching the distributed branch below; torch defaults to correction=1,
+        # which would normalize by a different divisor depending on world size.
         if not dist.is_initialized():
-            return tensor.mean(), tensor.std()
+            return tensor.mean(), tensor.std(correction=0)
 
         # Distributed Global Statistics
         # We compute global sum, global sq_sum, and global count
