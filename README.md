@@ -97,9 +97,10 @@ Unlike standard RLHF libraries, ThinkRL focuses on **Reasoning (System 2)** capa
 
 ### Token-in-Token-out Agents
 We treat every model as an agent that consumes tokens (observations/prompts) and produces tokens (thoughts/actions). This unified interface supports:
-- **Chain-of-Thought (CoT)**: Linear reasoning traces.
-- **Tree-of-Thought (ToT)**: Branching exploration.
-- **Multimodal Inputs**: Visual and textual context (via PAPO).
+- **Chain-of-Thought (CoT)**: Linear reasoning traces. *(planned, not implemented)*
+- **Tree-of-Thought (ToT)**: Branching exploration. *(planned, not implemented)*
+- **Multimodal Inputs**: Visual and textual context via PAPO. *(the algorithm is
+  implemented but not yet exported; see #75)*
 
 ---
 
@@ -164,31 +165,34 @@ pip install -e .[all]
 
 ### Typical Workflow
 
-**1. Supervised Fine-Tuning (SFT) / CoT**
+**1. Supervised Fine-Tuning (SFT)**
 
 ```python
-from thinkrl.training import CoTTrainer, CoTConfig
+from thinkrl.training import SFTConfig, SFTTrainer
 
-config = CoTConfig(
-    model_name_or_path="Qwen/Qwen2.5-7B",
-    reasoning_type="cot",
-    max_reasoning_steps=10
-)
+config = SFTConfig(output_dir="./sft_output", num_train_epochs=1)
 
-trainer = CoTTrainer(config)
+trainer = SFTTrainer(model=model, args=config, train_dataset=dataset, tokenizer=tokenizer)
 trainer.train()
 ```
 
-**2. RLHF with PPO/GRPO/VAPO**
+> **CoT / ToT trainers are not implemented yet.** `thinkrl.training.CoTTrainer` and
+> `CoTConfig` do not exist and importing them raises `ImportError`; the modules under
+> `thinkrl/reasoning/` are empty placeholders. See the In Development section below.
+
+**2. RLHF with GRPO**
 
 ```bash
-# Launch generic RL training via CLI
-python -m thinkrl.cli.train_rl \
-    --algo vapo \
-    --model_name_or_path meta-llama/Llama-3-8b \
-    --reward_model_path ./rm_checkpoint \
-    --use_vllm True
+# GRPO is the training loop that is implemented end to end today.
+thinkrl grpo \
+    --model HuggingFaceTB/SmolLM2-135M \
+    --dataset gsm8k \
+    --steps 1000
 ```
+
+> The generic `--algo` entry point does not exist yet: `thinkrl.cli.train_rl` is not a
+> module, and the `train`, `sft`, `dpo` and `ppo` subcommands are stubs. GRPO and STaR are
+> the two implemented CLIs.
 
 ---
 
