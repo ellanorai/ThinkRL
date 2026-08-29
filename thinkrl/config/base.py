@@ -31,6 +31,35 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+# Fields the configuration accepts and that no code path reads. Each entry is
+# (section, field, why). Remove an entry when the field is wired; the accompanying test
+# fails if an entry names a field that no longer exists, so the list cannot drift.
+UNHONOURED = [
+    ("model", "load_in_8bit", "8-bit loading is not implemented; the model loads at full precision"),
+    ("model", "bnb_4bit_compute_dtype", "bitsandbytes quantization is not wired into the model loader"),
+    ("model", "bnb_4bit_quant_type", "bitsandbytes quantization is not wired into the model loader"),
+    ("model", "ref_model_name_or_path", "the reference model is always constructed by the caller"),
+    ("model", "share_ref_weights", "reference-weight sharing is not implemented"),
+    ("data", "dataset_split", "the split is chosen by the caller building the dataset"),
+    ("data", "eval_split", "there is no evaluation loop to consume it"),
+    ("data", "eval_batch_size", "there is no evaluation loop to consume it"),
+    ("data", "num_workers", "the trainers construct their own DataLoader"),
+    ("data", "streaming", "streaming datasets are not implemented"),
+    ("logging", "wandb_entity", "wandb.init is called without the entity"),
+    ("logging", "wandb_name", "wandb.init is called without the run name"),
+    ("logging", "wandb_tags", "wandb.init is called without tags"),
+    ("logging", "tensorboard_dir", "the TensorBoard writer uses its own path"),
+    ("logging", "eval_every_n_steps", "there is no evaluation loop to schedule"),
+    ("logging", "save_every_n_steps", "the trainers take their save interval as an argument"),
+    ("logging", "save_total_limit", "checkpoint rotation is configured on CheckpointManager"),
+    ("logging", "log_level", "logging is configured through setup_logging, not this field"),
+    ("distributed", "backend", "the process group backend is chosen by the launcher"),
+    ("distributed", "master_addr", "the address comes from the environment"),
+    ("distributed", "master_port", "the port comes from the environment"),
+    ("peft", "auto_target_modules", "target-module inference is not implemented"),
+]
+
+
 @dataclass
 class ModelConfig:
     """Model configuration."""
@@ -52,7 +81,9 @@ class ModelConfig:
     bnb_4bit_quant_type: str = "nf4"
 
     # Loading
-    trust_remote_code: bool = True
+    # Executes code shipped with the model repository. Off by default; turn it on only
+    # for models that require it and sources you trust.
+    trust_remote_code: bool = False
     device_map: str = "auto"
 
     # Reference model
@@ -362,7 +393,33 @@ class ThinkRLConfig:
                 f"({self.data.max_prompt_length + self.data.max_response_length})"
             )
 
+        for message in self.unhonoured_fields():
+            logger.warning(message)
+
         return errors
+
+    def unhonoured_fields(self) -> list[str]:
+        """Report fields that are set to a non-default value and that nothing reads.
+
+        These fields parse, type-check and then do nothing, which is worse than a missing
+        field because the failure is invisible: `load_in_8bit: true` loads at full precision
+        and reads as a model-size problem, `use_lora: true` runs a full fine-tune and reads
+        as a too-small GPU. Until each one is wired, saying so is the honest behaviour.
+
+        Entries are removed from UNHONOURED as the corresponding feature lands.
+        """
+        messages = []
+        for section_name, field_name, reason in UNHONOURED:
+            section = getattr(self, section_name, None)
+            if section is None:
+                continue
+            current = getattr(section, field_name, None)
+            default = getattr(type(section)(), field_name, None)
+            if current != default:
+                messages.append(
+                    f"{section_name}.{field_name}={current!r} has no effect: {reason}"
+                )
+        return messages
 
 
 def load_config(path: str | Path) -> ThinkRLConfig:
