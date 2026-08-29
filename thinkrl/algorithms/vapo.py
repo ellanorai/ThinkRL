@@ -434,3 +434,46 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
             self.value_optimizer.step()
 
         return {k: v.item() if isinstance(v, torch.Tensor) else v for k, v in loss_dict.items()}
+
+
+def create_vapo(
+    policy_model: nn.Module,
+    value_model: nn.Module | None = None,
+    ref_model: nn.Module | None = None,
+    optimizer: Optimizer | None = None,
+    value_optimizer: Optimizer | None = None,
+    learning_rate: float = 1e-6,
+    n_epochs: int = 2,
+    batch_size: int = 64,
+    **kwargs,
+) -> VAPOAlgorithm:
+    """
+    Factory function to create a VAPOAlgorithm instance.
+
+    Args:
+        policy_model: The policy model to optimize
+        value_model: Optional separate critic
+        ref_model: Optional reference model
+        optimizer: Optional optimizer for the policy
+        value_optimizer: Optional optimizer for the critic
+        learning_rate: Learning rate
+        n_epochs: Number of optimization epochs per rollout
+        batch_size: Mini-batch size
+        **kwargs: Additional args for VAPOConfig
+
+    Returns:
+        Configured VAPOAlgorithm
+    """
+    config = VAPOConfig(learning_rate=learning_rate, n_epochs=n_epochs, batch_size=batch_size, **kwargs)
+
+    return VAPOAlgorithm(
+        policy_model=policy_model,
+        value_model=value_model,
+        ref_model=ref_model,
+        optimizer=optimizer,
+        value_optimizer=value_optimizer,
+        config=config,
+    )
+
+
+__all__ = ["VAPOAlgorithm", "VAPOConfig", "create_vapo"]

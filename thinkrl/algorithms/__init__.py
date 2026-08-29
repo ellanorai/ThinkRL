@@ -40,7 +40,7 @@ from thinkrl.algorithms.reinforce import REINFORCEAlgorithm, REINFORCEConfig, cr
 from thinkrl.algorithms.reinforce_pp import REINFORCEPPAlgorithm, REINFORCEPPConfig, create_reinforce_pp
 from thinkrl.algorithms.rloo import RLOOAlgorithm, RLOOConfig, create_rloo
 from thinkrl.algorithms.star import STaRAlgorithm, STaRConfig, create_star
-from thinkrl.algorithms.vapo import VAPOAlgorithm, VAPOConfig
+from thinkrl.algorithms.vapo import VAPOAlgorithm, VAPOConfig, create_vapo
 
 
 # Algorithm registry for factory pattern
@@ -123,6 +123,7 @@ __all__ = [
     # VAPO
     "VAPOAlgorithm",
     "VAPOConfig",
+    "create_vapo",
     # REINFORCE
     "REINFORCEAlgorithm",
     "REINFORCEConfig",
