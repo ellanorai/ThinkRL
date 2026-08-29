@@ -218,17 +218,19 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
         # A_process_t = r_phi_t - baseline_t
         adv_process = proc_r - loo_mean_proc
 
-        # Apply discount (gamma) - usually 1.0 for this paper
-        # If gamma < 1.0, we would need cumulative sum logic here.
-        # For simple sum (gamma=1), we can just sum the token advantages later for the return,
-        # but standard RLOO usually keeps token-level signals for token-level updates.
-        # Paper Eq 5 implies summation from t to T.
+        # Paper Eq 5: A_t = Sum_{s=t}^{T} gamma^(s-t) * (r_s - b_s)
         if self.config.gamma == 1.0:
-            # Simple accumulation from t to T
-            # We can use a simplified approach: just the token advantage
-            # Or strictly implement the sum: A_t = Sum_{s=t}^T (r_s - b_s)
-            # Efficient implementation: Flip, Cumsum, Flip
+            # Undiscounted case reduces to a reverse cumulative sum: flip, cumsum, flip.
             adv_process = torch.flip(torch.cumsum(torch.flip(adv_process, dims=[2]), dim=2), dims=[2])
+        else:
+            # A_t = d_t + gamma * A_{t+1}. Done as a backward recursion rather than a
+            # scaled cumsum because gamma ** seq_len underflows on long reasoning traces.
+            discounted = torch.zeros_like(adv_process)
+            running = torch.zeros_like(adv_process[:, :, 0])
+            for t in reversed(range(adv_process.size(2))):
+                running = adv_process[:, :, t] + self.config.gamma * running
+                discounted[:, :, t] = running
+            adv_process = discounted
 
         # 2. Outcome Reward Advantage (Sequence-level RLOO)
         # Shape: [G, K]
