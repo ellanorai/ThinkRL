@@ -35,6 +35,8 @@ except ImportError:
 
 logger = get_logger(__name__)
 
+TRAINER_STATE_FILE = "trainer_state.pt"
+
 
 @dataclass
 class SFTConfig:
@@ -180,6 +182,7 @@ class SFTTrainer:
 
         # State tracking
         self.global_step = 0
+        self.start_epoch = 0
         self.epoch = 0
         self.model_engine = None  # DeepSpeed engine
 
@@ -323,7 +326,10 @@ class SFTTrainer:
         Run training.
 
         Args:
-            resume_from_checkpoint: Path to checkpoint to resume from
+            resume_from_checkpoint: Directory written by save_model. Restores model weights,
+                optimizer state, scheduler state and the step counter, and resumes at the
+                saved epoch. Position within an epoch's dataloader is not restored, so the
+                first resumed epoch replays from its start.
 
         Returns:
             Training metrics
@@ -384,6 +390,9 @@ class SFTTrainer:
             )
             logger.info("Manual Optimizer & Scheduler Initialized")
 
+        if resume_from_checkpoint:
+            self._load_trainer_state(resume_from_checkpoint)
+
         # Refined Optimizer/Scheduler setup logic:
         # If DS init was skipped (no config), we rely on manual setup above.
         # Ideally, we should move Manual Setup to "else" block of DS check,
@@ -396,7 +405,7 @@ class SFTTrainer:
         if self.model_engine == self.model:  # Non-DS
             self.optimizer.zero_grad()
 
-        for epoch in range(self.args.num_train_epochs):
+        for epoch in range(self.start_epoch, self.args.num_train_epochs):
             self.epoch = epoch
             logger.info(f"Epoch {epoch + 1}/{self.args.num_train_epochs}")
 
@@ -562,7 +571,44 @@ class SFTTrainer:
         if self.tokenizer:
             self.tokenizer.save_pretrained(save_dir)
 
+        # Optimizer, scheduler and step counter live beside the weights so that
+        # resume_from_checkpoint can restore the run rather than only the model.
+        state = {
+            "global_step": self.global_step,
+            "epoch": self.epoch,
+            "optimizer": self.optimizer.state_dict() if self.optimizer is not None else None,
+            "scheduler": self.scheduler.state_dict() if self.scheduler is not None else None,
+        }
+        torch.save(state, os.path.join(save_dir, TRAINER_STATE_FILE))
+
         logger.info(f"Model saved to {save_dir}")
+
+    def _load_trainer_state(self, checkpoint_dir: str):
+        """Restore model weights, optimizer, scheduler and step counter from a checkpoint."""
+        if not os.path.isdir(checkpoint_dir):
+            raise FileNotFoundError(f"resume_from_checkpoint directory does not exist: {checkpoint_dir}")
+
+        # Weights first; from_pretrained on the existing class keeps the config intact.
+        self.model.load_state_dict(type(self.model).from_pretrained(checkpoint_dir).state_dict())
+        self.model.to(self.device)
+
+        state_path = os.path.join(checkpoint_dir, TRAINER_STATE_FILE)
+        if not os.path.isfile(state_path):
+            raise FileNotFoundError(
+                f"{checkpoint_dir} has model weights but no {TRAINER_STATE_FILE}, so the optimizer "
+                "and step counter cannot be restored. Resuming from it would silently restart "
+                "the schedule."
+            )
+
+        state = torch.load(state_path, map_location=self.device, weights_only=True)
+        if state.get("optimizer") is not None and self.optimizer is not None:
+            self.optimizer.load_state_dict(state["optimizer"])
+        if state.get("scheduler") is not None and self.scheduler is not None:
+            self.scheduler.load_state_dict(state["scheduler"])
+        self.global_step = state.get("global_step", 0)
+        self.start_epoch = state.get("epoch", 0)
+
+        logger.info(f"Resumed from {checkpoint_dir} at global_step={self.global_step}")
 
     def push_to_hub(self, repo_id: str, **kwargs):
         """
