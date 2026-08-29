@@ -229,6 +229,7 @@ class BaseRLHFAlgorithm(ABC):
         rewards: torch.Tensor,
         values: torch.Tensor,
         normalize: bool | None = None,
+        action_mask: torch.Tensor | None = None,
     ) -> torch.Tensor:
         """
         Compute Generalized Advantage Estimation (GAE).
@@ -241,6 +242,8 @@ class BaseRLHFAlgorithm(ABC):
             rewards: Reward tensor [B, T] or [B]
             values: Value estimates from critic [B, T] or [B]
             normalize: Whether to normalize advantages (defaults to self.normalize_advantages)
+            action_mask: Optional [B, T] mask marking real tokens; padding positions are
+                excluded from the recursion and from the normalization statistics
 
         Returns:
             GAE advantages tensor
@@ -252,6 +255,7 @@ class BaseRLHFAlgorithm(ABC):
             gamma=self.gamma,
             lambda_=self.lambda_,
             normalize=should_normalize,
+            action_mask=action_mask,
         )
 
     def get_log_probs(

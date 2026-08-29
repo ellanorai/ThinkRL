@@ -223,8 +223,9 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         else:
             dense_rewards = rewards
 
-        # GAE
-        advantages = self.compute_gae_advantages(dense_rewards, old_values)
+        # GAE. The attention mask keeps the value head's output on padding slots, which is
+        # untrained and arbitrary, out of the backward recursion.
+        advantages = self.compute_gae_advantages(dense_rewards, old_values, action_mask=attention_mask)
         returns = advantages + old_values
 
         # 4. Prepare Dataset for Mini-batching

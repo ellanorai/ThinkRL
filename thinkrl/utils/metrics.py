@@ -176,42 +176,94 @@ def compute_advantages(
     gamma: float = 0.99,
     lambda_: float = 0.95,
     normalize: bool = True,
+    action_mask: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    """Compute Generalized Advantage Estimation (GAE)."""
+    """Compute Generalized Advantage Estimation (GAE).
+
+    Args:
+        rewards: Reward tensor [B, T]
+        values: Value estimates [B, T]
+        gamma: Discount factor
+        lambda_: GAE lambda
+        normalize: Whether to whiten the result
+        action_mask: Optional [B, T] mask marking real tokens. Masked positions contribute
+            nothing to the backward recursion and are excluded from the normalization
+            statistics. Without it the value head's output on padding slots, which is
+            untrained and arbitrary, propagates into the advantages of real tokens.
+    """
     batch_size, seq_len = rewards.shape
     advantages = torch.zeros_like(rewards)
 
-    # Compute TD residuals
+    mask = None if action_mask is None else action_mask.to(rewards.dtype)
+
+    # Compute TD residuals. The bootstrap value past the end of a sequence is zero, so the
+    # next-value term is masked with the mask shifted one step left.
     next_values = torch.cat([values[:, 1:], torch.zeros(batch_size, 1, device=values.device)], dim=1)
+    if mask is not None:
+        next_mask = torch.cat([mask[:, 1:], torch.zeros(batch_size, 1, device=mask.device)], dim=1)
+        next_values = next_values * next_mask
     deltas = rewards + gamma * next_values - values
+    if mask is not None:
+        deltas = deltas * mask
 
     # Compute GAE
-    gae = 0
+    gae = torch.zeros(batch_size, device=rewards.device, dtype=rewards.dtype)
     for t in reversed(range(seq_len)):
         gae = deltas[:, t] + gamma * lambda_ * gae
+        if mask is not None:
+            # Zeroing here also stops a masked step from carrying anything backwards.
+            gae = gae * mask[:, t]
         advantages[:, t] = gae
 
     # Normalize advantages
     if normalize:
-        advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        if mask is None:
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        else:
+            valid = advantages[mask.bool()]
+            if valid.numel() > 1:
+                advantages = (advantages - valid.mean()) / (valid.std() + 1e-8) * mask
 
     return advantages
 
 
-def compute_returns(rewards: torch.Tensor, gamma: float = 0.99, normalize: bool = False) -> torch.Tensor:
-    """Compute discounted returns."""
+def compute_returns(
+    rewards: torch.Tensor,
+    gamma: float = 0.99,
+    normalize: bool = False,
+    action_mask: torch.Tensor | None = None,
+) -> torch.Tensor:
+    """Compute discounted returns.
+
+    Args:
+        rewards: Reward tensor [B, T]
+        gamma: Discount factor
+        normalize: Whether to whiten the result
+        action_mask: Optional [B, T] mask marking real tokens. Masked positions are
+            excluded from the accumulation and from the normalization statistics.
+    """
     batch_size, seq_len = rewards.shape
     returns = torch.zeros_like(rewards)
 
+    mask = None if action_mask is None else action_mask.to(rewards.dtype)
+    masked_rewards = rewards if mask is None else rewards * mask
+
     # Compute returns backward
-    G = 0
+    G = torch.zeros(batch_size, device=rewards.device, dtype=rewards.dtype)
     for t in reversed(range(seq_len)):
-        G = rewards[:, t] + gamma * G
+        G = masked_rewards[:, t] + gamma * G
+        if mask is not None:
+            G = G * mask[:, t]
         returns[:, t] = G
 
     # Normalize returns
     if normalize:
-        returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+        if mask is None:
+            returns = (returns - returns.mean()) / (returns.std() + 1e-8)
+        else:
+            valid = returns[mask.bool()]
+            if valid.numel() > 1:
+                returns = (returns - valid.mean()) / (valid.std() + 1e-8) * mask
 
     return returns
 
