@@ -218,11 +218,18 @@ class ThinkRLConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ThinkRLConfig:
         """Create config from dictionary."""
+        # An empty or comment-only YAML/JSON parses to None; fail with a clear
+        # message instead of an AttributeError deep inside the parser.
+        if data is None:
+            raise ValueError("Config is empty (parsed to None). Provide a non-empty YAML/JSON file.")
+
+        # `data.get(k, {})` still returns None when the key is present but null
+        # (e.g. `model:` with nothing under it), so coalesce each section to {}.
         # Parse nested configs
-        model = ModelConfig(**data.get("model", {}))
+        model = ModelConfig(**(data.get("model") or {}))
 
         # Dynamic Algorithm Config Loading
-        algo_data = data.get("algorithm", {})
+        algo_data = data.get("algorithm") or {}
         # If algorithm is already an object, assume it's valid
         if not isinstance(algo_data, dict):
             algorithm = algo_data
@@ -257,9 +264,9 @@ class ThinkRLConfig:
             except Exception as e:
                 logger.warning(f"Failed to load algorithm config for '{algo_name}': {e}. Falling back to dict.")
                 algorithm = algo_data
-        distributed = DistributedConfig(**data.get("distributed", {}))
-        data_config = DataConfig(**data.get("data", {}))
-        logging_config = LoggingConfig(**data.get("logging", {}))
+        distributed = DistributedConfig(**(data.get("distributed") or {}))
+        data_config = DataConfig(**(data.get("data") or {}))
+        logging_config = LoggingConfig(**(data.get("logging") or {}))
 
         peft = None
         if "peft" in data and data["peft"]:
