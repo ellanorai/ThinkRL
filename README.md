@@ -80,7 +80,20 @@ ThinkRL is built on a high-performance stack designed for scale:
 ### Core Components
 
 **vLLM - High-Throughput Inference**
-RLHF depends heavily on generation speed. ThinkRL uses [vLLM](https://github.com/vllm-project/vllm) for **80% faster experience collection**, leveraging PagedAttention and continuous batching.
+RLHF depends heavily on generation speed, so ThinkRL can offload rollout generation to
+[vLLM](https://github.com/vllm-project/vllm) and its PagedAttention and continuous batching.
+
+This runs out of process: `thinkrl/integration/vllm_worker.py` is a standalone FastAPI
+server holding the vLLM engine, and the trainers talk to it through
+`thinkrl/integration/vllm_client.py`, pushing updated weights over NCCL between rollouts.
+Pass `use_vllm=True` to `GRPOTrainer` or `ReinforcePPTrainer` to use it. See
+[the vLLM worker guide](./docs/vllm_worker.md) for how to start one, and read the security
+note there before exposing it: the worker binds every interface by default and has no
+authentication.
+
+The in-process `thinkrl.generation` engine is not implemented yet, and the "80% faster"
+figure that used to sit here was never accompanied by a benchmark in this repository, so it
+has been removed rather than restated.
 
 **DeepSpeed - Memory-Efficient Training**
 Native integration with [DeepSpeed](https://github.com/microsoft/DeepSpeed) (ZeRO-2/3) enables training **70B+ parameter** models on commodity hardware.
