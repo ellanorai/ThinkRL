@@ -50,6 +50,11 @@ from .rl_utils import (
     # Group sampling
     sample_groups,
 )
+from .rm_trainer import (
+    RMConfig,
+    RMTrainer,
+    create_rm_trainer,
+)
 from .sft_trainer import (
     SFTConfig,
     SFTTrainer,
@@ -58,6 +63,10 @@ from .sft_trainer import (
 
 
 __all__ = [
+    # Reward Model Trainer
+    "RMConfig",
+    "RMTrainer",
+    "create_rm_trainer",
     # SFT Trainer
     "SFTConfig",
     "SFTTrainer",
