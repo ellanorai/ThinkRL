@@ -121,6 +121,10 @@ def grpo(
         bf16 = False
         typer.echo("Note: Both BF16 and FP16 requested. Prioritizing FP16 (BF16 disabled).")
 
+    if not ref_model:
+        typer.echo("Error: a reference model is required (`--ref-model`).", err=True)
+        raise typer.Exit(code=1)
+
     from thinkrl.algorithms.grpo import GRPOConfig
     from thinkrl.data.datasets import RLHFDataset
     from thinkrl.models.loader import get_model
@@ -149,19 +153,16 @@ def grpo(
         policy_model.gradient_checkpointing_enable()
         typer.echo("Gradient checkpointing enabled for policy model.")
 
-    if ref_model:
-        ref_model_inst = get_model(
-            ref_model,
-            model_type="ref",
-            bf16=bf16,
-            fp16=fp16,
-            trust_remote_code=True,
-            lora_init_type=lora_init,
-            use_flash_attention=use_flash_attention,
-            device_map={"": local_rank} if torch.cuda.is_available() else None,
-        )
-    else:
-        raise typer.Exit("Reference model is required (`--ref-model`)")
+    ref_model_inst = get_model(
+        ref_model,
+        model_type="ref",
+        bf16=bf16,
+        fp16=fp16,
+        trust_remote_code=True,
+        lora_init_type=lora_init,
+        use_flash_attention=use_flash_attention,
+        device_map={"": local_rank} if torch.cuda.is_available() else None,
+    )
 
     tokenizer = AutoTokenizer.from_pretrained(model, padding_side="left")
     if tokenizer.pad_token is None:
@@ -247,6 +248,14 @@ def grpo(
     per_device_train_batch_size = int(per_device_train_batch_size)
     dataset_len = int(len(train_dataset))
     total_steps = num_train_epochs * dataset_len // per_device_train_batch_size
+    if total_steps == 0:
+        typer.echo(
+            f"Error: {dataset_len} samples over {num_train_epochs} epoch(s) at batch size "
+            f"{per_device_train_batch_size} gives 0 training steps. Lower --batch-size or "
+            f"raise --max-samples.",
+            err=True,
+        )
+        raise typer.Exit(code=1)
     trainer.train(steps=total_steps, batch_size=per_device_train_batch_size)
 
     typer.echo("Training complete.")
