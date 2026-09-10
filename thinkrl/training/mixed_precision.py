@@ -329,6 +329,47 @@ class MixedPrecisionTrainer:
             self.scaler.load_state_dict(state["scaler"])
 
 
+def check_optimizable_dtype(model: nn.Module, optimizer_eps: float = 1e-8) -> None:
+    """Raise if the model's parameters cannot survive an optimizer step in their own dtype.
+
+    Adam-family optimizers keep their moment estimates in the parameter dtype. In float16
+    the second moment underflows toward zero for ordinary gradients, and the usual
+    ``eps=1e-8`` is not representable at all: the nearest float16 value is 0.0, so the
+    update divides by zero and every parameter becomes inf or nan.
+
+    This is silent when it happens. The loss stays finite and the step is reported as
+    successful, because the damage lands in the weights after the loss is computed. A
+    float16 checkpoint therefore trains for exactly one step and then generates from a nan
+    model, surfacing as a `probability tensor contains inf, nan` error from ``generate``
+    rather than as an optimizer problem.
+
+    bfloat16 is unaffected: it carries float32's exponent range, so eps is representable
+    and the moments do not underflow.
+
+    Args:
+        model: Model whose parameters the optimizer will update
+        optimizer_eps: The eps the optimizer is configured with
+
+    Raises:
+        ValueError: If any trainable parameter is float16
+    """
+    fp16_params = [name for name, param in model.named_parameters() if param.requires_grad and param.dtype == torch.float16]
+    if not fp16_params:
+        return
+
+    representable = float(torch.tensor(optimizer_eps, dtype=torch.float16))
+    raise ValueError(
+        f"{len(fp16_params)} parameters are float16 (first: {fp16_params[0]}), which an "
+        f"Adam-family optimizer cannot update in place: eps={optimizer_eps} is {representable} "
+        "in float16, so the update divides by zero and the weights become nan after a single "
+        "step, while the loss still looks finite.\n"
+        "Load the model in float32 or bfloat16 (`from_pretrained(..., dtype=torch.float32)`), "
+        "or pass your own optimizer with float32 master weights. Note that many checkpoints, "
+        "including facebook/opt-125m, declare float16 in their config and load that way by "
+        "default."
+    )
+
+
 def get_autocast_dtype(precision: str) -> torch.dtype:
     """Get autocast dtype for a precision string."""
     dtype_map = {
@@ -365,6 +406,7 @@ __all__ = [
     "PrecisionType",
     "MixedPrecisionConfig",
     "MixedPrecisionTrainer",
+    "check_optimizable_dtype",
     "get_autocast_dtype",
     "cast_model_to_dtype",
     "enable_tf32",

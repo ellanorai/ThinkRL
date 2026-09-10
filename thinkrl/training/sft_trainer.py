@@ -21,6 +21,7 @@ import torch
 from torch.utils.data import DataLoader
 from tqdm import tqdm
 
+from thinkrl.training.mixed_precision import check_optimizable_dtype
 from thinkrl.utils.logging import get_logger
 
 
@@ -368,6 +369,7 @@ class SFTTrainer:
             self.model_engine = self.model
 
             # Restore manual optimizer/scheduler setup for non-DeepSpeed
+            check_optimizable_dtype(self.model)
             self.optimizer = torch.optim.AdamW(
                 self.model.parameters(),
                 lr=self.args.learning_rate,

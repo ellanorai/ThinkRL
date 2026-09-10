@@ -25,6 +25,7 @@ import torch.distributed as dist
 import torch.nn as nn
 from torch.optim import Optimizer
 
+from thinkrl.training.mixed_precision import check_optimizable_dtype
 from thinkrl.utils.logging import get_logger
 from thinkrl.utils.metrics import (
     MetricsTracker,
@@ -130,6 +131,10 @@ class BaseRLHFAlgorithm(ABC):
 
         # Optimizer
         if optimizer is None:
+            # An Adam-family optimizer cannot update float16 weights in place: eps
+            # underflows to zero and the first step produces nan while the loss still
+            # looks finite. Fail here rather than after the damage.
+            check_optimizable_dtype(policy_model)
             self.optimizer = torch.optim.AdamW(policy_model.parameters(), lr=learning_rate)
         else:
             self.optimizer = optimizer
