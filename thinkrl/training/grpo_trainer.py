@@ -143,12 +143,18 @@ class GRPOTrainer:
             logger.info("Using VLLM for generation.")
 
         # Create DataLoader
+        # Rollout batches are padded on the left. These prompts go straight into
+        # model.generate, and a decoder-only model continues from the last position, so
+        # right padding would make every prompt shorter than the batch maximum continue
+        # from pad tokens. The completions scored by the reward function would then be
+        # ones the policy never produces at inference.
         dataloader = RLHFDataLoader(
             dataset=self.dataset,
             tokenizer=self.tokenizer,
             batch_size=batch_size,
             shuffle=True,
             drop_last=False,
+            padding_side="left",
         )
 
         step = 0
