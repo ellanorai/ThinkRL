@@ -1,3 +1,11 @@
+"""
+UniversalReward example: tuned coefficients
+==========================================
+
+The same reward with each coefficient spelled out and commented, as a starting point for
+tuning. Use it with the reinforce_pp CLI via --reward-fn.
+"""
+
 import torch
 from thinkrl.rewards.universal import UniversalReward
 

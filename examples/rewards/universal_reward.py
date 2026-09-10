@@ -1,3 +1,11 @@
+"""
+UniversalReward example: math and reasoning defaults
+===================================================
+
+A reward function wired for <think>...</think><answer>...</answer> traces, in the shape the
+GRPO and REINFORCE++ CLIs expect. Point --reward-fn at this module.
+"""
+
 from thinkrl.rewards.universal import UniversalReward
 
 

@@ -33,3 +33,7 @@ coverage.xml
 test_errors.log
 test_verification.log
 wandb/
+# Training run artifacts. These are the default output_dir values in the shipped
+# configs and CLIs, so any real run leaves them behind.
+outputs/
+*_output/
