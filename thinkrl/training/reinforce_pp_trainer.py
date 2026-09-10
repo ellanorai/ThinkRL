@@ -9,7 +9,7 @@ from thinkrl.algorithms.reinforce_pp import REINFORCEPPAlgorithm, REINFORCEPPCon
 from thinkrl.data.datasets import RLHFDataset
 from thinkrl.data.loaders import RLHFDataLoader
 from thinkrl.integration.vllm_client import VLLMClient
-from thinkrl.utils.checkpoint import CheckpointManager, save_training_checkpoint
+from thinkrl.logging.rollout import RolloutInspector
 from thinkrl.utils.logging import get_logger
 
 
@@ -107,9 +107,8 @@ class ReinforcePPTrainer:
         steps: int = 1000,
         batch_size: int = 4,
         log_interval: int = 10,
-        checkpoint_dir: str | None = None,
-        save_every: int = 0,
-        max_checkpoints: int = 5,
+        inspect_every: int = 0,
+        inspect_samples: int = 3,
     ):
         """
         Main training loop.
@@ -118,14 +117,12 @@ class ReinforcePPTrainer:
             steps: Number of optimisation steps to run.
             batch_size: Prompts per rollout.
             log_interval: Steps between log lines.
-            checkpoint_dir: Where to write checkpoints. Nothing is written without it.
-            save_every: Save every N steps; 0 disables periodic saves. A final checkpoint is
-                still written whenever checkpoint_dir is set.
-            max_checkpoints: How many checkpoints to keep before the oldest rotates out.
+            inspect_every: Print a sample of prompts, completions and rewards every N
+                steps. 0 disables it. A scalar reward cannot distinguish a bad policy from
+                a broken reward function or empty completions; this can.
+            inspect_samples: How many rollouts to show each time.
         """
-        checkpointer = (
-            CheckpointManager(checkpoint_dir, max_checkpoints=max_checkpoints) if checkpoint_dir else None
-        )
+        inspector = RolloutInspector(every=inspect_every, num_samples=inspect_samples)
         try:
             from tqdm import tqdm
         except ImportError:
@@ -248,6 +245,8 @@ class ReinforcePPTrainer:
 
                     logger.info(f"Step {step}: Loss={loss_val:.4f}, " f"Reward={reward_val:.4f}")
                     progress_bar.set_postfix({"loss": f"{loss_val:.3f}", "reward": f"{reward_val:.3f}"})
+
+                inspector.maybe_show(step, prompts_text, completions_text, rewards)
 
                 progress_bar.update(1)
                 step += 1
