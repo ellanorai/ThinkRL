@@ -258,6 +258,42 @@ def create_app(args: argparse.Namespace) -> FastAPI:
             "log_probs": log_probs_list,
         })
 
+    @app.post("/check_weights")
+    async def check_weights(request: Request):
+        """
+        Compare the trainer's parameter shapes against the loaded model.
+
+        The client calls this before the first weight sync so that a structural mismatch is
+        reported here, rather than as a confusing NCCL failure or a silently wrong policy
+        once weights start moving. The response shape is what VLLMClient.check_weights
+        already parses: {"status": "ok"} or {"status": "mismatch", "details": [...]}.
+        """
+        if not hasattr(app.state, "engine") or app.state.engine is None:
+            return JSONResponse({"error": "engine not initialized"}, status_code=503)
+
+        body = await request.json()
+        expected = body.get("params") or {}
+
+        model = _get_vllm_model(app.state.engine)
+        actual = {name: list(param.shape) for name, param in model.named_parameters()}
+
+        details = []
+        for name, shape in expected.items():
+            if name not in actual:
+                details.append(f"{name}: missing on the worker")
+            elif list(actual[name]) != list(shape):
+                details.append(f"{name}: trainer has {list(shape)}, worker has {list(actual[name])}")
+
+        for name in actual:
+            if name not in expected:
+                details.append(f"{name}: present on the worker, absent on the trainer")
+
+        if details:
+            logger.warning(f"Model structure mismatch, {len(details)} differences")
+            return JSONResponse({"status": "mismatch", "details": details[:20]})
+
+        return JSONResponse({"status": "ok"})
+
     @app.post("/update_weights")
     async def update_weights():
         """
