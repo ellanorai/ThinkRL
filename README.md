@@ -208,11 +208,19 @@ python -m thinkrl.cli.train_rl \
 <a id="training-guides"></a>
 ## 🎓 Training Guides
 
-See `examples/` for detailed scripts:
-- [SFT & CoT Training](./examples/scripts/train_sft_cot.sh)
-- [DPO / Online DPO](./examples/scripts/train_dpo.sh)
-- [PRM Training](./examples/scripts/train_prm.sh)
-- [Multimodal PAPO](./examples/scripts/train_papo.sh)
+See `examples/` for runnable scripts. These four run on CPU with a small model:
+- [Minimal GRPO run](./examples/basic/train_simple.py)
+- [Inference from a model or checkpoint](./examples/basic/inference.py)
+- [Evaluating a policy](./examples/basic/evaluate_model.py)
+- [Supervised fine-tuning](./examples/sft/train_sft_small.py)
+
+And these need a GPU:
+- [GRPO on a reasoning dataset](./examples/reasoning/train_grpo.py)
+- [REINFORCE++](./examples/reasoning/train_reinforce_pp.py)
+- [STaR](./examples/reasoning/train_star.py)
+- [Custom reward functions](./examples/example_universal_reward.py)
+
+DPO, PRM and multimodal PAPO examples are not written yet.
 
 ---
 
@@ -266,7 +274,7 @@ python -m thinkrl.cli.merge_lora \
 
 ## 🤝 Contributing
 
-We welcome contributions! Please see [CONTRIBUTING.md](CONTRIBUTING.md).
+We welcome contributions! Please see [CONTRIBUTION.md](CONTRIBUTION.md).
 
 ## 📄 Citation
 
