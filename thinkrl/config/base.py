@@ -254,6 +254,12 @@ class ThinkRLConfig:
                 # Let's instantiate
                 algorithm = ConfigClass(**filtered_args)
 
+                # No algorithm config declares a `name` field, so the resolved name is lost
+                # unless it is carried on the instance. Without it `cfg.algorithm.name`
+                # raises AttributeError, and to_dict/from_dict silently round-trips every
+                # algorithm back to the "ppo" default.
+                algorithm.name = algo_name
+
             except Exception as e:
                 logger.warning(f"Failed to load algorithm config for '{algo_name}': {e}. Falling back to dict.")
                 algorithm = algo_data
@@ -288,8 +294,12 @@ class ThinkRLConfig:
         elif isinstance(self.algorithm, dict):
             algo_dict = self.algorithm
         else:
-            # It's a dataclass, use asdict
+            # It's a dataclass, use asdict. `name` is carried on the instance rather than
+            # declared as a field, so asdict drops it and it has to be put back.
             algo_dict = asdict(self.algorithm)
+            name = getattr(self.algorithm, "name", None)
+            if name is not None:
+                algo_dict["name"] = name
 
         result = {
             "model": asdict(self.model),

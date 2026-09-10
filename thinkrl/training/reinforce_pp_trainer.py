@@ -155,8 +155,19 @@ class ReinforcePPTrainer:
 
         step = 0
         epoch = 0
+        step_metrics: dict[str, Any] = {}
 
         progress_bar = tqdm(total=steps, desc="Training")
+
+        def checkpoint():
+            return save_training_checkpoint(
+                checkpointer,
+                model=self.algorithm.policy_model,
+                optimizer=getattr(self.algorithm, "optimizer", None),
+                epoch=epoch,
+                step=step,
+                metrics=step_metrics,
+            )
 
         while step < steps:
             for batch_prompts in dataloader:
@@ -240,9 +251,13 @@ class ReinforcePPTrainer:
                 progress_bar.update(1)
                 step += 1
 
+                if save_every and step % save_every == 0:
+                    checkpoint()
+
             epoch += 1
 
         progress_bar.close()
+        checkpoint()
 
     def make_experience(self, batch_prompts: dict[str, Any]) -> dict[str, torch.Tensor]:
         """

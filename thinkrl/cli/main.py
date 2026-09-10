@@ -43,6 +43,139 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 
+# Algorithms `thinkrl train` can drive today. The rest are registered but have no trainer
+# wired to a configuration, so naming them explicitly is better than a generic failure.
+TRAINABLE_FROM_CONFIG = {"grpo"}
+
+
+def _resolve_algorithm_name(cfg) -> str:
+    algorithm = cfg.algorithm
+    if algorithm is None:
+        raise ValueError("config has no `algorithm` section, so there is nothing to train")
+    name = algorithm.get("name") if isinstance(algorithm, dict) else getattr(algorithm, "name", None)
+    if not name:
+        raise ValueError("config `algorithm` section has no `name`")
+    return str(name).lower()
+
+
+def _algorithm_field(cfg, field: str, default):
+    algorithm = cfg.algorithm
+    if isinstance(algorithm, dict):
+        return algorithm.get(field, default)
+    return getattr(algorithm, field, default)
+
+
+def _run_training(cfg, resume=None) -> None:
+    """Build a trainer from a configuration and run it.
+
+    Kept deliberately narrow: only algorithms with a trainer that takes a config are
+    accepted, and anything else fails by name rather than doing nothing.
+    """
+    if resume:
+        # Checked before anything expensive is loaded: refusing after a model download
+        # would waste minutes to report a flag we could reject immediately.
+        typer.echo(f"Error: --resume is not implemented for `train` yet (got {resume}).", err=True)
+        typer.echo("       See https://github.com/ellanorai/ThinkRL/issues/103", err=True)
+        raise typer.Exit(code=1)
+
+    name = _resolve_algorithm_name(cfg)
+    if name not in TRAINABLE_FROM_CONFIG:
+        supported = ", ".join(sorted(TRAINABLE_FROM_CONFIG))
+        typer.echo(
+            f"Error: `thinkrl train` cannot drive `{name}` from a config yet. "
+            f"Supported: {supported}.",
+            err=True,
+        )
+        typer.echo(
+            "       Use the dedicated CLI if one exists (`thinkrl grpo`, `thinkrl star`), "
+            "or see https://github.com/ellanorai/ThinkRL/issues/118",
+            err=True,
+        )
+        raise typer.Exit(code=1)
+
+    import torch
+    from transformers import AutoTokenizer
+
+    from thinkrl.algorithms.grpo import GRPOConfig
+    from thinkrl.data.datasets import RLHFDataset
+    from thinkrl.models.loader import get_model
+    from thinkrl.training.grpo_trainer import GRPOTrainer
+
+    if not cfg.data.dataset:
+        typer.echo("Error: config `data.dataset` is required to train.", err=True)
+        raise typer.Exit(code=1)
+
+    ref_name = cfg.model.ref_model_name_or_path or cfg.model.name_or_path
+
+    typer.echo("Loading tokenizer and models...")
+    tokenizer = AutoTokenizer.from_pretrained(
+        cfg.model.name_or_path,
+        padding_side="left",
+        trust_remote_code=cfg.model.trust_remote_code,
+    )
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    model_kwargs = dict(
+        bf16=cfg.distributed.bf16,
+        fp16=cfg.distributed.fp16,
+        trust_remote_code=cfg.model.trust_remote_code,
+        use_flash_attention=cfg.model.use_flash_attention,
+    )
+    policy_model = get_model(cfg.model.name_or_path, model_type="actor", **model_kwargs)
+    ref_model = get_model(ref_name, model_type="ref", **model_kwargs)
+
+    if cfg.model.gradient_checkpointing and hasattr(policy_model, "gradient_checkpointing_enable"):
+        policy_model.gradient_checkpointing_enable()
+
+    typer.echo(f"Loading dataset: {cfg.data.dataset}")
+    dataset = RLHFDataset(
+        dataset_name_or_path=cfg.data.dataset,
+        tokenizer=tokenizer,
+        split=cfg.data.dataset_split,
+        prompt_column=cfg.data.prompt_column,
+        max_length=cfg.data.max_length,
+    )
+
+    def reward_fn(prompts, completions, **kwargs):
+        """Placeholder reward until the config carries one.
+
+        Length-based, so it is obviously a placeholder rather than something that looks
+        trained. `data.reward_fn` is not part of the schema yet.
+        """
+        return torch.tensor([float(len(c)) for c in completions])
+
+    typer.echo("Warning: no reward function in the config schema yet; using a length-based placeholder.")
+
+    trainer = GRPOTrainer(
+        model=policy_model,
+        ref_model=ref_model,
+        tokenizer=tokenizer,
+        dataset=dataset,
+        reward_fn=reward_fn,
+        config=GRPOConfig(
+            learning_rate=_algorithm_field(cfg, "learning_rate", 1e-6),
+            group_size=_algorithm_field(cfg, "group_size", 64),
+            beta=_algorithm_field(cfg, "beta", 0.04),
+            n_epochs=_algorithm_field(cfg, "n_epochs", 1),
+        ),
+    )
+
+    batch_size = cfg.distributed.micro_batch_size
+    steps = max(1, len(dataset) // max(1, batch_size))
+    typer.echo(f"Training for {steps} steps at batch size {batch_size}...")
+
+    trainer.train(
+        steps=steps,
+        batch_size=batch_size,
+        checkpoint_dir=cfg.logging.output_dir,
+        save_every=cfg.logging.save_every_n_steps,
+        max_checkpoints=cfg.logging.save_total_limit,
+    )
+
+    typer.echo(f"Training complete. Checkpoints in {cfg.logging.output_dir}")
+
+
 def _check_typer():
     """Check if typer is available."""
     if not TYPER_AVAILABLE:
@@ -112,8 +245,7 @@ if TYPER_AVAILABLE:
         typer.echo(f"Model: {cfg.model.name_or_path}")
         typer.echo(f"Strategy: {cfg.distributed.strategy}")
 
-        # TODO: Implement actual training loop
-        typer.echo("\nNote: Training implementation pending")
+        _run_training(cfg, resume=resume)
 
     @app.command()
     def generate(

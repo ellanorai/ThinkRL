@@ -765,10 +765,50 @@ def load_config(config_path: str | Path) -> dict[str, Any]:
     return config
 
 
+def save_training_checkpoint(
+    manager: CheckpointManager | None,
+    model: nn.Module,
+    optimizer: Optimizer | None = None,
+    scheduler: _LRScheduler | None = None,
+    epoch: int | None = None,
+    step: int | None = None,
+    metrics: dict[str, Any] | None = None,
+) -> Path | None:
+    """Save a training checkpoint, tolerating a missing manager and tensor-valued metrics.
+
+    Trainers collect metrics as a mix of floats and zero-dimensional tensors, while
+    CheckpointManager stores them in JSON metadata, so they are coerced here rather than at
+    every call site.
+
+    Returns the checkpoint path, or None when no manager is configured.
+    """
+    if manager is None:
+        return None
+
+    scalar_metrics = {}
+    for key, value in (metrics or {}).items():
+        if isinstance(value, torch.Tensor):
+            if value.numel() != 1:
+                continue
+            value = value.item()
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            scalar_metrics[key] = float(value)
+
+    return manager.save_checkpoint(
+        model=model,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        epoch=epoch,
+        step=step,
+        metrics=scalar_metrics,
+    )
+
+
 # Public API
 __all__ = [
     "CheckpointManager",
     "save_checkpoint",
+    "save_training_checkpoint",
     "load_checkpoint",
     "save_config",
     "load_config",

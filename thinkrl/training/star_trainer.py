@@ -9,6 +9,7 @@ from transformers import GenerationConfig, PreTrainedTokenizer
 from thinkrl.algorithms.star import STaRAlgorithm, STaRConfig
 from thinkrl.data.datasets import RLHFDataset
 from thinkrl.data.loaders import RLHFDataLoader
+from thinkrl.utils.checkpoint import CheckpointManager, save_training_checkpoint
 from thinkrl.utils.logging import get_logger
 
 
@@ -61,11 +62,27 @@ class STaRTrainer:
         self.algorithm = STaRAlgorithm(policy_model=model, optimizer=optimizer, config=self.config, **algo_kwargs)
         self.algorithm.to(self.device)
 
-    def train(self, iterations: int | None = None):
+    def train(
+        self,
+        iterations: int | None = None,
+        checkpoint_dir: str | None = None,
+        save_every: int = 1,
+        max_checkpoints: int = 5,
+    ):
         """
         Main STaR loop.
+
+        Args:
+            iterations: Number of STaR iterations; defaults to config.max_iterations.
+            checkpoint_dir: Where to write checkpoints. Nothing is written without it.
+            save_every: Save every N iterations; 0 disables periodic saves. A final
+                checkpoint is still written whenever checkpoint_dir is set.
+            max_checkpoints: How many checkpoints to keep before the oldest rotates out.
         """
         iterations = iterations or self.config.max_iterations
+        checkpointer = (
+            CheckpointManager(checkpoint_dir, max_checkpoints=max_checkpoints) if checkpoint_dir else None
+        )
 
         logger.info(f"Starting STaR training for {iterations} iterations...")
 
@@ -85,6 +102,11 @@ class STaRTrainer:
 
             # 5. Fine-tune on collected data
             self.fine_tune(collected_data, iter_idx)
+
+            if save_every and (iter_idx + 1) % save_every == 0:
+                save_training_checkpoint(checkpointer, model=self.model, epoch=iter_idx, step=iter_idx + 1)
+
+        save_training_checkpoint(checkpointer, model=self.model, epoch=iterations - 1, step=iterations)
 
     def collect_successful_rationales(self, iter_idx: int):
         """
