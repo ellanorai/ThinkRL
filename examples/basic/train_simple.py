@@ -14,8 +14,8 @@ Runs on CPU with the default model (~250 MB), so it needs no GPU.
 
 import argparse
 import json
-import tempfile
 from pathlib import Path
+import tempfile
 
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer

@@ -11,6 +11,7 @@ from pathlib import Path
 import pytest
 from setuptools import find_packages
 
+
 PACKAGE_ROOT = Path(__file__).resolve().parents[2] / "thinkrl"
 
 
