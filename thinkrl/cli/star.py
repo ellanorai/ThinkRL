@@ -54,6 +54,14 @@ def star(
         str | None, Option("--reward-fn", help="Path to reward function (module.py:func_name)")
     ] = None,
     target_column: Annotated[str, Option("--target-column", help="Column name for target answers")] = "answer",
+    chat_template: Annotated[
+        bool,
+        Option(
+            "--chat-template/--no-chat-template",
+            help="Render prompts with the tokenizer's chat template (instruct models). "
+            "Disable for base models or datasets that are already formatted.",
+        ),
+    ] = True,
     dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
 ):
     """
@@ -113,6 +121,7 @@ def star(
         source=source,
         target_column=target_column,
         dataset_config=dataset_config,
+        apply_chat_template=chat_template,
     )
 
     if reward_fn:
