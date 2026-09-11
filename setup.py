@@ -54,6 +54,9 @@ CORE_REQUIREMENTS = [
     "accelerate>=0.21.0,<1.0.0",
     "transformers>=4.30.0,<5.0.0",
     "requests>=2.31.0",
+    # The console_scripts entry points below are typer applications, so the CLI
+    # cannot be optional for a package that ships them.
+    "typer>=0.9.0",
 ]
 
 # --- Dependencies based on requirements.txt ---
