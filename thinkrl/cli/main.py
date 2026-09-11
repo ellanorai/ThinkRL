@@ -20,6 +20,7 @@ Author: EllanorAI
 
 from __future__ import annotations
 
+import inspect
 import json
 import logging
 from pathlib import Path
@@ -46,6 +47,19 @@ logger = logging.getLogger(__name__)
 # Algorithms `thinkrl train` can drive today. The rest are registered but have no trainer
 # wired to a configuration, so naming them explicitly is better than a generic failure.
 TRAINABLE_FROM_CONFIG = {"grpo"}
+
+
+def _is_stub(cls) -> bool:
+    """True when the algorithm raises NotImplementedError from __init__ (see #76).
+
+    Read from the source rather than by constructing the class, because construction
+    needs a model and `info` has none.
+    """
+    try:
+        source = inspect.getsource(cls.__init__)
+    except (OSError, TypeError):
+        return False
+    return "NotImplementedError" in source
 
 
 def _resolve_algorithm_name(cfg) -> str:

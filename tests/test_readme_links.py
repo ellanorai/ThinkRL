@@ -4,8 +4,8 @@ The training-guides section linked four scripts under examples/scripts/, a direc
 has never existed in the repository.
 """
 
-import re
 from pathlib import Path
+import re
 
 import pytest
 

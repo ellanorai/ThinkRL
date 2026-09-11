@@ -5,8 +5,8 @@ ImportError, and a `thinkrl.cli.train_rl` entry point that is not a module.
 """
 
 import importlib
-import re
 from pathlib import Path
+import re
 
 import pytest
 

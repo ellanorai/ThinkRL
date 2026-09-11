@@ -1,5 +1,6 @@
 """CFG-2/OBS-2: from_dict must not crash with AttributeError on empty/null-section configs."""
 import pytest
+
 from thinkrl.config.base import ThinkRLConfig
 
 
