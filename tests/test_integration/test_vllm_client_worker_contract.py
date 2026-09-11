@@ -6,8 +6,8 @@ cannot be imported without vllm and uvicorn installed, so the contract is checke
 the sources, which is also what makes the test runnable in CI without a GPU.
 """
 
-import re
 from pathlib import Path
+import re
 
 import pytest
 

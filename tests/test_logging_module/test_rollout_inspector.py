@@ -7,10 +7,10 @@ import io
 import pytest
 import torch
 
-import thinkrl.training.grpo_trainer as grpo_trainer
-import thinkrl.training.reinforce_pp_trainer as reinforce_pp_trainer
 from thinkrl.logging import RolloutInspector
 from thinkrl.logging.rollout import truncate
+import thinkrl.training.grpo_trainer as grpo_trainer
+import thinkrl.training.reinforce_pp_trainer as reinforce_pp_trainer
 
 
 def _inspector(**kwargs):

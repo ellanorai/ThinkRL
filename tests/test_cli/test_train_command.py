@@ -5,6 +5,7 @@ import inspect
 import pytest
 import yaml
 
+
 typer = pytest.importorskip("typer")
 from typer.testing import CliRunner  # noqa: E402
 
