@@ -1,0 +1,12 @@
+# LoRA adapter settings. Combine with a model config to fine-tune adapters rather than
+# full weights.
+
+peft:
+  enabled: true
+  type: lora
+  r: 8
+  lora_alpha: 16
+  lora_dropout: 0.05
+  bias: none
+  target_modules: null      # null lets the adapter pick the attention projections
+  modules_to_save: null

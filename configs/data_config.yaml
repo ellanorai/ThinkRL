@@ -1,0 +1,21 @@
+# Data-only configuration. Merge into a training config, or load standalone to check that
+# the column names and length budgets match your dataset before starting a run.
+
+data:
+  dataset: null            # required: HuggingFace dataset id or local path
+  eval_dataset: null
+  max_length: 2048
+  max_prompt_length: 1024
+  max_response_length: 1024
+  batch_size: 4
+  buffer_size: 10000
+
+  # Column names as they appear in the dataset. prompt/response are used by the
+  # policy-gradient algorithms; chosen/rejected by the preference algorithms.
+  prompt_column: prompt
+  response_column: response
+  chosen_column: chosen
+  rejected_column: rejected
+
+  apply_chat_template: true
+  chat_template: null      # null uses the tokenizer's own template

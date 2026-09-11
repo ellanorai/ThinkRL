@@ -1,0 +1,9 @@
+# Qwen 2.5 policy model.
+
+model:
+  name_or_path: Qwen/Qwen2.5-7B
+  dtype: bfloat16
+  use_flash_attention: true
+  gradient_checkpointing: true
+  device_map: auto
+  trust_remote_code: false

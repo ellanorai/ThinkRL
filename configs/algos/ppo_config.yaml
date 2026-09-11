@@ -1,0 +1,21 @@
+# PPO training configuration (nested schema loaded by ThinkRLConfig).
+# Hyperparameters match PPOConfig defaults (thinkrl/algorithms/ppo.py).
+
+model:
+  name_or_path: HuggingFaceTB/SmolLM2-135M
+  dtype: bfloat16
+
+algorithm:
+  name: ppo
+  learning_rate: 3.0e-4
+  value_lr: null            # null reuses learning_rate for the critic
+  gamma: 0.99               # discount factor
+  gae_lambda: 0.95          # GAE lambda
+  policy_clip: 0.2          # PPO ratio clip
+  value_clip: 0.2           # value-function clip
+  value_coeff: 0.5
+  entropy_coeff: 0.01
+  n_epochs: 4               # optimization epochs per rollout
+  batch_size: 64            # minibatch size within an epoch
+  clip_grad_norm: 1.0
+  normalize_advantages: true
