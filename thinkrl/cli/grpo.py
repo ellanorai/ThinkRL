@@ -88,6 +88,7 @@ def grpo(
             "Disable for base models or datasets that are already formatted.",
         ),
     ] = True,
+    seed: Annotated[int, Option("--seed", help="Random seed for reproducibility")] = 42,
     dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
 ):
     """
@@ -103,6 +104,9 @@ def grpo(
     typer.echo("=" * 60)
     typer.echo("ThinkRL Group Relative Policy Optimization (GRPO)")
     typer.echo("=" * 60)
+    from thinkrl.utils import set_seed
+
+    set_seed(seed)
     typer.echo(f"Model: {model}")
     typer.echo(f"Ref Model: {ref_model}")
     typer.echo(f"Dataset: {dataset}")
