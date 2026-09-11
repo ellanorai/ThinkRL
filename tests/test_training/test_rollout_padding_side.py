@@ -10,9 +10,9 @@ import inspect
 import torch
 from transformers import GPT2Config, GPT2LMHeadModel
 
+from thinkrl.data.loaders import create_rlhf_collate_fn
 import thinkrl.training.grpo_trainer as grpo_trainer
 import thinkrl.training.reinforce_pp_trainer as reinforce_pp_trainer
-from thinkrl.data.loaders import create_rlhf_collate_fn
 
 
 class _StubTokenizer:

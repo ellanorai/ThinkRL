@@ -1,6 +1,6 @@
 
-import torch
 from thinkrl.rewards.universal import UniversalReward
+
 
 def main():
     # Initialize the Universal Reward
