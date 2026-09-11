@@ -104,6 +104,9 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
             learning_rate=config.learning_rate,
             kl_coeff=0.0,  # PPO often handles KL as a reward penalty, handled in data prep
             clip_grad_norm=config.clip_grad_norm,
+            gamma=config.gamma,
+            lambda_=config.gae_lambda,
+            normalize_advantages=config.normalize_advantages,
             **kwargs,
         )
 
