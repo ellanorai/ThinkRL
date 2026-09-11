@@ -223,8 +223,10 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         else:
             dense_rewards = rewards
 
-        # GAE
-        advantages = self.compute_gae_advantages(dense_rewards, old_values)
+        # GAE. Advantages are left un-normalized here so that `returns` is the actual
+        # discounted return; whitening first would make the critic's target a unitless
+        # quantity plus a value estimate. The policy term is normalized per minibatch below.
+        advantages = self.compute_gae_advantages(dense_rewards, old_values, normalize=False)
         returns = advantages + old_values
 
         # 4. Prepare Dataset for Mini-batching
