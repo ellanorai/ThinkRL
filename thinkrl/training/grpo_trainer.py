@@ -10,6 +10,7 @@ from thinkrl.data.datasets import RLHFDataset
 from thinkrl.data.loaders import RLHFDataLoader
 from thinkrl.integration.vllm_client import VLLMClient
 from thinkrl.logging.rollout import RolloutInspector
+from thinkrl.utils.checkpoint import CheckpointManager, save_training_checkpoint
 from thinkrl.utils.logging import get_logger
 
 
@@ -108,6 +109,9 @@ class GRPOTrainer:
         log_interval: int = 10,
         inspect_every: int = 0,
         inspect_samples: int = 3,
+        checkpoint_dir: str | None = None,
+        save_every: int = 0,
+        max_checkpoints: int = 5,
     ):
         """
         Main training loop.
@@ -120,8 +124,15 @@ class GRPOTrainer:
                 steps. 0 disables it. A scalar reward cannot distinguish a bad policy from
                 a broken reward function or empty completions; this can.
             inspect_samples: How many rollouts to show each time.
+            checkpoint_dir: Where to write checkpoints. Nothing is written without it.
+            save_every: Save every N steps; 0 disables periodic saves. A final checkpoint is
+                still written whenever checkpoint_dir is set.
+            max_checkpoints: How many checkpoints to keep before the oldest rotates out.
         """
         inspector = RolloutInspector(every=inspect_every, num_samples=inspect_samples)
+        checkpointer = (
+            CheckpointManager(checkpoint_dir, max_checkpoints=max_checkpoints) if checkpoint_dir else None
+        )
         try:
             from tqdm import tqdm
         except ImportError:
