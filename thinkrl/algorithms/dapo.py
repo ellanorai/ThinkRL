@@ -23,6 +23,7 @@ Author: Archit Sood @ EllanorAI
 from dataclasses import dataclass
 
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Optimizer
@@ -569,6 +570,7 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
     def train_on_rollout(
         self,
         batch: dict[str, torch.Tensor],
+        sample_fn=None,
     ) -> list[dict[str, float]]:
         """
         Multi-epoch training on a single rollout batch (Algorithm 1, lines 10-11).
@@ -577,10 +579,16 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
 
         Args:
             batch: Rollout batch with input_ids, attention_mask, labels, rewards
+            sample_fn: Required when config.dynamic_sampling is set. Callable returning
+                (samples_dict, rewards_tensor); it is re-invoked until enough groups with
+                non-zero reward variance have been collected (Section 3.2).
 
         Returns:
             List of metrics dicts, one per epoch
         """
+        if self.config.dynamic_sampling:
+            batch = self._resample_batch(batch, sample_fn)
+
         # Use pre-computed old_log_probs if available (e.g. from vLLM),
         # otherwise compute via forward pass (θ_old frozen)
         if "old_log_probs" in batch:
@@ -601,6 +609,35 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
                 break
 
         return all_metrics
+
+    def _resample_batch(
+        self,
+        batch: dict[str, torch.Tensor],
+        sample_fn,
+    ) -> dict[str, torch.Tensor]:
+        """Replace the supplied batch with one collected under dynamic sampling."""
+        if dist.is_available() and dist.is_initialized():
+            raise RuntimeError(
+                "dynamic_sampling is not safe under distributed training: ranks would "
+                "resample independently and desynchronise. Set dynamic_sampling=False."
+            )
+        if sample_fn is None:
+            raise ValueError(
+                "dynamic_sampling=True requires a sample_fn so groups with zero reward "
+                "variance can be replaced. Pass sample_fn to train_on_rollout, or set "
+                "dynamic_sampling=False to train on the batch as given."
+            )
+
+        resampled = self.process_rollout_with_dynamic_sampling(
+            sample_fn=sample_fn,
+            batch_size=batch["rewards"].size(0),
+        )
+        if resampled is None:
+            raise RuntimeError(
+                f"Dynamic sampling could not collect {batch['rewards'].size(0)} samples with "
+                f"non-zero reward variance in {self.config.max_sampling_attempts} attempts."
+            )
+        return resampled
 
     def process_rollout_with_dynamic_sampling(
         self,
