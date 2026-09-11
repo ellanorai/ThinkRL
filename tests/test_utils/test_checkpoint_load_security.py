@@ -38,7 +38,7 @@ def test_manager_load_does_not_execute_pickle_payload(tmp_path):
     _write_malicious_checkpoint(ckpt_dir, marker)
 
     manager = CheckpointManager(checkpoint_dir=tmp_path / "checkpoints")
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Weights only load failed"):
         manager.load_checkpoint(ckpt_dir, model=nn.Linear(2, 2))
 
     assert not marker.exists(), "pickle payload executed during load_checkpoint"
@@ -48,7 +48,7 @@ def test_module_level_load_does_not_execute_pickle_payload(tmp_path):
     marker = tmp_path / "PWNED"
     model_path = _write_malicious_checkpoint(tmp_path, marker)
 
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Weights only load failed"):
         load_checkpoint(model_path, model=nn.Linear(2, 2))
 
     assert not marker.exists(), "pickle payload executed during load_checkpoint()"
@@ -66,7 +66,7 @@ def test_optimizer_state_load_does_not_execute_pickle_payload(tmp_path):
 
     manager = CheckpointManager(checkpoint_dir=tmp_path / "checkpoints")
     optimizer = torch.optim.SGD(model.parameters(), lr=0.1)
-    with pytest.raises(Exception):
+    with pytest.raises(Exception, match="Weights only load failed"):
         manager.load_checkpoint(ckpt_dir, model=model, optimizer=optimizer)
 
     assert not marker.exists(), "pickle payload executed while loading optimizer state"
