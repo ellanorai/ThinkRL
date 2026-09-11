@@ -10,6 +10,8 @@ Author: Archit Sood @ EllanorAI
 
 from __future__ import annotations
 
+import importlib.util
+
 import logging
 
 import torch
@@ -34,6 +36,11 @@ try:
     _PEFT_AVAILABLE = True
 except ImportError:
     _PEFT_AVAILABLE = False
+
+
+def _flash_attention_available() -> bool:
+    """Return True when flash-attn is importable, matching the docstring's "if available"."""
+    return importlib.util.find_spec("flash_attn") is not None
 
 
 class Actor(nn.Module):
@@ -102,7 +109,13 @@ class Actor(nn.Module):
         if isinstance(pretrained_model, str):
             config_kwargs = {}
             if use_flash_attention:
-                config_kwargs["attn_implementation"] = "flash_attention_2"
+                if _flash_attention_available():
+                    config_kwargs["attn_implementation"] = "flash_attention_2"
+                else:
+                    logger.warning(
+                        "use_flash_attention=True but flash-attn is not installed. "
+                        "Falling back to the default attention implementation."
+                    )
 
             config = AutoConfig.from_pretrained(
                 pretrained_model,
