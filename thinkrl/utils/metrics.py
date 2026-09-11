@@ -456,9 +456,12 @@ def compute_statistical_metrics(
         metrics.update(_compute_percentiles(valid_data, xp))
         metrics.update(_compute_higher_moments(valid_data, xp))
     except Exception as e:
-        logger.debug(f"Error computing statistics: {e}")
-        # Return what we have so far
-        return {**default_metrics, **metrics}
+        logger.warning(f"Error computing statistics: {e}")
+        # Report NaN for anything not computed. The all-zero default_metrics is the
+        # contract for *empty input*; reusing it here would make a failed computation
+        # indistinguishable from a real measurement of zero.
+        failed = dict.fromkeys(default_metrics, float("nan"))
+        return {**failed, **metrics}
 
     return metrics
 
@@ -602,7 +605,7 @@ def _compute_higher_moments(data: np.ndarray | CupyArray, xp: Any) -> dict[str, 
             moments.update(_compute_moments_manual(data, xp))
 
     except Exception as e:
-        logger.debug(f"Higher moments computation failed: {e}")
+        logger.warning(f"Higher moments computation failed: {e}")
 
     return moments
 
@@ -640,8 +643,10 @@ def _compute_moments_manual(data: np.ndarray | CupyArray, xp: Any) -> dict[str, 
         return {"skewness": skewness, "kurtosis": kurtosis}
 
     except Exception as e:
-        logger.debug(f"Manual moments computation failed: {e}")
-        return {"skewness": 0.0, "kurtosis": 0.0}
+        logger.warning(f"Manual moments computation failed: {e}")
+        # NaN rather than 0.0: skewness 0 with kurtosis 0 are the moments of a
+        # normal distribution, so zeros would read as a real, healthy result.
+        return {"skewness": float("nan"), "kurtosis": float("nan")}
 
 
 def compute_statistical_metrics_batch(
