@@ -274,10 +274,11 @@ class CheckpointManager:
             raise FileNotFoundError(f"Model checkpoint not found: {model_path}")
 
         # Load model state
+        # weights_only=True: never unpickle arbitrary objects from a checkpoint file (RCE).
         if model_path.suffix == ".safetensors":
             state_dict = safetensors_load(str(model_path), device=str(device) if device else "cpu")
         else:
-            state_dict = torch.load(model_path, map_location=device, weights_only=False)
+            state_dict = torch.load(model_path, map_location=device, weights_only=True)
 
         # Handle DataParallel/DistributedDataParallel wrapped models
         if isinstance(model, nn.DataParallel | nn.parallel.DistributedDataParallel):
@@ -290,14 +291,14 @@ class CheckpointManager:
         if optimizer is not None:
             optimizer_path = checkpoint_dir / "optimizer.pt"
             if optimizer_path.exists():
-                optimizer.load_state_dict(torch.load(optimizer_path, map_location=device, weights_only=False))
+                optimizer.load_state_dict(torch.load(optimizer_path, map_location=device, weights_only=True))
                 logger.debug(f"Loaded optimizer from: {optimizer_path}")
 
         # Load scheduler
         if scheduler is not None:
             scheduler_path = checkpoint_dir / "scheduler.pt"
             if scheduler_path.exists():
-                scheduler.load_state_dict(torch.load(scheduler_path, map_location=device, weights_only=False))
+                scheduler.load_state_dict(torch.load(scheduler_path, map_location=device, weights_only=True))
                 logger.debug(f"Loaded scheduler from: {scheduler_path}")
 
         # Load metadata
@@ -663,7 +664,7 @@ def load_checkpoint(
         else:
             checkpoint = {"model_state_dict": state_dict}
     else:
-        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
+        checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=True)
 
     # Load model state
     if isinstance(model, nn.DataParallel | nn.parallel.DistributedDataParallel):

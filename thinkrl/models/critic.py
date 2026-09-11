@@ -308,5 +308,5 @@ class Critic(nn.Module):
 
         value_head_path = os.path.join(model_path, "value_head.pt")
         if os.path.exists(value_head_path):
-            critic.value_head.load_state_dict(torch.load(value_head_path))
+            critic.value_head.load_state_dict(torch.load(value_head_path, weights_only=True))
         return critic

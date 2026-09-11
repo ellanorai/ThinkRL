@@ -333,7 +333,7 @@ class RewardModel(nn.Module):
 
         reward_head_path = os.path.join(model_path, "reward_head.pt")
         if os.path.exists(reward_head_path):
-            state = torch.load(reward_head_path)
+            state = torch.load(reward_head_path, weights_only=True)
             rm.reward_head.load_state_dict(state["reward_head"])
             if state.get("reward_mean") is not None:
                 rm.reward_mean = state["reward_mean"]
