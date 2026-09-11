@@ -3,6 +3,7 @@ Test Suite for ThinkRL Tokenizer Utilities
 ==========================================
 """
 
+import json
 from pathlib import Path
 import shutil
 import tempfile
@@ -237,7 +238,16 @@ class TestTokenizers:
         save_tokenizer(tokenizer_to_save, temp_dir)
 
         assert (temp_dir / "tokenizer.json").exists()
-        assert (temp_dir / "special_tokens_map.json").exists()
+        # transformers 5.x stopped writing special_tokens_map.json and moved the
+        # special tokens into tokenizer_config.json, renaming the key from
+        # additional_special_tokens to extra_special_tokens. Accept either layout.
+        assert (temp_dir / "tokenizer_config.json").exists()
+        config = json.loads((temp_dir / "tokenizer_config.json").read_text())
+        added = config.get("extra_special_tokens") or config.get("additional_special_tokens") or []
+        if (temp_dir / "special_tokens_map.json").exists():
+            mapping = json.loads((temp_dir / "special_tokens_map.json").read_text())
+            added = added or mapping.get("additional_special_tokens") or []
+        assert "<|my_token|>" in added
 
         loaded_tokenizer = load_tokenizer(temp_dir)
 
