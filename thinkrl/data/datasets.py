@@ -143,9 +143,12 @@ class RLHFDataset(BaseRLHFDataset):
             self.data.append(item)
 
         if not self.data:
-            logger.warning(
-                f"No valid samples found in {dataset_name_or_path} with prompt_column='{prompt_column}'. "
-                f"Dataset length: {len(self.dataset)}"
+            available = list(self.dataset[0].keys()) if len(self.dataset) else []
+            raise ValueError(
+                f"No valid samples found in {dataset_name_or_path} with "
+                f"prompt_column='{prompt_column}'. The dataset has {len(self.dataset)} row(s) "
+                f"and its columns are {available}. Training would run zero steps and report "
+                f"success. Pass the correct --prompt-column."
             )
         else:
             logger.info(f"Loaded {len(self.data)} valid samples from {dataset_name_or_path}")
