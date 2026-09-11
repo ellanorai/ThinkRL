@@ -473,8 +473,8 @@ class PRMTrainer:
     - Class imbalance handling
     - Evaluation metrics (step accuracy, path accuracy)
 
-    TODO: Implement full trainer logic in future iteration.
-    For now, this is a placeholder.
+    Not yet implemented. Every method raises NotImplementedError rather than
+    returning an empty result, so callers cannot mistake it for a completed run.
     """
 
     def __init__(
@@ -494,12 +494,14 @@ class PRMTrainer:
 
     def train(self) -> dict[str, Any]:
         """Run training."""
-        logger.warning("PRMTrainer.train not fully implemented.")
-        return {}
+        raise NotImplementedError(
+            "PRMTrainer.train is not implemented. Returning an empty result would let a "
+            "caller treat an untrained model as trained."
+        )
 
     def evaluate(self) -> dict[str, float]:
         """Run evaluation."""
-        return {}
+        raise NotImplementedError("PRMTrainer.evaluate is not implemented.")
 
     def compute_metrics(
         self,
@@ -514,7 +516,7 @@ class PRMTrainer:
             - path_accuracy: Full path correct rate
             - first_error_position: Avg position of first error
         """
-        return {}
+        raise NotImplementedError("PRMTrainer.compute_metrics is not implemented.")
 
 
 def create_prm(
