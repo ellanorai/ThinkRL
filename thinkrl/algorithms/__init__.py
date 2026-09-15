@@ -33,7 +33,7 @@ from thinkrl.algorithms.grpo import GRPOAlgorithm, GRPOConfig, create_grpo
 from thinkrl.algorithms.ipo import IPOAlgorithm, IPOConfig, create_ipo
 from thinkrl.algorithms.kto import KTOAlgorithm, KTOConfig, create_kto
 from thinkrl.algorithms.orpo import ORPOAlgorithm, ORPOConfig, create_orpo
-from thinkrl.algorithms.papo import PAPOAlgorithm, PAPOConfig
+from thinkrl.algorithms.papo import PAPOAlgorithm, PAPOConfig, create_papo
 from thinkrl.algorithms.ppo import PPOAlgorithm, PPOConfig, create_ppo
 from thinkrl.algorithms.prime import PRIMEAlgorithm, PRIMEConfig, create_prime
 from thinkrl.algorithms.reinforce import REINFORCEAlgorithm, REINFORCEConfig, create_reinforce
@@ -173,6 +173,7 @@ __all__ = [
     # PAPO
     "PAPOAlgorithm",
     "PAPOConfig",
+    "create_papo",
     # Registry
     "ALGORITHMS",
     "CONFIGS",
