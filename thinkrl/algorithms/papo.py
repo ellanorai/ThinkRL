@@ -176,3 +176,14 @@ class PAPOAlgorithm(GRPOAlgorithm):
             }
 
         return metrics
+
+
+def create_papo(
+    policy_model,
+    ref_model=None,
+    optimizer=None,
+    config: PAPOConfig | None = None,
+    **kwargs,
+) -> PAPOAlgorithm:
+    """Factory function to create PAPO algorithm."""
+    return PAPOAlgorithm(policy_model, ref_model, optimizer, config, **kwargs)
