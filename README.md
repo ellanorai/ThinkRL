@@ -57,7 +57,7 @@ ThinkRL is a **modular, high-performance, and reasoning-centric** open-source li
 - **[2026/01]** **ThinkRL 1.0**: Full support for **STaR (Self-Taught Reasoner)** and **Process Reward Models (PRM)**.
 - **[2026/01]** Integrated **PAPO (Perception-Aware Policy Optimization)** for multimodal reasoning.
 - **[2025/12]** Added **COPO (Count-based Online Preference Optimization)** for exploration-heavy tasks.
-- **[2025/12]** Released benchmarks for **REINFORCE++** and **Dr. GRPO** (Distributionally Robust GRPO).
+- **[2025/12]** Added **Dr. GRPO** (GRPO Done Right), which drops the standard-deviation normalization to keep the policy-gradient estimator unbiased.
 - **[2025/11]** **VAPO** and **DAPO** algorithms merged into core.
 - **[2025/10]** Complete **vLLM Integration** for 10x generation speedup during RLHF.
 

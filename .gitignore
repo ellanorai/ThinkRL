@@ -37,3 +37,4 @@ wandb/
 # configs and CLIs, so any real run leaves them behind.
 outputs/
 *_output/
+docs/source/generated/
