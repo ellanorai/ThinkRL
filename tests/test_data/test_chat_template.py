@@ -9,7 +9,13 @@ distribution it was aligned to.
 import pytest
 import torch
 
-from thinkrl.data.datasets import RLHFDataset
+
+# RLHFDataset builds through `datasets`, which lives in the [sota] extra rather than the
+# core install, so the Core Deps Only job has to skip this file instead of erroring in
+# every test with "The 'datasets' library is required".
+pytest.importorskip("datasets")
+
+from thinkrl.data.datasets import RLHFDataset  # noqa: E402
 
 
 SAMPLES = [{"prompt": "What is 2+2?", "answer": "4", "response": "It is 4."}]

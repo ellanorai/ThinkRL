@@ -21,6 +21,19 @@ import torch.utils.dlpack
 try:
     import cupy as cp  # type: ignore
 
+    # Importing cupy succeeds on a host that has the package but no usable driver; the
+    # failure only surfaces on the first call that touches the CUDA runtime, which used
+    # to be somewhere inside a metric as cudaErrorInsufficientDriver.
+    #
+    # The probe ends with a real one-element ufunc rather than stopping at an
+    # introspection call, because that is exactly the operation that fails:
+    # cupy._core._kernel.ufunc.__call__ -> get_device_id -> runtime.getDevice.
+    # getDeviceCount() returns cleanly on the CI runner, so a narrower probe was wrong
+    # twice; the two cheap queries stay in front of it to fail faster where they can.
+    cp.cuda.runtime.getDeviceCount()
+    cp.cuda.runtime.getDevice()
+    float(cp.exp(cp.zeros(1))[0])
+
     try:
         from cupyx.scipy import stats as _cupy_stats  # type: ignore  # noqa: F401
 
@@ -29,9 +42,10 @@ try:
     except ImportError:
         _CUPY_SCIPY_AVAILABLE = False
     _CUPY_AVAILABLE = True
-except (ImportError, OSError):
-    # ImportError: Package not installed
-    # OSError: Shared library (libcuda.so) not found
+except Exception:
+    # ImportError: package not installed
+    # OSError: shared library (libcuda.so) not found
+    # CUDARuntimeError: installed, but the driver is missing or too old
     cp = None  # type: ignore[assignment]
     _CUPY_AVAILABLE = False
     _CUPY_SCIPY_AVAILABLE = False
