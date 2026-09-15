@@ -7,17 +7,13 @@ import numpy as np
 import pytest
 import torch
 
-
-# Try importing cupy to check availability for tests
-try:
-    import cupy as cp
-
-    _CUPY_AVAILABLE = True
-except (ImportError, OSError):
-    cp = None
-    _CUPY_AVAILABLE = False
-
+# Availability comes from the module under test rather than a second import here. A
+# private copy that only caught (ImportError, OSError) called cupy usable on a runner
+# that has the package and no driver, so `xp` below was cupy while the library had
+# already fallen back to numpy, and the assertions died inside a cupy ufunc with
+# cudaErrorInsufficientDriver.
 from thinkrl.utils.metrics import (
+    _CUPY_AVAILABLE,
     MetricsTracker,
     _compute_moments_manual,  # For direct testing
     aggregate_metrics,
@@ -35,6 +31,7 @@ from thinkrl.utils.metrics import (
     compute_reward,
     compute_statistical_metrics,
     compute_statistical_metrics_batch,  # New import
+    cp,
 )
 
 

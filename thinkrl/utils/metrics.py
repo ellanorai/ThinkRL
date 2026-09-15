@@ -23,14 +23,16 @@ try:
 
     # Importing cupy succeeds on a host that has the package but no usable driver; the
     # failure only surfaces on the first call that touches the CUDA runtime, which used
-    # to be somewhere inside a metric. Probe once here so the fallback is chosen up
-    # front instead of raising CUDARuntimeError mid-computation.
+    # to be somewhere inside a metric as cudaErrorInsufficientDriver.
     #
-    # getDevice() rather than only getDeviceCount(): on the CI runner the count call
-    # returns without error and getDevice() is the one that raises
-    # cudaErrorInsufficientDriver, reached through the first ufunc.
+    # The probe ends with a real one-element ufunc rather than stopping at an
+    # introspection call, because that is exactly the operation that fails:
+    # cupy._core._kernel.ufunc.__call__ -> get_device_id -> runtime.getDevice.
+    # getDeviceCount() returns cleanly on the CI runner, so a narrower probe was wrong
+    # twice; the two cheap queries stay in front of it to fail faster where they can.
     cp.cuda.runtime.getDeviceCount()
     cp.cuda.runtime.getDevice()
+    float(cp.exp(cp.zeros(1))[0])
 
     try:
         from cupyx.scipy import stats as _cupy_stats  # type: ignore  # noqa: F401
