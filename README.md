@@ -109,11 +109,17 @@ All loss functions (DPO, PPO, VAPO, etc.) are centralized in a highly optimized 
 Unlike standard RLHF libraries, ThinkRL focuses on **Reasoning (System 2)** capabilities.
 
 ### Token-in-Token-out Agents
-We treat every model as an agent that consumes tokens (observations/prompts) and produces tokens (thoughts/actions). This unified interface supports:
+The design direction is to treat every model as an agent that consumes tokens
+(observations/prompts) and produces tokens (thoughts/actions). This is a direction rather
+than a shipped abstraction today, so it is worth being precise about what exists:
+- **Agent executor**: `thinkrl.utils.agent` implements `AgentState`, `AgentInstanceBase`
+  and `AgentExecutorBase`. *(experimental: no trainer, CLI or example runs it, and
+  training on multi-turn rollouts needs a loss mask that covers only model-generated
+  tokens and not tool output; see #130)*
 - **Chain-of-Thought (CoT)**: Linear reasoning traces. *(planned, not implemented)*
 - **Tree-of-Thought (ToT)**: Branching exploration. *(planned, not implemented)*
 - **Multimodal Inputs**: Visual and textual context via PAPO. *(the algorithm is
-  implemented but not yet exported; see #75)*
+  implemented and exported as of #90, and has no trainer; see #124)*
 
 ---
 
