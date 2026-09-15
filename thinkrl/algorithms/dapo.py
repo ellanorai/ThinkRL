@@ -25,7 +25,6 @@ from dataclasses import dataclass
 import torch
 import torch.distributed as dist
 import torch.nn as nn
-import torch.nn.functional as F
 from torch.optim import Optimizer
 
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
@@ -229,44 +228,9 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
         if not hasattr(self.policy_model, "forward"):
             raise ValueError("policy_model must implement forward()")
 
-    def get_log_probs(
-        self,
-        outputs: dict[str, torch.Tensor] | torch.Tensor,
-        labels: torch.Tensor,
-    ) -> torch.Tensor:
-        """
-        Compute per-token log probabilities.
-
-        Args:
-            outputs: Model outputs (dict with 'logits' or raw logits tensor)
-            labels: Target token IDs [B, S], -100 for masked positions
-
-        Returns:
-            Log probabilities [B, S] with 0.0 at masked positions
-        """
-        if isinstance(outputs, dict):
-            logits = outputs["logits"]
-        else:
-            logits = outputs
-
-        # Shift for causal LM: predict next token
-        shift_logits = logits[:, :-1, :].contiguous()
-        shift_labels = labels[:, 1:].contiguous()
-
-        log_probs = F.log_softmax(shift_logits, dim=-1)
-
-        # Gather log probs for actual tokens
-        gather_labels = shift_labels.clone()
-        gather_labels[gather_labels == -100] = 0
-
-        token_log_probs = log_probs.gather(dim=-1, index=gather_labels.unsqueeze(-1)).squeeze(-1)
-
-        # Zero out masked positions (use multiplication for gradient safety)
-        token_log_probs = token_log_probs * (shift_labels != -100).float()
-
-        # Pad to match original sequence length
-        padding = torch.zeros(token_log_probs.size(0), 1, device=token_log_probs.device, dtype=token_log_probs.dtype)
-        return torch.cat([token_log_probs, padding], dim=1)
+    # get_log_probs is inherited. This class used to carry a private copy that repeated
+    # the base implementation minus its Actor-tuple branch, and repeated the #84
+    # misalignment with it, so fixing the base alone would have left DAPO behind.
 
     def compute_advantages(
         self,

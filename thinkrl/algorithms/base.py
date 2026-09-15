@@ -279,7 +279,15 @@ class BaseRLHFAlgorithm(ABC):
             labels: Target token IDs [B, S], with -100 for masked positions
 
         Returns:
-            Log probabilities [B, S] with 0.0 at masked positions
+            Log probabilities [B, S] aligned with ``labels``: index ``t`` holds
+            ``log p(labels[t])``, and 0.0 sits at masked positions and at index 0, which
+            no logit predicts.
+
+        The pad column is prepended rather than appended, which is what makes the
+        alignment hold. Appending it left index ``t`` holding ``log p(labels[t+1])``,
+        while every caller masks this result with ``(labels != -100)``, unshifted. That
+        combination dropped the first generated token and counted the pad zero in its
+        place; on a four-token completion the masked mean was out by 29 percent. See #84.
         """
         if isinstance(outputs, tuple):
             if outputs[0].dim() == 2:
@@ -288,7 +296,7 @@ class BaseRLHFAlgorithm(ABC):
                 padding = torch.zeros(
                     token_log_probs.size(0), 1, device=token_log_probs.device, dtype=token_log_probs.dtype
                 )
-                return torch.cat([token_log_probs, padding], dim=1)
+                return torch.cat([padding, token_log_probs], dim=1)
             else:
                 # HuggingFace raw tuple fallback
                 logits = outputs[0]
@@ -313,9 +321,10 @@ class BaseRLHFAlgorithm(ABC):
         # Mask out positions where label was -100 (use multiplication for gradient safety)
         token_log_probs = token_log_probs * (shift_labels != -100).float()
 
-        # Pad to maintain original sequence length [B, S]
+        # Prepend to maintain original sequence length [B, S] while keeping index t on
+        # labels[t]; see the note in the docstring.
         padding = torch.zeros(token_log_probs.size(0), 1, device=token_log_probs.device, dtype=token_log_probs.dtype)
-        return torch.cat([token_log_probs, padding], dim=1)
+        return torch.cat([padding, token_log_probs], dim=1)
 
     def generate_rollouts(
         self,
