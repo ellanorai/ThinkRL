@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 from transformers import GenerationConfig, PreTrainedTokenizer
 
+from thinkrl.algorithms.base import BaseRLHFAlgorithm
 from thinkrl.algorithms.grpo import GRPOAlgorithm, GRPOConfig
 from thinkrl.data.datasets import RLHFDataset
 from thinkrl.data.loaders import RLHFDataLoader
@@ -31,12 +32,13 @@ class GRPOTrainer:
 
     def __init__(
         self,
-        model: nn.Module,
-        ref_model: nn.Module,
-        tokenizer: PreTrainedTokenizer,
-        dataset: RLHFDataset,
-        reward_fn: Callable[[list[str], list[str]], torch.Tensor],
+        model: nn.Module | None = None,
+        ref_model: nn.Module | None = None,
+        tokenizer: PreTrainedTokenizer = None,
+        dataset: RLHFDataset = None,
+        reward_fn: Callable[[list[str], list[str]], torch.Tensor] = None,
         config: GRPOConfig | None = None,
+        algorithm: BaseRLHFAlgorithm | None = None,
         optimizer: torch.optim.Optimizer | None = None,
         generation_config: GenerationConfig | None = None,
         device: Union[str, torch.device] | None = None,
@@ -62,8 +64,19 @@ class GRPOTrainer:
             vllm_url: Address of the vLLM worker. VLLMClient accepted this and the trainer
                 never forwarded it, so a remote worker was unreachable (#85).
             vllm_sync_world_size: Processes participating in the weight sync, likewise.
+            algorithm: An already-constructed algorithm to drive instead of building GRPO.
+                Any BaseRLHFAlgorithm implementing train_on_rollout works, which covers
+                PPO, DAPO, VAPO, PRIME and Dr.GRPO. They each shipped a loss, a config, a
+                factory and a registry entry with no code path that stepped an optimizer
+                with them (#124); generalising this loop was cheaper and less duplicated
+                than writing four more trainers.
             **algo_kwargs: Additional kwargs for Algorithm.
         """
+        # Checked before anything else is read: passing both would leave the caller
+        # training a model they did not hand over, which only shows up in the loss curve.
+        if algorithm is not None and model is not None:
+            raise ValueError("pass either `algorithm` or `model`, not both")
+
         self.tokenizer = tokenizer
         self.dataset = dataset
         self.reward_fn = reward_fn
@@ -73,9 +86,10 @@ class GRPOTrainer:
 
         self.config = config
 
-        # GRPO generates a group of outputs per prompt (G samples)
-        # Determine group_size from provided config or default
-        num_return_sequences = self.config.group_size if self.config else GRPOConfig().group_size
+        # A group of outputs per prompt (G samples). Read off whichever config is in play,
+        # since a non-GRPO algorithm may not define group_size at all.
+        source_config = getattr(algorithm, "config", None) if algorithm is not None else config
+        num_return_sequences = getattr(source_config, "group_size", None) or GRPOConfig().group_size
 
         self.generation_config = generation_config or GenerationConfig(
             max_new_tokens=256,
@@ -87,7 +101,9 @@ class GRPOTrainer:
         )
 
         # Create Algorithm
-        if config is None:
+        if algorithm is not None:
+            self.algorithm = algorithm
+        elif config is None:
             # Create from simple kwargs using the factory method
             from thinkrl.algorithms.grpo import create_grpo
 
