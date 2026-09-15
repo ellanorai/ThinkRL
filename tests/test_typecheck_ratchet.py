@@ -7,8 +7,7 @@ metric. These tests exist so the list can only shrink.
 """
 
 import pathlib
-
-import tomllib
+import re
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[1]
@@ -18,12 +17,22 @@ DEBT_AT_RATCHET = 43
 
 
 def _ratchet_modules() -> list[str]:
-    config = tomllib.loads((ROOT / "pyproject.toml").read_text())
-    for override in config["tool"]["mypy"]["overrides"]:
-        if override.get("ignore_errors") and isinstance(override.get("module"), list):
-            if any(m.startswith("thinkrl") for m in override["module"]):
-                return override["module"]
-    raise AssertionError("the #145 ratchet list is gone from pyproject.toml")
+    """Read the list out of pyproject.toml without a TOML parser.
+
+    tomllib is 3.11+ and this project supports 3.10, so importing it here passed locally
+    and broke the 3.10 job. The list is a flat array of quoted strings, so pulling it out
+    directly is enough and costs no dependency.
+    """
+    text = (ROOT / "pyproject.toml").read_text()
+
+    marker = "# --- #145 type-check ratchet"
+    assert marker in text, "the #145 ratchet block is gone from pyproject.toml"
+
+    block = text.split(marker, 1)[1]
+    array = re.search(r"module = \[(.*?)\]", block, re.DOTALL)
+    assert array, "the #145 ratchet list is gone from pyproject.toml"
+
+    return re.findall(r'"([^"]+)"', array.group(1))
 
 
 def test_the_debt_list_never_grows():
