@@ -24,6 +24,8 @@ Available algorithms:
 Author: EllanorAI
 """
 
+import inspect
+
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
 from thinkrl.algorithms.copo import COPOAlgorithm, COPOConfig, create_copo
 from thinkrl.algorithms.dapo import DAPOAlgorithm, DAPOConfig, create_dapo
@@ -91,12 +93,50 @@ CONFIGS = {
 }
 
 
+def is_stub(algorithm: type) -> bool:
+    """True when the class raises NotImplementedError from ``__init__``.
+
+    Read from the source rather than by constructing the class, because construction
+    needs a model. This is the one definition; ``thinkrl.cli.main`` imports it rather
+    than keeping a second copy that can drift.
+    """
+    try:
+        source = inspect.getsource(algorithm.__init__)
+    except (OSError, TypeError):
+        return False
+    return "NotImplementedError" in source
+
+
+def list_algorithms(include_stubs: bool = True) -> list[str]:
+    """Registered algorithm names, optionally only the ones that can be constructed.
+
+    ``ALGORITHMS`` lists KTO, ORPO and RLOO alongside the rest, so anyone reading the
+    registry or the package namespace sees sixteen available algorithms when three of
+    them raise on construction. See #76.
+    """
+    names = sorted(ALGORITHMS)
+    if include_stubs:
+        return names
+    return [name for name in names if not is_stub(ALGORITHMS[name])]
+
+
 def get_algorithm(name: str) -> type[BaseRLHFAlgorithm]:
-    """Get algorithm class by name."""
+    """Get algorithm class by name.
+
+    Stubs are rejected here rather than at construction, so the failure names itself at
+    the point of lookup instead of several frames later inside ``__init__``.
+    """
     name = name.lower()
     if name not in ALGORITHMS:
         raise ValueError(f"Unknown algorithm: {name}. Available: {list(ALGORITHMS.keys())}")
-    return ALGORITHMS[name]
+
+    algorithm = ALGORITHMS[name]
+    if is_stub(algorithm):
+        raise NotImplementedError(
+            f"{name} is registered but not implemented: {algorithm.__name__}.__init__ raises "
+            f"NotImplementedError (#76). Implemented algorithms: {list_algorithms(include_stubs=False)}"
+        )
+    return algorithm
 
 
 def get_config(name: str):
@@ -108,6 +148,9 @@ def get_config(name: str):
 
 
 __all__ = [
+    # Registry helpers
+    "is_stub",
+    "list_algorithms",
     # Base
     "BaseRLHFAlgorithm",
     # PPO
