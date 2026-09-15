@@ -20,7 +20,6 @@ Author: EllanorAI
 
 from __future__ import annotations
 
-import inspect
 import json
 import logging
 from pathlib import Path
@@ -49,17 +48,9 @@ logger = logging.getLogger(__name__)
 TRAINABLE_FROM_CONFIG = {"grpo"}
 
 
-def _is_stub(cls) -> bool:
-    """True when the algorithm raises NotImplementedError from __init__ (see #76).
-
-    Read from the source rather than by constructing the class, because construction
-    needs a model and `info` has none.
-    """
-    try:
-        source = inspect.getsource(cls.__init__)
-    except (OSError, TypeError):
-        return False
-    return "NotImplementedError" in source
+# Re-exported rather than redefined: tests/test_cli/test_cli_quality_of_life.py imports
+# _is_stub from here, and two copies of "which algorithms are real" would drift.
+from thinkrl.algorithms import is_stub as _is_stub  # noqa: E402
 
 
 def _resolve_algorithm_name(cfg) -> str:
