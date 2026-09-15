@@ -8,6 +8,7 @@ from transformers import GenerationConfig, PreTrainedTokenizer
 from thinkrl.algorithms.reinforce_pp import REINFORCEPPAlgorithm, REINFORCEPPConfig, create_reinforce_pp
 from thinkrl.data.datasets import RLHFDataset
 from thinkrl.data.loaders import RLHFDataLoader
+from thinkrl.evaluation.periodic import build_periodic_evaluator
 from thinkrl.integration.vllm_client import VLLMClient
 from thinkrl.logging.rollout import RolloutInspector
 from thinkrl.utils.checkpoint import CheckpointManager, save_training_checkpoint
@@ -113,6 +114,10 @@ class ReinforcePPTrainer:
         checkpoint_dir: str | None = None,
         save_every: int = 0,
         max_checkpoints: int = 5,
+        eval_dataset: Any = None,
+        eval_every: int = 0,
+        eval_batch_size: int = 8,
+        eval_max_new_tokens: int = 128,
     ):
         """
         Main training loop.
@@ -129,10 +134,35 @@ class ReinforcePPTrainer:
             save_every: Save every N steps; 0 disables periodic saves. A final checkpoint is
                 still written whenever checkpoint_dir is set.
             max_checkpoints: How many checkpoints to keep before the oldest rotates out.
+            eval_dataset: Optional held-out set, evaluated with the same reward function.
+                Training reward is the quantity being optimized, so it rises whether or not
+                the policy improves; a held-out number that diverges from it is what
+                catches a policy that has learned the verifier instead of the task.
+            eval_every: Evaluate every N steps. 0 disables evaluation.
+            eval_batch_size: Prompts per generation batch during evaluation.
+            eval_max_new_tokens: Generation budget per prompt during evaluation.
         """
         inspector = RolloutInspector(every=inspect_every, num_samples=inspect_samples)
+        evaluator = build_periodic_evaluator(
+            model=self.algorithm.policy_model,
+            tokenizer=self.tokenizer,
+            reward_fn=self.reward_fn,
+            dataset=eval_dataset,
+            every=eval_every,
+            batch_size=eval_batch_size,
+            max_new_tokens=eval_max_new_tokens,
+        )
         checkpointer = (
-            CheckpointManager(checkpoint_dir, max_checkpoints=max_checkpoints) if checkpoint_dir else None
+            CheckpointManager(
+                checkpoint_dir,
+                max_checkpoints=max_checkpoints,
+                # With a held-out signal available, "best" means best on it rather than
+                # last written. Without one there is nothing honest to rank by.
+                metric_name="eval/reward_mean" if evaluator.enabled else None,
+                mode="max",
+            )
+            if checkpoint_dir
+            else None
         )
         try:
             from tqdm import tqdm
@@ -268,12 +298,26 @@ class ReinforcePPTrainer:
                 progress_bar.update(1)
                 step += 1
 
+                # Evaluate before saving, so a checkpoint written on this step carries the
+                # held-out metric the manager ranks "best" by.
+                eval_metrics = evaluator.maybe_evaluate(step)
+                if eval_metrics:
+                    step_metrics = {**step_metrics, **eval_metrics}
+                    if is_wandb_active:
+                        wandb.log(eval_metrics, step=step)
+
                 if save_every and step % save_every == 0:
                     checkpoint()
 
             epoch += 1
 
         progress_bar.close()
+
+        # A final pass, so the last checkpoint is ranked on the same footing as the rest
+        # rather than being the only one without a held-out number.
+        final_eval = evaluator.evaluate()
+        if final_eval:
+            step_metrics = {**step_metrics, **final_eval}
         checkpoint()
 
     def make_experience(self, batch_prompts: dict[str, Any]) -> dict[str, torch.Tensor]:
