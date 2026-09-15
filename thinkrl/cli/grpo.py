@@ -89,6 +89,13 @@ def grpo(
         ),
     ] = True,
     seed: Annotated[int, Option("--seed", help="Random seed for reproducibility")] = 42,
+    trust_remote_code: Annotated[
+        bool,
+        Option(
+            "--trust-remote-code/--no-trust-remote-code",
+            help="Allow executing custom model code downloaded from the Hub",
+        ),
+    ] = False,
     dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
 ):
     """
@@ -155,7 +162,7 @@ def grpo(
         model_type="actor",
         bf16=bf16,
         fp16=fp16,
-        trust_remote_code=True,
+        trust_remote_code=trust_remote_code,
         lora_rank=lora_r if lora_r else 0,
         lora_init_type=lora_init,
         use_flash_attention=use_flash_attention,
@@ -170,7 +177,7 @@ def grpo(
         model_type="ref",
         bf16=bf16,
         fp16=fp16,
-        trust_remote_code=True,
+        trust_remote_code=trust_remote_code,
         lora_init_type=lora_init,
         use_flash_attention=use_flash_attention,
         device_map={"": local_rank} if torch.cuda.is_available() else None,
