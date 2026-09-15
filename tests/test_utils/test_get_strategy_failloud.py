@@ -1,5 +1,6 @@
 """DIST-1: thinkrl.utils.get_strategy must not silently return None."""
 import pytest
+
 from thinkrl.utils import get_strategy
 
 

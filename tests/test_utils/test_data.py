@@ -366,13 +366,14 @@ class TestConvertTokenToId:
 class TestGetStrategy:
     """Tests for get_strategy function."""
 
-    def test_get_strategy_import_error(self):
+    def test_get_strategy_raises_and_names_the_real_implementation(self):
+        """It used to swallow the ImportError and hand back None, so a distributed run
+        went single-process while looking configured. The old assertion here was
+        `result is None or result is not None`, which cannot fail."""
         from thinkrl.utils.datasets import get_strategy
 
-        # Should return None when import fails
-        result = get_strategy(MagicMock())
-        # This might return None or a strategy depending on the setup
-        assert result is None or result is not None  # Just verify no crash
+        with pytest.raises(NotImplementedError, match="thinkrl.distributed.get_strategy"):
+            get_strategy(MagicMock())
 
 
 class TestApplyChatTemplate:
