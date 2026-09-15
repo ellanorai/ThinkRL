@@ -1,5 +1,6 @@
 from thinkrl.rewards.pipeline import RewardPipeline
 
+from .remote import RemoteRewardScorer
 from .scorer import (
     BaseScorer,
     FunctionScorer,
@@ -17,4 +18,6 @@ __all__ = [
     "RegexScorer",
     "FunctionScorer",
     "UniversalReward",
+    "RemoteRewardScorer",
+    "RewardPipeline",
 ]
