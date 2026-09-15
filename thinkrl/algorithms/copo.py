@@ -163,18 +163,25 @@ class COPOAlgorithm(BaseRLHFAlgorithm):
         tokenizer: Any | None = None,
         **kwargs,
     ):
-        self.config: COPOConfig = config
+        config = config or COPOConfig()
 
         super().__init__(
             policy_model=policy_model,
             ref_model=reference_model,
             optimizer=optimizer,
-            learning_rate=self.config.learning_rate,
-            kl_coeff=self.config.beta,
-            clip_grad_norm=self.config.clip_grad_norm,
+            learning_rate=config.learning_rate,
+            kl_coeff=config.beta,
+            clip_grad_norm=config.clip_grad_norm,
             tokenizer=tokenizer,
             **kwargs,
         )
+
+        # After super(), not before: BaseRLHFAlgorithm.__init__ ends with
+        # `self.config = kwargs`, so assigning here first left self.config as a dict and
+        # the `self.config.hidden_size` below raised AttributeError. COPOAlgorithm could
+        # not be constructed at all, which went unnoticed because the module was
+        # unreachable until #90 exported it and had no tests until #132.
+        self.config: COPOConfig = config
 
         # Tokenizer is mandatory for COPO (RM encoding, pairing)
         if self.tokenizer is None:
@@ -481,10 +488,15 @@ class COPOAlgorithm(BaseRLHFAlgorithm):
             output_hidden_states=True,
             return_dict=True,
         )
+        # Summed over the sequence, not per token. COPOLoss slices this as [2B] and
+        # multiplies it by a [B] exploration bonus, so a [2B, S] tensor fails to
+        # broadcast; it is also the DPO objective's own quantity, log p(sequence), which
+        # is what ipo.py computes the same way. get_log_probs has already zeroed the
+        # masked positions, so the sum runs over completion tokens only.
         policy_log_probs = self.get_log_probs(
             policy_out.logits,
             torch.cat([batch["chosen_labels"], batch["rejected_labels"]], dim=0),
-        )
+        ).sum(dim=-1)
 
         # 2. Reference Forward
         with torch.no_grad():
@@ -499,7 +511,7 @@ class COPOAlgorithm(BaseRLHFAlgorithm):
             ref_log_probs = self.get_log_probs(
                 ref_logits,
                 torch.cat([batch["chosen_labels"], batch["rejected_labels"]], dim=0),
-            )
+            ).sum(dim=-1)
 
         # 3. DPO Loss Calculation
         batch_size = chosen_ids.size(0)
@@ -522,7 +534,11 @@ class COPOAlgorithm(BaseRLHFAlgorithm):
             batch_size=batch_size,
         )
 
-        return metrics
+        # COPOLoss detaches every entry in `metrics`, including "loss", because they are
+        # for reporting. Returning that dict unchanged meant training_step called
+        # .backward() on a tensor with no graph, so COPO could not train. The live tensor
+        # goes under "loss" and the detached copy keeps its own key, matching star.py.
+        return {**metrics, "loss": total_loss, "loss_val": metrics["loss"]}
 
     def training_step(self, batch: dict[str, Any]) -> dict[str, Any]:
         """Training step with Gradient Accumulation."""
