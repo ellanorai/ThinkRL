@@ -46,14 +46,33 @@ def test_math_correctness_int(universal_reward):
     # 0.2 (struct) + 1.0 (correct) = 1.2
     assert torch.isclose(rewards[0], torch.tensor(1.2))
 
-def test_code_correctness_containment(universal_reward):
+def test_code_scoring_requires_an_explicit_verifier(universal_reward):
+    """This asserted containment until #126. Containment scored a completion that merely
+    quotes the reference as correct, which under a policy gradient teaches the model to
+    reproduce reference-looking text rather than write working code, so it is gone and
+    the caller supplies a verifier instead."""
     prompts = ["def?"]
-    # Code with extra noise/comments but containing target
     code_pred = "<think>..</think><answer>```python\n# Helper\ndef foo():\n  pass\n```</answer>"
     code_target = "def foo(): pass"
-    rewards = universal_reward(prompts, [code_pred], targets=[code_target])
-    # Should match via containment
-    assert torch.isclose(rewards[0], torch.tensor(1.2))
+
+    with pytest.raises(NotImplementedError, match="cannot score code"):
+        universal_reward(prompts, [code_pred], targets=[code_target])
+
+
+def test_code_scoring_works_with_a_verifier():
+    from thinkrl.rewards.universal import UniversalReward
+
+    reward = UniversalReward(
+        format_reward=0.1,
+        answer_reward=1.0,
+        structure_penalty=-0.5,
+        code_verifier=lambda pred, target: "def foo" in pred,
+    )
+    code_pred = "<think>..</think><answer>```python\ndef foo():\n  pass\n```</answer>"
+
+    rewards = reward(["def?"], [code_pred], targets=["def foo(): pass"])
+
+    assert rewards[0] > 0
 
 def test_text_correctness_gaming(universal_reward):
     prompts = ["Explain?"]
