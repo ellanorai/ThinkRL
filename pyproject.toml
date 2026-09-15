@@ -111,6 +111,64 @@ allow_untyped_globals = true
 allow_redefinition = true
 ignore_missing_imports = true
 
+# --- #145 type-check ratchet -------------------------------------------------------
+# `mypy thinkrl` reported 191 errors across 43 of 107 modules, and the CI step carried
+# continue-on-error because of it, so the type check has never gated anything and new code
+# was never checked.
+#
+# The 64 clean modules are gated from here on. The 43 below are the existing debt, listed
+# one per line rather than hidden behind a blanket exclude so the list is visible, its
+# length is the metric, and clearing a module is a one-line deletion.
+#
+# Do not add to this list. A new module with type errors should be fixed, not appended.
+[[tool.mypy.overrides]]
+module = [
+    "thinkrl.algorithms",
+    "thinkrl.algorithms.base",
+    "thinkrl.algorithms.copo",
+    "thinkrl.algorithms.dapo",
+    "thinkrl.algorithms.dpo",
+    "thinkrl.algorithms.dr_grpo",
+    "thinkrl.algorithms.grpo",
+    "thinkrl.algorithms.ipo",
+    "thinkrl.algorithms.papo",
+    "thinkrl.algorithms.ppo",
+    "thinkrl.algorithms.prime",
+    "thinkrl.algorithms.reinforce",
+    "thinkrl.algorithms.reinforce_pp",
+    "thinkrl.algorithms.star",
+    "thinkrl.algorithms.vapo",
+    "thinkrl.cli.grpo",
+    "thinkrl.cli.main",
+    "thinkrl.cli.star",
+    "thinkrl.config.base",
+    "thinkrl.data.datasets",
+    "thinkrl.data.packing",
+    "thinkrl.distributed.deepspeed",
+    "thinkrl.distributed.strategies",
+    "thinkrl.evaluation.periodic",
+    "thinkrl.integration.vllm_client",
+    "thinkrl.logging.rollout",
+    "thinkrl.logging.tensorboard",
+    "thinkrl.logging.wandb",
+    "thinkrl.models.actor",
+    "thinkrl.models.prm",
+    "thinkrl.models.reward_model",
+    "thinkrl.models.utils",
+    "thinkrl.peft.lora",
+    "thinkrl.rewards.pipeline",
+    "thinkrl.training.grpo_trainer",
+    "thinkrl.training.mixed_precision",
+    "thinkrl.training.reinforce_pp_trainer",
+    "thinkrl.training.sft_trainer",
+    "thinkrl.training.star_trainer",
+    "thinkrl.utils.agent",
+    "thinkrl.utils.distributed_sampler",
+    "thinkrl.utils.distributed_util",
+    "thinkrl.utils.remote_rm_utils",
+]
+ignore_errors = true
+
 [[tool.mypy.overrides]]
 module = [
     "cupy.*",

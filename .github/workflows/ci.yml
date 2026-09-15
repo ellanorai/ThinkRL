@@ -50,10 +50,9 @@ jobs:
       run: |
         ruff check .
 
-    # Advisory until the 182 existing errors are cleared (see issue #145).
-    # mypy has never passed on this codebase, so it reports rather than gates;
-    # the Ruff step above is the blocking one.
+    # Gates now. The 43 modules carrying the pre-existing errors are listed explicitly in
+    # pyproject.toml under the #145 ratchet; everything else is type-checked, so new code
+    # cannot add errors. Clearing a module is a one-line deletion from that list.
     - name: Run MyPy
-      continue-on-error: true
       run: |
         mypy thinkrl --ignore-missing-imports --install-types --non-interactive
