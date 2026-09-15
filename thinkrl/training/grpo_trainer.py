@@ -11,6 +11,7 @@ from thinkrl.data.loaders import RLHFDataLoader
 from thinkrl.evaluation.periodic import build_periodic_evaluator
 from thinkrl.integration.vllm_client import VLLMClient
 from thinkrl.logging.rollout import RolloutInspector
+from thinkrl.training.distributed import unwrap_model, wrap_policy
 from thinkrl.utils.checkpoint import CheckpointManager, save_training_checkpoint
 from thinkrl.utils.logging import get_logger
 
@@ -104,6 +105,12 @@ class GRPOTrainer:
         # Ensure models are on device
         self.algorithm.to(self.device)
 
+        # Data parallel, when a process group is running. No-op otherwise, so a
+        # single-process run takes exactly the path it did before. The optimizer was built
+        # over the same parameter objects the wrapper holds, so it does not need rebuilding;
+        # DDP synchronises gradients on those tensors in place. See #128.
+        self.algorithm.policy_model = wrap_policy(self.algorithm.policy_model, self.device)
+
         # Initialize VLLM Client if needed
         if self.use_vllm:
             self.vllm_client = VLLMClient(
@@ -153,7 +160,7 @@ class GRPOTrainer:
         """
         inspector = RolloutInspector(every=inspect_every, num_samples=inspect_samples)
         evaluator = build_periodic_evaluator(
-            model=self.algorithm.policy_model,
+            model=unwrap_model(self.algorithm.policy_model),
             tokenizer=self.tokenizer,
             reward_fn=self.reward_fn,
             dataset=eval_dataset,
@@ -217,7 +224,7 @@ class GRPOTrainer:
         def checkpoint():
             return save_training_checkpoint(
                 checkpointer,
-                model=self.algorithm.policy_model,
+                model=unwrap_model(self.algorithm.policy_model),
                 optimizer=getattr(self.algorithm, "optimizer", None),
                 epoch=epoch,
                 step=step,
@@ -230,7 +237,7 @@ class GRPOTrainer:
                     break
 
                 if self.use_vllm:
-                    self.vllm_client.update_model_weights(self.algorithm.policy_model)
+                    self.vllm_client.update_model_weights(unwrap_model(self.algorithm.policy_model))
 
                 # 1. Generate Rollouts
                 # `make_experience` handles either local Hugging Face `generate` or vLLM server requests.
@@ -427,8 +434,10 @@ class GRPOTrainer:
 
         else:
             with torch.no_grad():
-                self.algorithm.policy_model.eval()
-                outputs = self.algorithm.policy_model.generate(
+                # DDP proxies forward, not generate, so this goes to the module beneath.
+                policy = unwrap_model(self.algorithm.policy_model)
+                policy.eval()
+                outputs = policy.generate(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     max_new_tokens=self.generation_config.max_new_tokens,
@@ -441,7 +450,7 @@ class GRPOTrainer:
                     eos_token_id=self.tokenizer.eos_token_id,
                 )
 
-                self.algorithm.policy_model.train()
+                policy.train()
 
                 full_sequences = outputs
 
