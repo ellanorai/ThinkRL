@@ -390,6 +390,10 @@ CONSOLE_SCRIPTS = {
     "reinforce-pp": "thinkrl.cli.main:reinforce_pp_entry",
     "grpo": "thinkrl.cli.grpo:main",
     "star": "thinkrl.cli.star:main",
+    # The worker that --use-vllm requires. It was a complete server with its own main()
+    # and nothing exposed it, so a user passing --use-vllm had no way to discover that
+    # something has to be running first (#85).
+    "thinkrl-vllm-worker": "thinkrl.integration.vllm_worker:main",
 }
 
 # Project classifiers

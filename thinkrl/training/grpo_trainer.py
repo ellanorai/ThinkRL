@@ -42,6 +42,8 @@ class GRPOTrainer:
         device: Union[str, torch.device] | None = None,
         use_vllm: bool = False,
         vllm_group_port: int = 51216,
+        vllm_url: str = "http://localhost:8000",
+        vllm_sync_world_size: int = 2,
         **algo_kwargs,
     ):
         """
@@ -56,6 +58,10 @@ class GRPOTrainer:
             generation_config: Configuration for generation (sampling).
             device: Device to train on.
             use_vllm: Whether to use VLLM for generation.
+            vllm_group_port: Port for the NCCL weight-sync bridge.
+            vllm_url: Address of the vLLM worker. VLLMClient accepted this and the trainer
+                never forwarded it, so a remote worker was unreachable (#85).
+            vllm_sync_world_size: Processes participating in the weight sync, likewise.
             **algo_kwargs: Additional kwargs for Algorithm.
         """
         self.tokenizer = tokenizer
@@ -100,7 +106,11 @@ class GRPOTrainer:
 
         # Initialize VLLM Client if needed
         if self.use_vllm:
-            self.vllm_client = VLLMClient(group_port=vllm_group_port)
+            self.vllm_client = VLLMClient(
+                url=vllm_url,
+                group_port=vllm_group_port,
+                sync_world_size=vllm_sync_world_size,
+            )
             self.vllm_client.init_weight_sync(self.device)
 
     def train(
