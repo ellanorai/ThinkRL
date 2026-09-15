@@ -1,9 +1,20 @@
 """
-ThinkRL Agent Utilities
-========================
+ThinkRL Agent Utilities (experimental)
+======================================
 
 Agent utilities for agentic RLHF training.
 Aligned with OpenRLHF patterns for agent-based reinforcement learning.
+
+.. warning::
+
+   Experimental, and not reachable from a training run. No trainer, CLI or example
+   constructs an executor; the only other reference in the repository is this module's own
+   test file. It is kept because the design is the one the README describes, not because
+   anything uses it yet.
+
+   Training on multi-turn rollouts is not just a matter of calling this: the loss mask has
+   to cover model-generated tokens and exclude tool output, which the RL trainers do not do
+   today. Treat the interfaces here as unstable until that lands. See #130.
 
 Author: Archit Sood @ EllanorAI
 """
