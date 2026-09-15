@@ -11,17 +11,33 @@ import importlib
 import sys
 import types
 
+import pytest
 
-def test_cupy_without_a_usable_driver_falls_back(monkeypatch):
-    class _CUDARuntimeError(Exception):
-        pass
+
+class _CUDARuntimeError(Exception):
+    pass
+
+
+def _fake_cupy(*, failing_call: str) -> types.ModuleType:
+    """A cupy whose runtime raises from exactly one call, so each probe is pinned."""
 
     def _no_driver():
         raise _CUDARuntimeError("cudaErrorInsufficientDriver: CUDA driver version is insufficient")
 
+    runtime = types.SimpleNamespace(getDeviceCount=lambda: 1, getDevice=lambda: 0)
+    setattr(runtime, failing_call, _no_driver)
+
     fake = types.ModuleType("cupy")
-    fake.cuda = types.SimpleNamespace(runtime=types.SimpleNamespace(getDeviceCount=_no_driver))
-    monkeypatch.setitem(sys.modules, "cupy", fake)
+    fake.cuda = types.SimpleNamespace(runtime=runtime)
+    return fake
+
+
+# getDevice is listed because it is the call that actually raised on the CI runner,
+# where getDeviceCount returned cleanly. Probing only the count is what let the first
+# version of this fix through while CI stayed red.
+@pytest.mark.parametrize("failing_call", ["getDeviceCount", "getDevice"])
+def test_cupy_without_a_usable_driver_falls_back(monkeypatch, failing_call):
+    monkeypatch.setitem(sys.modules, "cupy", _fake_cupy(failing_call=failing_call))
 
     import thinkrl.utils.metrics as metrics
 

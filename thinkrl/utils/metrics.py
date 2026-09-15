@@ -25,7 +25,12 @@ try:
     # failure only surfaces on the first call that touches the CUDA runtime, which used
     # to be somewhere inside a metric. Probe once here so the fallback is chosen up
     # front instead of raising CUDARuntimeError mid-computation.
+    #
+    # getDevice() rather than only getDeviceCount(): on the CI runner the count call
+    # returns without error and getDevice() is the one that raises
+    # cudaErrorInsufficientDriver, reached through the first ufunc.
     cp.cuda.runtime.getDeviceCount()
+    cp.cuda.runtime.getDevice()
 
     try:
         from cupyx.scipy import stats as _cupy_stats  # type: ignore  # noqa: F401
