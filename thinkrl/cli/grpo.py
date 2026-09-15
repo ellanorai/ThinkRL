@@ -52,6 +52,13 @@ def grpo(
     bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
     fp16: Annotated[bool, Option("--fp16/--no-fp16", help="Use float16 precision")] = False,
     use_flash_attention: Annotated[bool, Option("--flash-attn/--no-flash-attn", help="Use Flash Attention 2")] = False,
+    remote_rm_url: Annotated[
+        str | None,
+        Option(
+            "--remote-rm-url",
+            help="Score completions with a reward model server instead of a local reward function",
+        ),
+    ] = None,
     reward_fn: Annotated[
         str | None, Option("--reward-fn", help="Path to reward function (module.py:func_name)")
     ] = None,
@@ -202,7 +209,13 @@ def grpo(
         apply_chat_template=chat_template,
     )
 
-    if reward_fn:
+    if remote_rm_url:
+        # thinkrl/utils/remote_rm_utils.py implemented this and nothing reached it (#129).
+        from thinkrl.rewards import RemoteRewardScorer
+
+        reward_func_callable = RemoteRewardScorer(remote_urls=remote_rm_url)
+        typer.echo(f"Scoring with remote reward model at {remote_rm_url}")
+    elif reward_fn:
         if ":" in reward_fn:
             module_path, func_name = reward_fn.split(":")
         else:
