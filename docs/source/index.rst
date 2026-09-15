@@ -16,3 +16,5 @@ documentation for details.
    :caption: Contents:
 
    getting_started
+   api
+   guides
