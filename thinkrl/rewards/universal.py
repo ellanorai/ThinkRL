@@ -8,6 +8,7 @@ A single, comprehensive reward function for Reinforce++ that supports:
 - Multilingual support (basic normalization)
 """
 
+from collections.abc import Callable
 import math
 import re
 
@@ -35,6 +36,7 @@ class UniversalReward(BaseScorer):
         structure_penalty: float = -0.5,
         math_tolerance: float = 1e-6,
         length_penalty: float = 0.0,
+        code_verifier: Callable[[str, str], bool] | None = None,
     ):
         """
         Args:
@@ -43,12 +45,16 @@ class UniversalReward(BaseScorer):
             structure_penalty: Penalty for broken structure.
             math_tolerance: Tolerance for float comparisons.
             length_penalty: Coefficient for length penalty (score -= coeff * num_words).
+            code_verifier: Callable taking (completion, reference) and returning whether the
+                completion is correct. Required to score code, because there is no honest
+                default: see :meth:`_check_code_correctness`.
         """
         self.format_reward = format_reward
         self.answer_reward = answer_reward
         self.structure_penalty = structure_penalty
         self.math_tolerance = math_tolerance
         self.length_penalty = length_penalty
+        self.code_verifier = code_verifier
 
     def _extract_content(self, text: str, tag: str) -> str | None:
         """Extract content between <tag> and </tag>."""
@@ -153,23 +159,30 @@ class UniversalReward(BaseScorer):
         return self._check_text_correctness(pred, target)
 
     def _check_code_correctness(self, pred: str, target: str) -> bool:
-        """
-        Check code answer correctness.
-        Uses containment instead of exact match for stability.
-        """
-        # Normalize: remove whitespace, markdown ticks
-        def normalize_code(s):
-            # Remove markdown code blocks
-            # Handle ```python, ```, etc.
-            s = re.sub(r"```\w*\n", "", s) # Remove opening ```python
-            s = s.replace("```", "")       # Remove closing ```
-            return "".join(s.split())
+        """Score a code completion with the caller's verifier, or refuse.
 
-        norm_pred = normalize_code(pred)
-        norm_target = normalize_code(target)
-        
-        # Containment is safer for RL than exact match
-        return norm_target in norm_pred
+        This used to strip whitespace from both strings and return
+        ``normalized_target in normalized_pred``. No execution, no test cases. Under a
+        policy gradient that is worse than exact match, because the highest-reward
+        strategy it teaches is to reproduce reference-looking text: a completion that
+        pastes the reference inside a comment scores 1.0, and a correct solution that
+        names a variable differently scores 0.0.
+
+        There is no honest default here. Executing model-generated code needs a sandbox,
+        a timeout and no network, which is a decision for the caller rather than
+        something to assume, so scoring code requires an explicit ``code_verifier``.
+        Silent partial credit was the worst of the available options. See #126.
+        """
+        if self.code_verifier is None:
+            raise NotImplementedError(
+                "UniversalReward cannot score code. Substring containment was removed "
+                "because it rewards reproducing the reference text rather than writing "
+                "working code (#126). Pass code_verifier=<callable(completion, reference) "
+                "-> bool>, for example one that runs the completion against test cases in "
+                "a sandboxed subprocess."
+            )
+
+        return bool(self.code_verifier(pred, target))
 
     def _check_text_correctness(self, pred: str, target: str) -> bool:
         """Check text correctness with normalization and gaming prevention."""
