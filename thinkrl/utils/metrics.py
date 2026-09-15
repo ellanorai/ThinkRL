@@ -21,6 +21,12 @@ import torch.utils.dlpack
 try:
     import cupy as cp  # type: ignore
 
+    # Importing cupy succeeds on a host that has the package but no usable driver; the
+    # failure only surfaces on the first call that touches the CUDA runtime, which used
+    # to be somewhere inside a metric. Probe once here so the fallback is chosen up
+    # front instead of raising CUDARuntimeError mid-computation.
+    cp.cuda.runtime.getDeviceCount()
+
     try:
         from cupyx.scipy import stats as _cupy_stats  # type: ignore  # noqa: F401
 
@@ -29,9 +35,10 @@ try:
     except ImportError:
         _CUPY_SCIPY_AVAILABLE = False
     _CUPY_AVAILABLE = True
-except (ImportError, OSError):
-    # ImportError: Package not installed
-    # OSError: Shared library (libcuda.so) not found
+except Exception:
+    # ImportError: package not installed
+    # OSError: shared library (libcuda.so) not found
+    # CUDARuntimeError: installed, but the driver is missing or too old
     cp = None  # type: ignore[assignment]
     _CUPY_AVAILABLE = False
     _CUPY_SCIPY_AVAILABLE = False

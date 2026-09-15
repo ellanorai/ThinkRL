@@ -1,5 +1,7 @@
 """CLI basics: version, completion, honest algorithm listing, non-zero exits on stubs."""
 
+import re
+
 import pytest
 
 
@@ -25,11 +27,18 @@ def test_version_flag_prints_the_version_and_exits_zero(flag):
     assert thinkrl.__version__ in result.stdout
 
 
+def _plain(text: str) -> str:
+    """Typer renders help through rich, which splits a flag across colour codes as
+    `\\x1b[1;36m-\\x1b[0m\\x1b[1;36m-install\\x1b[0m...`, so the literal substring is absent
+    on a machine that colourises and present on one that does not."""
+    return re.sub(r"\x1b\[[0-9;]*m", "", text)
+
+
 def test_completion_is_available():
     """add_completion=False previously removed functionality Typer supplies for free."""
     result = runner.invoke(app, ["--help"])
 
-    assert "--install-completion" in result.stdout
+    assert "--install-completion" in _plain(result.stdout)
 
 
 def test_stub_detection_matches_the_registry():
