@@ -343,13 +343,14 @@ def get_strategy(args: Any) -> Any:
     Returns:
         Strategy instance
     """
-    # This is a placeholder - actual implementation depends on your setup
-    try:
-        from thinkrl.training.distributed import get_deepspeed_strategy
-
-        return get_deepspeed_strategy(args)
-    except ImportError:
-        return None
+    # `thinkrl.training.distributed` is empty, so the old code swallowed the
+    # ImportError and silently returned None for every input -- distributed
+    # setup looked configured but did nothing. Fail loud and point at the real
+    # entry point instead of degrading silently.
+    raise NotImplementedError(
+        "thinkrl.utils.get_strategy is not implemented. "
+        "Use thinkrl.distributed.get_strategy(name, **kwargs) instead."
+    )
 
 
 def apply_chat_template(
