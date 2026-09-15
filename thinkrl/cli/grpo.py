@@ -59,6 +59,12 @@ def grpo(
     local_rank: Annotated[int, Option("--local_rank", "--local-rank", hidden=True)] = -1,
     use_vllm: Annotated[str, Option("--use-vllm", help="Use VLLM for generation (true/false)")] = "false",
     vllm_group_port: Annotated[int, Option("--vllm-group-port", help="NCCL group port for VLLM sync")] = 51216,
+    vllm_url: Annotated[
+        str, Option("--vllm-url", help="Address of the vLLM worker started with 'thinkrl-vllm-worker'")
+    ] = "http://localhost:8000",
+    vllm_sync_world_size: Annotated[
+        int, Option("--vllm-sync-world-size", help="Processes participating in the vLLM weight sync")
+    ] = 2,
     gradient_checkpointing: Annotated[
         bool,
         Option(
@@ -111,6 +117,36 @@ def grpo(
     typer.echo("=" * 60)
     typer.echo("ThinkRL Group Relative Policy Optimization (GRPO)")
     typer.echo("=" * 60)
+    # These three used to be parsed and then ignored. A flag that is silently dropped is
+    # worse than one that does not exist, because the run looks configured: --grad-accum
+    # was even recorded into the W&B config, so a run was logged as though accumulation
+    # had been applied when nothing read it. See #79.
+    if grad_accum != 1:
+        typer.echo(
+            f"Error: --grad-accum={grad_accum} is not supported. GRPOTrainer.train steps the "
+            "optimizer once per rollout and no accumulation is implemented, so the value "
+            "would be silently ignored. Use --batch-size to change the effective batch.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    if deepspeed is not None:
+        typer.echo(
+            f"Error: --deepspeed={deepspeed} is not supported. No RL trainer has a distributed "
+            "path yet, so the config would be read and dropped; see issue #128. "
+            "DeepSpeed currently applies to SFT only.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
+    known_backends = ("tensorboard", "wandb", "none")
+    if logging_backend not in known_backends:
+        typer.echo(
+            f"Error: --logging-backend={logging_backend!r} is not one of {known_backends}.",
+            err=True,
+        )
+        raise typer.Exit(1)
+
     from thinkrl.utils import set_seed
 
     set_seed(seed)
@@ -224,6 +260,7 @@ def grpo(
         def reward_func_callable(prompts, completions, **kwargs):
             return torch.tensor([float(len(c)) for c in completions])
 
+    metric_logger = None
     if logging_backend == "wandb" and local_rank == 0:
         try:
             import wandb
@@ -235,7 +272,6 @@ def grpo(
                     "dataset": dataset,
                     "learning_rate": learning_rate,
                     "batch_size": per_device_train_batch_size,
-                    "grad_accum": grad_accum,
                     "lora_r": lora_r,
                     "epochs": num_train_epochs,
                 },
@@ -243,6 +279,30 @@ def grpo(
             typer.echo(f"W&B initialized: project={wandb_project}")
         except ImportError:
             typer.echo("Error: wandb not installed. Run 'pip install wandb'.")
+    elif logging_backend == "tensorboard" and local_rank == 0:
+        # The default value, which logged nothing at all until now, despite
+        # TensorBoardLogger existing and being covered by its own tests.
+        #
+        # Tolerated rather than fatal, matching the wandb branch above: tensorboard is an
+        # optional dependency and this is the *default* backend, so raising here would
+        # break every run on a machine that simply does not have it installed.
+        try:
+            from thinkrl.logging.tensorboard import TensorBoardLogger
+
+            metric_logger = TensorBoardLogger(log_dir=f"{output_dir}/tensorboard")
+            metric_logger.log_hyperparams(
+                {
+                    "model": model,
+                    "dataset": dataset,
+                    "learning_rate": learning_rate,
+                    "batch_size": per_device_train_batch_size,
+                    "lora_r": lora_r,
+                    "epochs": num_train_epochs,
+                }
+            )
+            typer.echo(f"TensorBoard logging to {output_dir}/tensorboard")
+        except ImportError:
+            typer.echo("Warning: tensorboard not installed, metrics will not be logged. pip install tensorboard")
 
     trainer = GRPOTrainer(
         model=policy_model,
@@ -258,6 +318,8 @@ def grpo(
         ),
         use_vllm=(str(use_vllm).lower() == "true"),
         vllm_group_port=vllm_group_port,
+        vllm_url=vllm_url,
+        vllm_sync_world_size=vllm_sync_world_size,
     )
 
     if dry_run:

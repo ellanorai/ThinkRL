@@ -9,7 +9,8 @@ path is the worker plus client described here.
 - `thinkrl/integration/vllm_worker.py` holds the vLLM engine behind a FastAPI server.
 - `thinkrl/integration/vllm_client.py` is what the trainers use: it submits prompts and
   pushes updated policy weights to the worker over NCCL between rollouts.
-- `GRPOTrainer` and `ReinforcePPTrainer` take `use_vllm=True` and `vllm_group_port`.
+- `GRPOTrainer` and `ReinforcePPTrainer` take `use_vllm=True`, `vllm_group_port`,
+  `vllm_url` and `vllm_sync_world_size`.
 
 Keeping the engine out of process means the training job and the generation job do not
 compete for the same CUDA context, and weights move over NCCL rather than through a
@@ -17,15 +18,32 @@ serialization round trip.
 
 ## Starting a worker
 
+A worker must already be running before any training command that passes `--use-vllm`.
+Nothing starts one for you, and the client will simply fail to connect.
+
 ```bash
-python -m thinkrl.integration.vllm_worker \
+thinkrl-vllm-worker \
     --model HuggingFaceTB/SmolLM2-135M \
     --host 127.0.0.1 \
     --port 8000 \
     --group-port 51216
 ```
 
-Then point a trainer at it:
+`python -m thinkrl.integration.vllm_worker` with the same arguments is equivalent.
+
+Then from the CLI:
+
+```bash
+thinkrl grpo \
+    --model HuggingFaceTB/SmolLM2-135M \
+    --ref-model HuggingFaceTB/SmolLM2-135M \
+    --dataset gsm8k \
+    --use-vllm true \
+    --vllm-url http://127.0.0.1:8000 \
+    --vllm-group-port 51216
+```
+
+or from Python:
 
 ```python
 trainer = GRPOTrainer(
@@ -35,9 +53,15 @@ trainer = GRPOTrainer(
     dataset=dataset,
     reward_fn=reward_fn,
     use_vllm=True,
+    vllm_url="http://127.0.0.1:8000",
     vllm_group_port=51216,
+    vllm_sync_world_size=2,
 )
 ```
+
+`--vllm-url` matters for anything other than a worker on the same host: the client
+defaulted to localhost and the trainer never forwarded an alternative, so a remote worker
+was unreachable regardless of what the client supported.
 
 ## Endpoints
 
