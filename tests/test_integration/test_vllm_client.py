@@ -177,6 +177,32 @@ class TestVLLMClient:
         assert "/update_weights" in args[0]
         assert "timeout" in kwargs
 
+    @patch("requests.post")
+    def test_check_weights_passes_a_timeout(self, mock_post, client):
+        """Every other call in this class times out; this one didn't (#196) -- a hung
+        vLLM worker would hang the whole training process with no exception."""
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"status": "ok"}
+        mock_post.return_value = mock_response
+
+        client.check_weights(torch.nn.Linear(1, 1))
+
+        mock_post.assert_called_once()
+        args, kwargs = mock_post.call_args
+        assert "/check_weights" in args[0]
+        assert kwargs.get("timeout") == client.control_timeout
+
+    @patch("requests.post")
+    def test_check_weights_raises_on_mismatch(self, mock_post, client):
+        mock_response = MagicMock()
+        mock_response.raise_for_status.return_value = None
+        mock_response.json.return_value = {"status": "mismatch", "details": ["layer shape differs"]}
+        mock_post.return_value = mock_response
+
+        with pytest.raises(RuntimeError, match="vLLM model mismatch"):
+            client.check_weights(torch.nn.Linear(1, 1))
+
     def test_generate_no_logprobs(self, client):
         """Test generate when server doesn't return logprobs."""
         with patch("requests.post") as mock_post:
