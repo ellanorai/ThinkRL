@@ -578,19 +578,36 @@ if TYPER_AVAILABLE:
     def reward(
         model: Annotated[str, Option("--model", "-m", help="Base model name or path")],
         dataset: Annotated[str, Option("--dataset", "-d", help="Preference dataset name or path")],
+        prompt_column: Annotated[str, Option("--prompt-column", "-pc", help="Column name for prompts")] = "prompt",
+        chosen_column: Annotated[str, Option("--chosen-column", help="Column name for the preferred response")] = "chosen",
+        rejected_column: Annotated[
+            str, Option("--rejected-column", help="Column name for the dispreferred response")
+        ] = "rejected",
+        source: Annotated[str, Option("--source", "-s", help="Dataset source: 'hf', 'local', 'json', 'csv'")] = "hf",
+        dataset_split: Annotated[str, Option("--dataset-split", help="Dataset split to load")] = "train",
+        dataset_config: Annotated[str | None, Option("--dataset-config", help="Dataset config name")] = None,
+        max_samples: Annotated[int | None, Option("--max-samples", help="Max samples to load")] = None,
+        max_length: Annotated[int, Option("--max-length", help="Max sequence length")] = 512,
         output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./reward_output"),
         learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-5,
+        margin: Annotated[float, Option("--margin", help="Margin for the pairwise ranking loss")] = 0.0,
         num_train_epochs: Annotated[
             int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
         ] = 1,
         per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
+        gradient_accumulation_steps: Annotated[
+            int, Option("--gradient-accumulation-steps", "--gas", help="Gradient accumulation steps")
+        ] = 1,
         lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
+        trust_remote_code: Annotated[bool, Option("--trust-remote-code/--no-trust-remote-code")] = False,
+        dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
     ):
         """
         Train a Reward Model.
 
-        Train a reward model on preference pairs.
+        Train a reward model on (chosen, rejected) preference pairs with the
+        standard Bradley-Terry pairwise loss.
 
         Example:
             thinkrl reward --model meta-llama/Llama-3.1-8B --dataset Anthropic/hh-rlhf
@@ -599,7 +616,7 @@ if TYPER_AVAILABLE:
         typer.echo("ThinkRL Reward Model Training")
         typer.echo("=" * 60)
         typer.echo(f"Model: {model}")
-        typer.echo(f"Dataset: {dataset}")
+        typer.echo(f"Dataset: {dataset} (source={source}, split={dataset_split})")
         typer.echo(f"Output: {output_dir}")
         typer.echo(f"Learning rate: {learning_rate}")
         typer.echo(f"Epochs: {num_train_epochs}")
@@ -608,7 +625,61 @@ if TYPER_AVAILABLE:
         typer.echo(f"BF16: {bf16}")
         typer.echo()
 
-        _not_implemented("reward", 65)
+        from transformers import AutoTokenizer
+
+        from thinkrl.data.datasets import PreferenceDataset
+        from thinkrl.models.loader import get_model
+        from thinkrl.training.rm_trainer import RMConfig, RMTrainer
+
+        tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=trust_remote_code)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        typer.echo(f"Loading dataset: {dataset}")
+        train_dataset = PreferenceDataset(
+            dataset_name_or_path=dataset,
+            tokenizer=tokenizer,
+            prompt_column=prompt_column,
+            chosen_column=chosen_column,
+            rejected_column=rejected_column,
+            source=source,
+            split=dataset_split,
+            dataset_config=dataset_config,
+            max_length=max_length,
+            max_samples=max_samples,
+        )
+
+        typer.echo("Loading reward model...")
+        model_inst = get_model(
+            model,
+            model_type="reward",
+            bf16=bf16,
+            lora_rank=lora_r or 0,
+            trust_remote_code=trust_remote_code,
+        )
+
+        trainer = RMTrainer(
+            model=model_inst,
+            tokenizer=tokenizer,
+            train_dataset=train_dataset,
+            args=RMConfig(
+                learning_rate=learning_rate,
+                margin=margin,
+                num_train_epochs=num_train_epochs,
+                per_device_train_batch_size=per_device_train_batch_size,
+                gradient_accumulation_steps=gradient_accumulation_steps,
+                output_dir=str(output_dir),
+            ),
+        )
+
+        if dry_run:
+            typer.echo("Dry run: exiting before training.")
+            raise typer.Exit(0)
+
+        typer.echo("Starting training loop...")
+        trainer.train()
+        trainer.save_model()
+        typer.echo("Training complete.")
 
     @app.command()
     def orpo(
