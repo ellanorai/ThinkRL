@@ -202,6 +202,35 @@ class TestRLHFDataset:
         assert sample["prompt_text"] == "PREFIX: this is prompt 1."
         assert torch.allclose(sample["input_ids"], expected_ids)
 
+    def test_getitem_in_sft_mode_adds_prompt_length(self, temp_jsonl_file, mock_tokenizer):
+        """SFT needs to mask the prompt out of the loss, which needs to know where
+        it ends within the combined prompt+response input_ids (#193)."""
+        dataset = RLHFDataset(
+            dataset_name_or_path=str(temp_jsonl_file),
+            tokenizer=mock_tokenizer,
+            prompt_column="prompt",
+            response_column="chosen",
+            apply_chat_template=False,
+        )
+
+        sample = dataset[0]
+
+        assert "prompt_length" in sample
+        # "this is prompt 1." -> 4 words/tokens under the fake tokenizer.
+        assert sample["prompt_length"] == 4
+        # "this is prompt 1. this is chosen 1." -> 8 words/tokens total.
+        assert sample["input_ids"].shape[0] == 8
+
+    def test_getitem_without_response_column_has_no_prompt_length(self, temp_jsonl_file, mock_tokenizer):
+        """GRPO's prompt-only mode must stay exactly as it was: no new key."""
+        dataset = RLHFDataset(
+            dataset_name_or_path=str(temp_jsonl_file),
+            tokenizer=mock_tokenizer,
+            prompt_column="prompt",
+        )
+
+        assert "prompt_length" not in dataset[0]
+
     def test_out_of_bounds(self, temp_jsonl_file, mock_tokenizer):
         """Test index out of bounds raises IndexError."""
         dataset = RLHFDataset(
