@@ -100,7 +100,15 @@ class RewardModel(nn.Module):
         if isinstance(pretrained_model, str):
             config_kwargs = {}
             if use_flash_attention:
-                config_kwargs["attn_implementation"] = "flash_attention_2"
+                from .actor import _flash_attention_available
+
+                if _flash_attention_available():
+                    config_kwargs["attn_implementation"] = "flash_attention_2"
+                else:
+                    logger.warning(
+                        "use_flash_attention=True but flash-attn is not installed. "
+                        "Falling back to the default attention implementation."
+                    )
 
             config = AutoConfig.from_pretrained(
                 pretrained_model,
@@ -149,6 +157,13 @@ class RewardModel(nn.Module):
 
         # Initialize reward head
         nn.init.normal_(self.reward_head.weight, std=0.02)
+
+        # The base model may have loaded in bf16/fp16 (torch_dtype= above); a head left at
+        # the default float32 crashes forward() the first time it matmuls against hidden
+        # states in the other dtype.
+        base_param = next(self.model.parameters(), None)
+        if base_param is not None:
+            self.reward_head = self.reward_head.to(dtype=base_param.dtype)
 
         # Normalization buffers (running mean and std)
         if normalize_reward:
