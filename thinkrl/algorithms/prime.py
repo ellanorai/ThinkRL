@@ -438,6 +438,7 @@ def create_prime(
     optimizer: Optimizer | None = None,
     learning_rate: float = 1e-6,
     beta: float = 0.05,
+    config: PRIMEConfig | None = None,
     **kwargs,
 ) -> PRIMEAlgorithm:
     """
@@ -454,15 +455,17 @@ def create_prime(
                        For now, let's map this to prm_learning_rate or policy?
                        PRIMEConfig has prm_learning_rate. Base has learning_rate.
         beta: Reward coefficient
+        config: Pre-built PRIMEConfig. If given, beta/kwargs config-splitting below
+            is skipped; kwargs still forward to PRIMEAlgorithm as extra algo kwargs.
         **kwargs: Additional args
     """
     # Extract config args
     config_args = {k: v for k, v in kwargs.items() if hasattr(PRIMEConfig, k)}
-    if "prm_learning_rate" not in config_args:
-        # Default policy LR if not specified? Or specifically for factory:
-        config_args["prm_learning_rate"] = learning_rate
-
-    config = PRIMEConfig(beta=beta, **config_args)
+    if config is None:
+        if "prm_learning_rate" not in config_args:
+            # Default policy LR if not specified? Or specifically for factory:
+            config_args["prm_learning_rate"] = learning_rate
+        config = PRIMEConfig(beta=beta, **config_args)
 
     # Remaining args
     algo_kwargs = {k: v for k, v in kwargs.items() if k not in config_args}

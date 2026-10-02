@@ -238,6 +238,7 @@ def create_dpo(
     optimizer: Optimizer | None = None,
     learning_rate: float = 1e-6,
     beta: float = 0.1,
+    config: DPOConfig | None = None,
     **kwargs,
 ) -> DPOAlgorithm:
     """
@@ -249,12 +250,14 @@ def create_dpo(
         optimizer: Optimizer (optional)
         learning_rate: Learning rate
         beta: KL coefficient
-        **kwargs: Additional args for DPOConfig/DPOAlgorithm
+        config: Pre-built DPOConfig. If given, learning_rate/beta/kwargs are ignored.
+        **kwargs: Additional args for DPOConfig/DPOAlgorithm, used only when config is None
 
     Returns:
         Configured DPOAlgorithm instance
     """
-    config = DPOConfig(learning_rate=learning_rate, beta=beta, **kwargs)
+    if config is None:
+        config = DPOConfig(learning_rate=learning_rate, beta=beta, **kwargs)
 
     if optimizer is None:
         optimizer = torch.optim.AdamW(policy_model.parameters(), lr=learning_rate)
