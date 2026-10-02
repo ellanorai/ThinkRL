@@ -151,6 +151,16 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
         self.prime_loss_fn = PRIMELoss(beta=config.beta)
         self.policy_loss_fn = PolicyLoss(clip_eps=config.clip_epsilon)
 
+    def _forward_logits(self, model: nn.Module, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> Any:
+        """Forward pass that is guaranteed to expose `.logits`, whether `model` is a
+        raw HF model or Actor-wrapped. `ref_model`/`prm_model` default to a deepcopy
+        of `policy_model` (an Actor, when the CLI loads one), whose default forward
+        returns only pre-computed log-probs, not the full output with real logits."""
+        outputs = model(input_ids=input_ids, attention_mask=attention_mask)
+        if isinstance(outputs, tuple) and not isinstance(outputs, dict):
+            _, outputs = model(input_ids=input_ids, attention_mask=attention_mask, return_output=True)
+        return outputs
+
     def compute_implicit_rewards(self, input_ids: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
         """
         Compute token-level implicit rewards: r_phi(y_t)
@@ -161,11 +171,11 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
             # Get PRM log probs
             # Note: We use the *current* state of the PRM for reward calculation
             # But we detach to ensure we don't backprop through the reward signal into PRM here
-            prm_outputs = self.prm_model(input_ids=input_ids, attention_mask=attention_mask)
+            prm_outputs = self._forward_logits(self.prm_model, input_ids, attention_mask)
             prm_log_probs = self.get_log_probs(prm_outputs.logits, input_ids)
 
             # Get Ref log probs
-            ref_outputs = self.ref_model(input_ids=input_ids, attention_mask=attention_mask)
+            ref_outputs = self._forward_logits(self.ref_model, input_ids, attention_mask)
             ref_log_probs = self.get_log_probs(ref_outputs.logits, input_ids)
 
         # Calculate Reward (Eq. 3)
@@ -184,12 +194,12 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
 
         # Forward pass on PRM
         self.prm_model.train()
-        prm_outputs = self.prm_model(input_ids=input_ids, attention_mask=attention_mask)
+        prm_outputs = self._forward_logits(self.prm_model, input_ids, attention_mask)
         prm_log_probs = self.get_log_probs(prm_outputs.logits, input_ids)  # [B, L]
 
         # Forward pass on Ref (Frozen)
         with torch.no_grad():
-            ref_outputs = self.ref_model(input_ids=input_ids, attention_mask=attention_mask)
+            ref_outputs = self._forward_logits(self.ref_model, input_ids, attention_mask)
             ref_log_probs = self.get_log_probs(ref_outputs.logits, input_ids)  # [B, L]
 
         # Completion Mask (ignore prompt)
@@ -333,7 +343,7 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
         # --- Step 3: Update Policy (PPO) ---
         # We need old_log_probs for PPO ratio
         with torch.no_grad():
-            outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
+            outputs = self._forward_logits(self.policy_model, input_ids, attention_mask)
             old_log_probs = self.get_log_probs(outputs.logits, input_ids)
 
         policy_metrics_list = []
@@ -343,7 +353,7 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
             self.optimizer.zero_grad()
 
             # Forward Policy
-            outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
+            outputs = self._forward_logits(self.policy_model, input_ids, attention_mask)
             log_probs = self.get_log_probs(outputs.logits, input_ids)
 
             # PPO Loss
@@ -381,11 +391,11 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
         outcome_labels = batch["rewards"]
 
         self.prm_model.train()
-        prm_outputs = self.prm_model(input_ids=input_ids, attention_mask=attention_mask)
+        prm_outputs = self._forward_logits(self.prm_model, input_ids, attention_mask)
         prm_log_probs = self.get_log_probs(prm_outputs.logits, input_ids)
 
         with torch.no_grad():
-            ref_outputs = self.ref_model(input_ids=input_ids, attention_mask=attention_mask)
+            ref_outputs = self._forward_logits(self.ref_model, input_ids, attention_mask)
             ref_log_probs = self.get_log_probs(ref_outputs.logits, input_ids)
 
         if "labels" in batch:
@@ -402,7 +412,7 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
 
         # Policy loss
         with torch.no_grad():
-            outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
+            outputs = self._forward_logits(self.policy_model, input_ids, attention_mask)
             old_log_probs = self.get_log_probs(outputs.logits, input_ids)
 
         implicit_rewards = self.compute_implicit_rewards(input_ids, attention_mask)
@@ -415,7 +425,7 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
             group_size=self.config.num_generations_per_prompt,
         )
 
-        outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
+        outputs = self._forward_logits(self.policy_model, input_ids, attention_mask)
         log_probs = self.get_log_probs(outputs.logits, input_ids)
 
         policy_loss, _ = self.policy_loss_fn(
