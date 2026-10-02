@@ -11,6 +11,7 @@ import pytest
 import torch
 import torch.nn as nn
 
+from tests.test_algorithms.harness import TupleActorLike
 from thinkrl.algorithms.reinforce import (
     REINFORCEAlgorithm,
     REINFORCEConfig,
@@ -488,3 +489,20 @@ class TestREINFORCEIntegration:
 
             metrics = algo.training_step(batch)
             assert not torch.isnan(torch.tensor(metrics["loss"]))
+
+
+def test_entropy_bonus_does_not_crash_on_an_actor_shaped_policy():
+    """get_model(model_type="actor") -- the real loading path -- returns a tuple,
+    not the dict every SimplePolicyModel fixture above returns."""
+    model = TupleActorLike(vocab=100, hidden=32)
+    algorithm = REINFORCEAlgorithm(policy_model=model, config=REINFORCEConfig(entropy_coeff=0.01, kl_coeff=0.0))
+    batch = {
+        "input_ids": torch.randint(0, 100, (2, 8)),
+        "attention_mask": torch.ones(2, 8),
+        "labels": torch.randint(0, 100, (2, 8)),
+        "rewards": torch.tensor([1.0, -1.0]),
+    }
+
+    result = algorithm.compute_loss(batch)
+
+    assert torch.isfinite(result["loss"])

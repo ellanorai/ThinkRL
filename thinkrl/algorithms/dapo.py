@@ -391,10 +391,24 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
             action_mask=combined_mask,
         )
 
-        # Optional entropy bonus
-        logits = outputs["logits"] if isinstance(outputs, dict) else outputs
-        entropy_loss = self.entropy_loss_fn(logits, action_mask=combined_mask)
-        # Note: EntropyLoss calculates mean, so for metrics we might want raw entropy again if needed
+        # Optional entropy bonus, skipped entirely when the coefficient is 0 --
+        # EntropyLoss computes softmax unconditionally regardless of coef, so this
+        # also avoids a crash on Actor's default output, which has no full logits.
+        if cfg.entropy_coeff != 0:
+            if isinstance(outputs, tuple) and not isinstance(outputs, dict):
+                # Actor's default forward returns only pre-computed log-probs (to
+                # avoid materializing [B, S, V] when nothing needs it); EntropyLoss
+                # needs the per-token distribution, not just the sampled token's
+                # log-prob, so ask for the full output explicitly.
+                _, full_output = self.policy_model(
+                    input_ids=input_ids, attention_mask=attention_mask, return_output=True
+                )
+                logits = full_output.logits
+            else:
+                logits = outputs["logits"] if isinstance(outputs, dict) else outputs
+            entropy_loss = self.entropy_loss_fn(logits, action_mask=combined_mask)
+        else:
+            entropy_loss = torch.zeros((), device=device)
         # DAPOLoss and EntropyLoss return means over valid tokens.
 
         total_loss = policy_loss + entropy_loss

@@ -33,6 +33,36 @@ class TinyPolicy(nn.Module):
         return {"logits": self.linear(self.embedding(input_ids))}
 
 
+class TupleActorLike(nn.Module):
+    """Mimics Actor.forward's real return shape: ``(gathered_log_probs,)`` by
+    default, or ``(gathered_log_probs, output)`` with ``return_output=True``
+    where ``output.logits`` holds the full per-token distribution.
+
+    TinyPolicy's dict output hid a real bug: DAPO/VAPO/Dr.GRPO's entropy bonus
+    reused the no-``return_output`` call's result as if it were raw logits,
+    which crashed (`'tuple' object has no attribute 'softmax'`) the moment any
+    of them ran against an Actor-wrapped model -- i.e. every real CLI run,
+    since that is exactly what `get_model(model_type="actor")` returns.
+    """
+
+    class _Output:
+        def __init__(self, logits: torch.Tensor):
+            self.logits = logits
+
+    def __init__(self, vocab: int = VOCAB, hidden: int = 8):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab, hidden)
+        self.linear = nn.Linear(hidden, vocab)
+
+    def forward(self, input_ids, attention_mask=None, return_output: bool = False, **kwargs):
+        logits = self.linear(self.embedding(input_ids))
+        # [B, S-1], matching Actor's own shift; get_log_probs re-pads this to [B, S].
+        gathered_log_probs = logits[:, :-1, :].sum(dim=-1)
+        if return_output:
+            return gathered_log_probs, self._Output(logits)
+        return (gathered_log_probs,)
+
+
 def make_batch(batch_size: int = 4, seq: int = SEQ, seed: int = 0) -> dict[str, torch.Tensor]:
     """A batch shaped like a rollout: a two-token prompt then generated tokens.
 

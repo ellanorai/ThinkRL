@@ -8,7 +8,7 @@ is one subtraction in `compute_advantages`, and nothing checked it.
 import pytest
 import torch
 
-from tests.test_algorithms.harness import TinyPolicy, assert_trainable_loss, make_batch
+from tests.test_algorithms.harness import TinyPolicy, TupleActorLike, assert_trainable_loss, make_batch
 from thinkrl.algorithms.dr_grpo import DrGRPOAlgorithm, DrGRPOConfig, create_dr_grpo
 
 
@@ -67,3 +67,25 @@ def test_factory_builds_the_algorithm():
     algorithm = create_dr_grpo(policy_model=TinyPolicy())
 
     assert isinstance(algorithm, DrGRPOAlgorithm)
+
+
+def test_entropy_bonus_does_not_crash_on_an_actor_shaped_policy():
+    """entropy_coeff defaults to 0.01 (nonzero), and get_model(model_type="actor")
+    -- what every real CLI run uses -- returns exactly this tuple shape."""
+    model = TupleActorLike()
+    algorithm = DrGRPOAlgorithm(policy_model=model, config=DrGRPOConfig(group_size=2))
+
+    loss = algorithm.compute_loss(make_batch(batch_size=4))["loss"]
+
+    assert_trainable_loss(loss, model)
+
+
+def test_entropy_coeff_zero_skips_the_entropy_forward_pass_entirely():
+    """Also covers the model never being asked for return_output=True, which a
+    plain nn.Module forward (no return_output kwarg) would otherwise reject."""
+    model = TupleActorLike()
+    algorithm = DrGRPOAlgorithm(policy_model=model, config=DrGRPOConfig(group_size=2, entropy_coeff=0.0))
+
+    metrics = algorithm.compute_loss(make_batch(batch_size=4))
+
+    assert metrics["entropy_loss"] == 0.0
