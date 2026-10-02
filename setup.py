@@ -389,6 +389,7 @@ CONSOLE_SCRIPTS = {
     "thinkrl": "thinkrl.cli.main:main",
     "reinforce-pp": "thinkrl.cli.main:reinforce_pp_entry",
     "grpo": "thinkrl.cli.grpo:main",
+    "gspo": "thinkrl.cli.gspo:main",
     "star": "thinkrl.cli.star:main",
     # The worker that --use-vllm requires. It was a complete server with its own main()
     # and nothing exposed it, so a user passing --use-vllm had no way to discover that
