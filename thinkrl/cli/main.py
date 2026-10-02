@@ -10,6 +10,7 @@ Commands:
     dpo       - Direct Preference Optimization
     ppo       - Proximal Policy Optimization
     grpo      - Group Relative Policy Optimization
+    gspo      - Group Sequence Policy Optimization
     reward    - Train reward model
     generate  - Generate rollouts
     merge     - Merge LoRA adapters
@@ -569,9 +570,11 @@ if TYPER_AVAILABLE:
         _not_implemented("ppo", 65)
 
     from thinkrl.cli.grpo import grpo as grpo_cmd
+    from thinkrl.cli.gspo import gspo as gspo_cmd
     from thinkrl.cli.star import star as star_cmd
 
     app.command(name="grpo")(grpo_cmd)
+    app.command(name="gspo")(gspo_cmd)
     app.command(name="star")(star_cmd)
 
     @app.command()
