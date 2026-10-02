@@ -207,6 +207,7 @@ class VLLMClient:
             resp = requests.post(
                 f"{self.url}/check_weights",
                 json={"params": params},
+                timeout=self.control_timeout,
             )
             resp.raise_for_status()
             result = resp.json()
