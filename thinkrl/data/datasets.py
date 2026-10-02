@@ -228,12 +228,30 @@ class RLHFDataset(BaseRLHFDataset):
             add_special_tokens=not templated,
         )
 
-        return {
+        result = {
             "input_ids": encodings["input_ids"].squeeze(0),
             "attention_mask": encodings["attention_mask"].squeeze(0),
             "prompt_text": prompt,
             "target": sample.get(self.target_column, ""),
         }
+
+        if self.response_column and response is not None:
+            # SFT mode: an SFT collator needs to know where the prompt ends to mask it
+            # out of the loss, since this item's input_ids carry prompt+response
+            # together. Re-rendering with response=None reuses the exact same
+            # templating path (so `templated` matches) rather than re-deriving it.
+            prompt_only_text = self._render(sample.get(self.prompt_column), None)[1]
+            prompt_encodings = self.tokenizer(
+                prompt_only_text,
+                max_length=self.max_length,
+                padding=False,
+                truncation=True,
+                return_tensors="pt",
+                add_special_tokens=not templated,
+            )
+            result["prompt_length"] = prompt_encodings["input_ids"].shape[1]
+
+        return result
 
 
 class PreferenceDataset(BaseRLHFDataset):

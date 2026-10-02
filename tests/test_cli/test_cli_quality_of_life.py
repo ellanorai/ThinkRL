@@ -16,7 +16,7 @@ from thinkrl.cli.main import _is_stub, app  # noqa: E402
 runner = CliRunner()
 
 STUBS = {"kto", "orpo", "rloo"}
-STUB_COMMANDS = ["sft", "dpo", "ppo", "reward", "orpo", "kto"]
+STUB_COMMANDS = ["dpo", "ppo", "reward", "orpo", "kto"]
 
 
 @pytest.mark.parametrize("flag", ["--version", "-V"])
@@ -75,7 +75,7 @@ def test_unimplemented_commands_exit_non_zero(command):
 
 
 def test_the_failure_message_points_somewhere_useful():
-    result = runner.invoke(app, ["sft", "--model", "gpt2", "--dataset", "foo"])
+    result = runner.invoke(app, ["dpo", "--model", "gpt2", "--dataset", "foo"])
 
     combined = result.stdout + (result.stderr or "")
     assert "not implemented" in combined
