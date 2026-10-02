@@ -16,7 +16,7 @@ from thinkrl.cli.main import _is_stub, app  # noqa: E402
 runner = CliRunner()
 
 STUBS = {"kto", "orpo", "rloo"}
-STUB_COMMANDS = ["sft", "dpo", "ppo", "reward", "orpo", "kto"]
+STUB_COMMANDS = ["sft", "dpo", "ppo", "orpo", "kto"]
 
 
 @pytest.mark.parametrize("flag", ["--version", "-V"])
