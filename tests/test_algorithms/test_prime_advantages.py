@@ -3,6 +3,7 @@
 import torch
 import torch.nn as nn
 
+from tests.test_algorithms.harness import TupleActorLike
 from thinkrl.algorithms.prime import PRIMEAlgorithm, PRIMEConfig
 
 
@@ -52,3 +53,26 @@ def test_discount_is_not_silently_dropped():
 
 def test_gamma_approaching_one_approaches_the_undiscounted_result():
     torch.testing.assert_close(_advantages(0.999)[0], _advantages(1.0)[0], rtol=0, atol=0.01)
+
+
+def test_update_prm_does_not_crash_when_ref_and_prm_are_actor_shaped():
+    """ref_model/prm_model default to a deepcopy of policy_model, which is an Actor
+    -- a plain tuple, not the dict _TinyLM returns above -- whenever the CLI loads
+    one via get_model(model_type="actor") and no --ref-model is given."""
+    policy = TupleActorLike(vocab=16, hidden=8)
+    algorithm = PRIMEAlgorithm(policy_model=policy, config=PRIMEConfig())
+    batch_size, seq_len = 4, 6
+    batch = {
+        "input_ids": torch.randint(1, 16, (batch_size, seq_len)),
+        "attention_mask": torch.ones(batch_size, seq_len, dtype=torch.long),
+        "labels": torch.randint(1, 16, (batch_size, seq_len)),
+        "rewards": torch.randint(0, 2, (batch_size,)).float(),
+    }
+
+    metrics = algorithm.update_prm(batch)
+
+    assert metrics
+    assert all(torch.isfinite(torch.tensor(v)) for v in metrics.values())
+
+    rewards = algorithm.compute_implicit_rewards(batch["input_ids"], batch["attention_mask"])
+    assert torch.isfinite(rewards).all()
