@@ -215,6 +215,83 @@ if TYPER_AVAILABLE:
         typer.echo("       Implemented today: `thinkrl grpo`, `thinkrl star`.", err=True)
         raise typer.Exit(code=1)
 
+    def _build_rollout_dataset(
+        dataset,
+        tokenizer,
+        prompt_column,
+        source,
+        dataset_split,
+        dataset_config,
+        max_samples,
+        chat_template,
+        max_length,
+    ):
+        from thinkrl.data.datasets import RLHFDataset
+
+        return RLHFDataset(
+            dataset_name_or_path=dataset,
+            tokenizer=tokenizer,
+            prompt_column=prompt_column,
+            source=source,
+            split=dataset_split,
+            dataset_config=dataset_config,
+            max_length=max_length,
+            max_samples=max_samples,
+            apply_chat_template=chat_template,
+        )
+
+    def _build_reward_fn(remote_rm_url, reward_fn, reward_model, tokenizer, device):
+        """Three ways to score a completion, same precedence GRPO's CLI already uses for
+        the first two (#124/#129): a remote server, a user's Python function, or -- new
+        here -- a local reward model, since ppo/dapo/vapo/prime are usually scored by one
+        rather than a hand-written function. Falls back to a dummy length reward so a run
+        still does something observable when none is given."""
+        import torch
+
+        if remote_rm_url:
+            from thinkrl.rewards import RemoteRewardScorer
+
+            typer.echo(f"Scoring with remote reward model at {remote_rm_url}")
+            return RemoteRewardScorer(remote_urls=remote_rm_url)
+
+        if reward_fn:
+            import importlib.util
+
+            module_path, _, func_name = reward_fn.partition(":")
+            func_name = func_name or "reward_fn"
+            try:
+                spec = importlib.util.spec_from_file_location("reward_module", module_path)
+                reward_module = importlib.util.module_from_spec(spec)
+                sys.modules["reward_module"] = reward_module
+                spec.loader.exec_module(reward_module)
+                typer.echo(f"Loaded reward function '{func_name}' from {module_path}")
+                return getattr(reward_module, func_name)
+            except Exception as e:
+                typer.echo(f"Error loading reward function: {e}", err=True)
+                raise typer.Exit(1) from e
+
+        if reward_model:
+            from thinkrl.models.loader import get_model
+
+            typer.echo(f"Loading reward model: {reward_model}")
+            rm = get_model(reward_model, model_type="reward").to(device)
+            rm.eval()
+
+            def score_with_reward_model(prompts, completions, **kwargs):
+                texts = [p + c for p, c in zip(prompts, completions)]
+                enc = tokenizer(texts, return_tensors="pt", padding=True, truncation=True).to(device)
+                with torch.no_grad():
+                    return rm(input_ids=enc["input_ids"], attention_mask=enc["attention_mask"]).cpu()
+
+            return score_with_reward_model
+
+        typer.echo("Warning: No reward function/model provided. Using dummy len-based reward.")
+
+        def dummy_len_reward(prompts, completions, **kwargs):
+            return torch.tensor([float(len(c)) for c in completions])
+
+        return dummy_len_reward
+
     @app.command()
     def train(
         config: Annotated[Path, Option("--config", "-c", help="Path to config YAML/JSON file")],
@@ -529,44 +606,525 @@ if TYPER_AVAILABLE:
     @app.command()
     def ppo(
         model: Annotated[str, Option("--model", "-m", help="Model name or path")],
-        reward_model: Annotated[str, Option("--reward-model", "-r", help="Reward model name or path")],
         dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
+        ref_model: Annotated[str | None, Option("--ref-model", help="Reference model name or path")] = None,
+        value_model: Annotated[
+            str | None, Option("--value-model", help="Separate critic model (defaults to --model's weights)")
+        ] = None,
+        reward_model: Annotated[str | None, Option("--reward-model", "-r", help="Reward model name or path")] = None,
+        reward_fn: Annotated[
+            str | None, Option("--reward-fn", help="Path to reward function (module.py:func_name)")
+        ] = None,
+        remote_rm_url: Annotated[
+            str | None, Option("--remote-rm-url", help="Score completions with a reward model server")
+        ] = None,
+        prompt_column: Annotated[str, Option("--prompt-column", "-pc", help="Column name for prompts")] = "prompt",
+        source: Annotated[str, Option("--source", "-s", help="Dataset source: 'hf', 'local', 'json', 'csv'")] = "hf",
+        dataset_split: Annotated[str, Option("--dataset-split", help="Dataset split to load")] = "train",
+        dataset_config: Annotated[str | None, Option("--dataset-config", help="Dataset config name")] = None,
+        max_samples: Annotated[int | None, Option("--max-samples", help="Max samples to load")] = None,
+        chat_template: Annotated[bool, Option("--chat-template/--no-chat-template")] = True,
+        max_length: Annotated[int, Option("--max-length", help="Max prompt token length")] = 512,
         output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./ppo_output"),
-        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
-        kl_coeff: Annotated[float, Option("--kl-coeff", help="KL penalty coefficient")] = 0.1,
-        clip_range: Annotated[float, Option("--clip-range", "--epsilon", help="PPO clip range")] = 0.2,
-        num_train_epochs: Annotated[
-            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
-        ] = 1,
-        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 3e-4,
+        policy_clip: Annotated[float, Option("--clip-range", "--epsilon", help="PPO clip range")] = 0.2,
+        value_clip: Annotated[float, Option("--value-clip", help="Value function clip range")] = 0.2,
+        gae_lambda: Annotated[float, Option("--gae-lambda", help="GAE lambda")] = 0.95,
+        gamma: Annotated[float, Option("--gamma", help="Discount factor")] = 0.99,
+        entropy_coeff: Annotated[float, Option("--entropy-coeff", help="Entropy bonus coefficient")] = 0.01,
+        n_epochs: Annotated[int, Option("--num-train-epochs", "--epochs", help="PPO update epochs per rollout")] = 4,
+        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="PPO mini-batch size")] = 64,
+        total_steps: Annotated[int, Option("--total-steps", help="Number of rollout/update steps")] = 1000,
+        rollout_batch_size: Annotated[int, Option("--rollout-batch-size", help="Prompts per rollout")] = 4,
+        save_every: Annotated[int, Option("--save-every", help="Steps between checkpoints (0 = never)")] = 0,
         lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
+        trust_remote_code: Annotated[bool, Option("--trust-remote-code/--no-trust-remote-code")] = False,
+        dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
     ):
         """
         Proximal Policy Optimization (PPO).
 
-        Train a model with PPO using a reward model.
+        Train a model with PPO, scored by a reward model, a reward function, or a
+        remote reward server.
 
         Example:
-            thinkrl ppo --model meta-llama/Llama-3.1-8B --reward-model OpenAssistant/reward-model-deberta-v3-large-v2 --dataset Anthropic/hh-rlhf
+            thinkrl ppo --model gpt2 --dataset Anthropic/hh-rlhf --reward-model OpenAssistant/reward-model-deberta-v3-large-v2
         """
         typer.echo("=" * 60)
         typer.echo("ThinkRL Proximal Policy Optimization (PPO)")
         typer.echo("=" * 60)
         typer.echo(f"Model: {model}")
-        typer.echo(f"Reward Model: {reward_model}")
         typer.echo(f"Dataset: {dataset}")
-        typer.echo(f"Output: {output_dir}")
         typer.echo(f"Learning rate: {learning_rate}")
-        typer.echo(f"KL coefficient: {kl_coeff}")
-        typer.echo(f"Clip range: {clip_range}")
-        typer.echo(f"Epochs: {num_train_epochs}")
-        typer.echo(f"Batch size: {per_device_train_batch_size}")
-        typer.echo(f"LoRA rank: {lora_r if lora_r else 'Disabled'}")
-        typer.echo(f"BF16: {bf16}")
+        typer.echo(f"Clip range: {policy_clip}")
         typer.echo()
 
-        _not_implemented("ppo", 65)
+        import torch
+        from transformers import AutoTokenizer
+
+        from thinkrl.algorithms.ppo import PPOAlgorithm, PPOConfig
+        from thinkrl.models.loader import get_model
+        from thinkrl.training.grpo_trainer import GRPOTrainer
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=trust_remote_code)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        typer.echo("Loading dataset...")
+        train_dataset = _build_rollout_dataset(
+            dataset, tokenizer, prompt_column, source, dataset_split, dataset_config, max_samples, chat_template,
+            max_length,
+        )
+
+        reward_func = _build_reward_fn(remote_rm_url, reward_fn, reward_model, tokenizer, device)
+
+        typer.echo("Loading models...")
+        policy = get_model(model, model_type="actor", bf16=bf16, lora_rank=lora_r or 0,
+                            trust_remote_code=trust_remote_code)
+        value = get_model(value_model or model, model_type="critic", bf16=bf16, trust_remote_code=trust_remote_code)
+        ref = get_model(ref_model, model_type="ref", bf16=bf16, trust_remote_code=trust_remote_code) if ref_model else None
+
+        algorithm = PPOAlgorithm(
+            policy_model=policy,
+            value_model=value,
+            ref_model=ref,
+            config=PPOConfig(
+                learning_rate=learning_rate,
+                policy_clip=policy_clip,
+                value_clip=value_clip,
+                gae_lambda=gae_lambda,
+                gamma=gamma,
+                entropy_coeff=entropy_coeff,
+                n_epochs=n_epochs,
+                batch_size=per_device_train_batch_size,
+            ),
+        )
+
+        trainer = GRPOTrainer(algorithm=algorithm, tokenizer=tokenizer, dataset=train_dataset,
+                               reward_fn=reward_func, device=device)
+
+        if dry_run:
+            typer.echo("Dry run: exiting before training.")
+            raise typer.Exit(0)
+
+        typer.echo("Starting training loop...")
+        trainer.train(
+            steps=total_steps,
+            batch_size=rollout_batch_size,
+            checkpoint_dir=str(output_dir / "checkpoints") if save_every else None,
+            save_every=save_every,
+        )
+        typer.echo("Training complete.")
+
+    @app.command()
+    def dapo(
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
+        ref_model: Annotated[str | None, Option("--ref-model", help="Reference model name or path")] = None,
+        reward_model: Annotated[str | None, Option("--reward-model", "-r", help="Reward model name or path")] = None,
+        reward_fn: Annotated[
+            str | None, Option("--reward-fn", help="Path to reward function (module.py:func_name)")
+        ] = None,
+        remote_rm_url: Annotated[
+            str | None, Option("--remote-rm-url", help="Score completions with a reward model server")
+        ] = None,
+        prompt_column: Annotated[str, Option("--prompt-column", "-pc", help="Column name for prompts")] = "prompt",
+        source: Annotated[str, Option("--source", "-s", help="Dataset source: 'hf', 'local', 'json', 'csv'")] = "hf",
+        dataset_split: Annotated[str, Option("--dataset-split", help="Dataset split to load")] = "train",
+        dataset_config: Annotated[str | None, Option("--dataset-config", help="Dataset config name")] = None,
+        max_samples: Annotated[int | None, Option("--max-samples", help="Max samples to load")] = None,
+        chat_template: Annotated[bool, Option("--chat-template/--no-chat-template")] = True,
+        max_length: Annotated[int, Option("--max-length", help="Max prompt token length")] = 512,
+        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./dapo_output"),
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
+        epsilon_low: Annotated[float, Option("--epsilon-low", help="Lower clip bound (DAPO's clip-higher)")] = 0.2,
+        epsilon_high: Annotated[float, Option("--epsilon-high", help="Upper clip bound (DAPO's clip-higher)")] = 0.28,
+        group_size: Annotated[int, Option("--group-size", "-g", help="Completions sampled per prompt")] = 16,
+        n_epochs: Annotated[int, Option("--num-train-epochs", "--epochs", help="Update epochs per rollout")] = 1,
+        total_steps: Annotated[int, Option("--total-steps", help="Number of rollout/update steps")] = 1000,
+        rollout_batch_size: Annotated[int, Option("--rollout-batch-size", help="Prompts per rollout")] = 4,
+        save_every: Annotated[int, Option("--save-every", help="Steps between checkpoints (0 = never)")] = 0,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
+        trust_remote_code: Annotated[bool, Option("--trust-remote-code/--no-trust-remote-code")] = False,
+        dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
+    ):
+        """
+        DAPO (Decoupled Clip and Dynamic Sampling Policy Optimization).
+
+        Example:
+            thinkrl dapo --model gpt2 --dataset gsm8k --dataset-config main --reward-fn reward.py:score
+        """
+        typer.echo("=" * 60)
+        typer.echo("ThinkRL DAPO")
+        typer.echo("=" * 60)
+        typer.echo(f"Model: {model}")
+        typer.echo(f"Dataset: {dataset}")
+        typer.echo(f"Learning rate: {learning_rate}")
+        typer.echo(f"Clip range: [{epsilon_low}, {epsilon_high}]")
+        typer.echo()
+
+        import torch
+        from transformers import AutoTokenizer
+
+        from thinkrl.algorithms.dapo import DAPOAlgorithm, DAPOConfig
+        from thinkrl.models.loader import get_model
+        from thinkrl.training.grpo_trainer import GRPOTrainer
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=trust_remote_code)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        typer.echo("Loading dataset...")
+        train_dataset = _build_rollout_dataset(
+            dataset, tokenizer, prompt_column, source, dataset_split, dataset_config, max_samples, chat_template,
+            max_length,
+        )
+
+        reward_func = _build_reward_fn(remote_rm_url, reward_fn, reward_model, tokenizer, device)
+
+        typer.echo("Loading models...")
+        policy = get_model(model, model_type="actor", bf16=bf16, lora_rank=lora_r or 0,
+                            trust_remote_code=trust_remote_code)
+        ref = get_model(ref_model, model_type="ref", bf16=bf16, trust_remote_code=trust_remote_code) if ref_model else None
+
+        algorithm = DAPOAlgorithm(
+            policy_model=policy,
+            ref_model=ref,
+            config=DAPOConfig(
+                learning_rate=learning_rate,
+                epsilon_low=epsilon_low,
+                epsilon_high=epsilon_high,
+                group_size=group_size,
+                n_epochs=n_epochs,
+            ),
+        )
+
+        trainer = GRPOTrainer(algorithm=algorithm, tokenizer=tokenizer, dataset=train_dataset,
+                               reward_fn=reward_func, device=device)
+
+        if dry_run:
+            typer.echo("Dry run: exiting before training.")
+            raise typer.Exit(0)
+
+        typer.echo("Starting training loop...")
+        trainer.train(
+            steps=total_steps,
+            batch_size=rollout_batch_size,
+            checkpoint_dir=str(output_dir / "checkpoints") if save_every else None,
+            save_every=save_every,
+        )
+        typer.echo("Training complete.")
+
+    @app.command()
+    def vapo(
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
+        ref_model: Annotated[str | None, Option("--ref-model", help="Reference model name or path")] = None,
+        value_model: Annotated[
+            str | None, Option("--value-model", help="Separate critic model (defaults to --model's weights)")
+        ] = None,
+        reward_model: Annotated[str | None, Option("--reward-model", "-r", help="Reward model name or path")] = None,
+        reward_fn: Annotated[
+            str | None, Option("--reward-fn", help="Path to reward function (module.py:func_name)")
+        ] = None,
+        remote_rm_url: Annotated[
+            str | None, Option("--remote-rm-url", help="Score completions with a reward model server")
+        ] = None,
+        prompt_column: Annotated[str, Option("--prompt-column", "-pc", help="Column name for prompts")] = "prompt",
+        source: Annotated[str, Option("--source", "-s", help="Dataset source: 'hf', 'local', 'json', 'csv'")] = "hf",
+        dataset_split: Annotated[str, Option("--dataset-split", help="Dataset split to load")] = "train",
+        dataset_config: Annotated[str | None, Option("--dataset-config", help="Dataset config name")] = None,
+        max_samples: Annotated[int | None, Option("--max-samples", help="Max samples to load")] = None,
+        chat_template: Annotated[bool, Option("--chat-template/--no-chat-template")] = True,
+        max_length: Annotated[int, Option("--max-length", help="Max prompt token length")] = 512,
+        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./vapo_output"),
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
+        value_lr: Annotated[float, Option("--value-lr", help="Critic learning rate")] = 2e-6,
+        epsilon_low: Annotated[float, Option("--epsilon-low", help="Lower clip bound")] = 0.2,
+        epsilon_high: Annotated[float, Option("--epsilon-high", help="Upper clip bound")] = 0.28,
+        n_epochs: Annotated[int, Option("--num-train-epochs", "--epochs", help="Update epochs per rollout")] = 2,
+        total_steps: Annotated[int, Option("--total-steps", help="Number of rollout/update steps")] = 1000,
+        rollout_batch_size: Annotated[int, Option("--rollout-batch-size", help="Prompts per rollout")] = 4,
+        save_every: Annotated[int, Option("--save-every", help="Steps between checkpoints (0 = never)")] = 0,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
+        trust_remote_code: Annotated[bool, Option("--trust-remote-code/--no-trust-remote-code")] = False,
+        dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
+    ):
+        """
+        VAPO (Value-based Augmented PPO).
+
+        Example:
+            thinkrl vapo --model gpt2 --dataset gsm8k --dataset-config main --reward-fn reward.py:score
+        """
+        typer.echo("=" * 60)
+        typer.echo("ThinkRL VAPO")
+        typer.echo("=" * 60)
+        typer.echo(f"Model: {model}")
+        typer.echo(f"Dataset: {dataset}")
+        typer.echo(f"Learning rate: {learning_rate}")
+        typer.echo()
+
+        import torch
+        from transformers import AutoTokenizer
+
+        from thinkrl.algorithms.vapo import VAPOAlgorithm, VAPOConfig
+        from thinkrl.models.loader import get_model
+        from thinkrl.training.grpo_trainer import GRPOTrainer
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=trust_remote_code)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        typer.echo("Loading dataset...")
+        train_dataset = _build_rollout_dataset(
+            dataset, tokenizer, prompt_column, source, dataset_split, dataset_config, max_samples, chat_template,
+            max_length,
+        )
+
+        reward_func = _build_reward_fn(remote_rm_url, reward_fn, reward_model, tokenizer, device)
+
+        typer.echo("Loading models...")
+        policy = get_model(model, model_type="actor", bf16=bf16, lora_rank=lora_r or 0,
+                            trust_remote_code=trust_remote_code)
+        value = get_model(value_model or model, model_type="critic", bf16=bf16, trust_remote_code=trust_remote_code)
+        ref = get_model(ref_model, model_type="ref", bf16=bf16, trust_remote_code=trust_remote_code) if ref_model else None
+
+        algorithm = VAPOAlgorithm(
+            policy_model=policy,
+            value_model=value,
+            ref_model=ref,
+            config=VAPOConfig(
+                learning_rate=learning_rate,
+                value_lr=value_lr,
+                epsilon_low=epsilon_low,
+                epsilon_high=epsilon_high,
+                n_epochs=n_epochs,
+            ),
+        )
+
+        trainer = GRPOTrainer(algorithm=algorithm, tokenizer=tokenizer, dataset=train_dataset,
+                               reward_fn=reward_func, device=device)
+
+        if dry_run:
+            typer.echo("Dry run: exiting before training.")
+            raise typer.Exit(0)
+
+        typer.echo("Starting training loop...")
+        trainer.train(
+            steps=total_steps,
+            batch_size=rollout_batch_size,
+            checkpoint_dir=str(output_dir / "checkpoints") if save_every else None,
+            save_every=save_every,
+        )
+        typer.echo("Training complete.")
+
+    @app.command()
+    def prime(
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
+        ref_model: Annotated[str | None, Option("--ref-model", help="Reference model name or path")] = None,
+        reward_model: Annotated[str | None, Option("--reward-model", "-r", help="Reward model name or path")] = None,
+        reward_fn: Annotated[
+            str | None, Option("--reward-fn", help="Path to reward function (module.py:func_name)")
+        ] = None,
+        remote_rm_url: Annotated[
+            str | None, Option("--remote-rm-url", help="Score completions with a reward model server")
+        ] = None,
+        prompt_column: Annotated[str, Option("--prompt-column", "-pc", help="Column name for prompts")] = "prompt",
+        source: Annotated[str, Option("--source", "-s", help="Dataset source: 'hf', 'local', 'json', 'csv'")] = "hf",
+        dataset_split: Annotated[str, Option("--dataset-split", help="Dataset split to load")] = "train",
+        dataset_config: Annotated[str | None, Option("--dataset-config", help="Dataset config name")] = None,
+        max_samples: Annotated[int | None, Option("--max-samples", help="Max samples to load")] = None,
+        chat_template: Annotated[bool, Option("--chat-template/--no-chat-template")] = True,
+        max_length: Annotated[int, Option("--max-length", help="Max prompt token length")] = 512,
+        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./prime_output"),
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
+        beta: Annotated[float, Option("--beta", help="Implicit reward scaling coefficient")] = 0.05,
+        n_epochs: Annotated[int, Option("--num-train-epochs", "--epochs", help="Update epochs per rollout")] = 1,
+        total_steps: Annotated[int, Option("--total-steps", help="Number of rollout/update steps")] = 1000,
+        rollout_batch_size: Annotated[int, Option("--rollout-batch-size", help="Prompts per rollout")] = 4,
+        save_every: Annotated[int, Option("--save-every", help="Steps between checkpoints (0 = never)")] = 0,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
+        trust_remote_code: Annotated[bool, Option("--trust-remote-code/--no-trust-remote-code")] = False,
+        dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
+    ):
+        """
+        PRIME (Implicit Process Reward Modelling).
+
+        Example:
+            thinkrl prime --model gpt2 --dataset gsm8k --dataset-config main --reward-fn reward.py:score
+        """
+        typer.echo("=" * 60)
+        typer.echo("ThinkRL PRIME")
+        typer.echo("=" * 60)
+        typer.echo(f"Model: {model}")
+        typer.echo(f"Dataset: {dataset}")
+        typer.echo(f"Learning rate: {learning_rate}")
+        typer.echo(f"Beta: {beta}")
+        typer.echo()
+
+        import torch
+        from transformers import AutoTokenizer
+
+        from thinkrl.algorithms.prime import PRIMEAlgorithm, PRIMEConfig
+        from thinkrl.models.loader import get_model
+        from thinkrl.training.grpo_trainer import GRPOTrainer
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=trust_remote_code)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        typer.echo("Loading dataset...")
+        train_dataset = _build_rollout_dataset(
+            dataset, tokenizer, prompt_column, source, dataset_split, dataset_config, max_samples, chat_template,
+            max_length,
+        )
+
+        reward_func = _build_reward_fn(remote_rm_url, reward_fn, reward_model, tokenizer, device)
+
+        typer.echo("Loading models...")
+        policy = get_model(model, model_type="actor", bf16=bf16, lora_rank=lora_r or 0,
+                            trust_remote_code=trust_remote_code)
+        ref = get_model(ref_model, model_type="ref", bf16=bf16, trust_remote_code=trust_remote_code) if ref_model else None
+
+        algorithm = PRIMEAlgorithm(
+            policy_model=policy,
+            ref_model=ref,
+            learning_rate=learning_rate,
+            config=PRIMEConfig(
+                beta=beta,
+                n_epochs=n_epochs,
+            ),
+        )
+
+        trainer = GRPOTrainer(algorithm=algorithm, tokenizer=tokenizer, dataset=train_dataset,
+                               reward_fn=reward_func, device=device)
+
+        if dry_run:
+            typer.echo("Dry run: exiting before training.")
+            raise typer.Exit(0)
+
+        typer.echo("Starting training loop...")
+        trainer.train(
+            steps=total_steps,
+            batch_size=rollout_batch_size,
+            checkpoint_dir=str(output_dir / "checkpoints") if save_every else None,
+            save_every=save_every,
+        )
+        typer.echo("Training complete.")
+
+    @app.command(name="dr-grpo")
+    def dr_grpo(
+        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
+        dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
+        ref_model: Annotated[str | None, Option("--ref-model", help="Reference model name or path")] = None,
+        reward_model: Annotated[str | None, Option("--reward-model", "-r", help="Reward model name or path")] = None,
+        reward_fn: Annotated[
+            str | None, Option("--reward-fn", help="Path to reward function (module.py:func_name)")
+        ] = None,
+        remote_rm_url: Annotated[
+            str | None, Option("--remote-rm-url", help="Score completions with a reward model server")
+        ] = None,
+        prompt_column: Annotated[str, Option("--prompt-column", "-pc", help="Column name for prompts")] = "prompt",
+        source: Annotated[str, Option("--source", "-s", help="Dataset source: 'hf', 'local', 'json', 'csv'")] = "hf",
+        dataset_split: Annotated[str, Option("--dataset-split", help="Dataset split to load")] = "train",
+        dataset_config: Annotated[str | None, Option("--dataset-config", help="Dataset config name")] = None,
+        max_samples: Annotated[int | None, Option("--max-samples", help="Max samples to load")] = None,
+        chat_template: Annotated[bool, Option("--chat-template/--no-chat-template")] = True,
+        max_length: Annotated[int, Option("--max-length", help="Max prompt token length")] = 512,
+        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./dr_grpo_output"),
+        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
+        kl_coeff: Annotated[float, Option("--kl-coeff", help="KL penalty coefficient")] = 0.1,
+        epsilon: Annotated[float, Option("--clip-range", "--epsilon", help="Clip range")] = 0.2,
+        group_size: Annotated[int, Option("--group-size", "-g", help="Completions sampled per prompt")] = 4,
+        n_epochs: Annotated[int, Option("--num-train-epochs", "--epochs", help="Update epochs per rollout")] = 1,
+        total_steps: Annotated[int, Option("--total-steps", help="Number of rollout/update steps")] = 1000,
+        rollout_batch_size: Annotated[int, Option("--rollout-batch-size", help="Prompts per rollout")] = 4,
+        save_every: Annotated[int, Option("--save-every", help="Steps between checkpoints (0 = never)")] = 0,
+        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
+        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
+        trust_remote_code: Annotated[bool, Option("--trust-remote-code/--no-trust-remote-code")] = False,
+        dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
+    ):
+        """
+        Dr.GRPO (GRPO Done Right -- removes GRPO's length/difficulty bias terms).
+
+        Example:
+            thinkrl dr-grpo --model gpt2 --dataset gsm8k --dataset-config main --reward-fn reward.py:score
+        """
+        typer.echo("=" * 60)
+        typer.echo("ThinkRL Dr.GRPO")
+        typer.echo("=" * 60)
+        typer.echo(f"Model: {model}")
+        typer.echo(f"Dataset: {dataset}")
+        typer.echo(f"Learning rate: {learning_rate}")
+        typer.echo()
+
+        import torch
+        from transformers import AutoTokenizer
+
+        from thinkrl.algorithms.dr_grpo import DrGRPOConfig, create_dr_grpo
+        from thinkrl.models.loader import get_model
+        from thinkrl.training.grpo_trainer import GRPOTrainer
+
+        device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
+        tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=trust_remote_code)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        typer.echo("Loading dataset...")
+        train_dataset = _build_rollout_dataset(
+            dataset, tokenizer, prompt_column, source, dataset_split, dataset_config, max_samples, chat_template,
+            max_length,
+        )
+
+        reward_func = _build_reward_fn(remote_rm_url, reward_fn, reward_model, tokenizer, device)
+
+        typer.echo("Loading models...")
+        policy = get_model(model, model_type="actor", bf16=bf16, lora_rank=lora_r or 0,
+                            trust_remote_code=trust_remote_code)
+        ref = get_model(ref_model, model_type="ref", bf16=bf16, trust_remote_code=trust_remote_code) if ref_model else None
+
+        algorithm = create_dr_grpo(
+            policy_model=policy,
+            ref_model=ref,
+            config=DrGRPOConfig(
+                learning_rate=learning_rate,
+                kl_coeff=kl_coeff,
+                epsilon=epsilon,
+                group_size=group_size,
+                n_epochs=n_epochs,
+            ),
+        )
+
+        trainer = GRPOTrainer(algorithm=algorithm, tokenizer=tokenizer, dataset=train_dataset,
+                               reward_fn=reward_func, device=device)
+
+        if dry_run:
+            typer.echo("Dry run: exiting before training.")
+            raise typer.Exit(0)
+
+        typer.echo("Starting training loop...")
+        trainer.train(
+            steps=total_steps,
+            batch_size=rollout_batch_size,
+            checkpoint_dir=str(output_dir / "checkpoints") if save_every else None,
+            save_every=save_every,
+        )
+        typer.echo("Training complete.")
 
     from thinkrl.cli.grpo import grpo as grpo_cmd
     from thinkrl.cli.star import star as star_cmd
