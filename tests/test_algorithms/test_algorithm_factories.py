@@ -3,11 +3,27 @@
 import torch.nn as nn
 
 import thinkrl.algorithms as algorithms
-from thinkrl.algorithms import create_dapo, create_grpo, create_ppo, create_prime, create_vapo
+from thinkrl.algorithms import (
+    create_dapo,
+    create_dpo,
+    create_grpo,
+    create_ipo,
+    create_ppo,
+    create_prime,
+    create_reinforce,
+    create_reinforce_pp,
+    create_star,
+    create_vapo,
+)
 from thinkrl.algorithms.dapo import DAPOAlgorithm, DAPOConfig
+from thinkrl.algorithms.dpo import DPOAlgorithm, DPOConfig
 from thinkrl.algorithms.grpo import GRPOAlgorithm, GRPOConfig
+from thinkrl.algorithms.ipo import IPOAlgorithm, IPOConfig
 from thinkrl.algorithms.ppo import PPOAlgorithm, PPOConfig
 from thinkrl.algorithms.prime import PRIMEAlgorithm, PRIMEConfig
+from thinkrl.algorithms.reinforce import REINFORCEAlgorithm, REINFORCEConfig
+from thinkrl.algorithms.reinforce_pp import REINFORCEPPAlgorithm, REINFORCEPPConfig
+from thinkrl.algorithms.star import STaRAlgorithm, STaRConfig
 from thinkrl.algorithms.vapo import VAPOAlgorithm, VAPOConfig
 
 
@@ -82,6 +98,46 @@ def test_create_prime_accepts_a_prebuilt_config():
     algorithm = create_prime(policy_model=_TinyLM(), config=config)
 
     assert isinstance(algorithm, PRIMEAlgorithm)
+    assert algorithm.config is config
+
+
+def test_create_dpo_accepts_a_prebuilt_config():
+    config = DPOConfig(learning_rate=3e-6)
+    algorithm = create_dpo(policy_model=_TinyLM(), ref_model=_TinyLM(), config=config)
+
+    assert isinstance(algorithm, DPOAlgorithm)
+    assert algorithm.config is config
+
+
+def test_create_ipo_accepts_a_prebuilt_config():
+    config = IPOConfig(learning_rate=3e-6)
+    algorithm = create_ipo(policy_model=_TinyLM(), ref_model=_TinyLM(), config=config)
+
+    assert isinstance(algorithm, IPOAlgorithm)
+    assert algorithm.config is config
+
+
+def test_create_star_accepts_a_prebuilt_config():
+    config = STaRConfig()
+    algorithm = create_star(policy_model=_TinyLM(), config=config)
+
+    assert isinstance(algorithm, STaRAlgorithm)
+    assert algorithm.config is config
+
+
+def test_create_reinforce_accepts_a_prebuilt_config():
+    config = REINFORCEConfig(learning_rate=2e-5)
+    algorithm = create_reinforce(policy_model=_TinyLM(), config=config)
+
+    assert isinstance(algorithm, REINFORCEAlgorithm)
+    assert algorithm.config is config
+
+
+def test_create_reinforce_pp_accepts_a_prebuilt_config():
+    config = REINFORCEPPConfig(learning_rate=2e-6)
+    algorithm = create_reinforce_pp(policy_model=_TinyLM(), ref_model=_TinyLM(), config=config)
+
+    assert isinstance(algorithm, REINFORCEPPAlgorithm)
     assert algorithm.config is config
 
 
