@@ -50,6 +50,10 @@ from .rl_utils import (
     # Group sampling
     sample_groups,
 )
+from .dpo_trainer import (
+    DPOTrainer,
+    DPOTrainerConfig,
+)
 from .rm_trainer import (
     RMConfig,
     RMTrainer,
@@ -63,6 +67,9 @@ from .sft_trainer import (
 
 
 __all__ = [
+    # DPO Trainer
+    "DPOTrainer",
+    "DPOTrainerConfig",
     # Reward Model Trainer
     "RMConfig",
     "RMTrainer",

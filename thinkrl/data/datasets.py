@@ -310,10 +310,23 @@ class PreferenceDataset(BaseRLHFDataset):
         chosen_enc = tokenize_pair(prompt, chosen)
         rejected_enc = tokenize_pair(prompt, rejected)
 
+        # DPO-style trainers need the prompt/response boundary to mask the prompt
+        # out of each side's labels -- otherwise the loss would also train on
+        # reproducing the prompt. Tokenized alone (no response, no eos) so it
+        # matches the prefix shared by both chosen_enc and rejected_enc.
+        prompt_length = self.tokenizer(
+            prompt,
+            max_length=self.max_length,
+            padding=False,
+            truncation=True,
+            return_tensors="pt",
+        )["input_ids"].shape[1]
+
         return {
             "chosen_input_ids": chosen_enc["input_ids"].squeeze(0),
             "chosen_attention_mask": chosen_enc["attention_mask"].squeeze(0),
             "rejected_input_ids": rejected_enc["input_ids"].squeeze(0),
             "rejected_attention_mask": rejected_enc["attention_mask"].squeeze(0),
+            "prompt_length": prompt_length,
             "prompt": prompt,
         }
