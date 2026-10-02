@@ -47,6 +47,15 @@ def mock_transformers():
             yield MockAutoModel
 
 
+class BF16MockModel(MockModel):
+    """A base model whose params are already bf16, as from_pretrained(torch_dtype=bf16)
+    would leave them -- value_head must be cast to match or forward() crashes (#197)."""
+
+    def __init__(self):
+        super().__init__()
+        self.proj = nn.Linear(4, 4, dtype=torch.bfloat16)
+
+
 class TestCritic:
     def test_init_with_module(self):
         model = MockModel()
@@ -55,10 +64,31 @@ class TestCritic:
         assert critic.lora_rank == 0
         assert isinstance(critic.value_head, nn.Linear)
 
+    def test_value_head_matches_the_base_models_dtype(self):
+        critic = Critic(BF16MockModel())
+
+        assert critic.value_head.weight.dtype == torch.bfloat16
+
+    def test_value_head_defaults_to_float32_for_a_paramless_model(self):
+        critic = Critic(MockModel())
+
+        assert critic.value_head.weight.dtype == torch.float32
+
     def test_init_with_string(self, mock_transformers):
         _ = Critic("meta-llama/Llama-2-7b-hf")
         message = mock_transformers.from_pretrained.call_args[0][0]
         assert message == "meta-llama/Llama-2-7b-hf"
+
+    def test_falls_back_when_flash_attention_is_unavailable(self, mock_transformers):
+        """use_flash_attention=True is the default; unconditionally requesting
+        flash_attention_2 crashed construction when the package isn't installed (#197)."""
+        with patch("thinkrl.models.critic.AutoConfig") as mock_auto_config, patch(
+            "thinkrl.models.actor._flash_attention_available", return_value=False
+        ):
+            mock_auto_config.from_pretrained.return_value = MockConfig()
+            Critic("meta-llama/Llama-2-7b-hf")  # must not raise
+
+        assert "attn_implementation" not in mock_auto_config.from_pretrained.call_args.kwargs
 
     def test_init_with_lora(self):
         with patch("thinkrl.models.critic._PEFT_AVAILABLE", True):

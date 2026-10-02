@@ -57,18 +57,49 @@ def mock_transformers():
             yield MockAutoModel
 
 
+class BF16MockModel(MockModel):
+    """A base model whose params are already bf16, as from_pretrained(torch_dtype=bf16)
+    would leave them -- reward_head must be cast to match or forward() crashes (#197)."""
+
+    def __init__(self):
+        super().__init__()
+        self.proj = nn.Linear(4, 4, dtype=torch.bfloat16)
+
+
 class TestRewardModel:
     def test_init_with_module(self):
         model = MockModel()
         rm = RewardModel(model)
         assert rm.model is model
         assert rm.lora_rank == 0
+
+    def test_reward_head_matches_the_base_models_dtype(self):
+        rm = RewardModel(BF16MockModel())
+
+        assert rm.reward_head.weight.dtype == torch.bfloat16
+
+    def test_reward_head_defaults_to_float32_for_a_paramless_model(self):
+        """MockModel has no parameters at all; nothing to match, so no crash either."""
+        rm = RewardModel(MockModel())
+
+        assert rm.reward_head.weight.dtype == torch.float32
         assert isinstance(rm.reward_head, nn.Linear)
 
     def test_init_with_string(self, mock_transformers):
         _ = RewardModel("meta-llama/Llama-2-7b-hf")
         message = mock_transformers.from_pretrained.call_args[0][0]
         assert message == "meta-llama/Llama-2-7b-hf"
+
+    def test_falls_back_when_flash_attention_is_unavailable(self, mock_transformers):
+        """use_flash_attention=True is the default; unconditionally requesting
+        flash_attention_2 crashed construction when the package isn't installed (#197)."""
+        with patch("thinkrl.models.reward_model.AutoConfig") as mock_auto_config, patch(
+            "thinkrl.models.actor._flash_attention_available", return_value=False
+        ):
+            mock_auto_config.from_pretrained.return_value = MockConfig()
+            RewardModel("meta-llama/Llama-2-7b-hf")  # must not raise
+
+        assert "attn_implementation" not in mock_auto_config.from_pretrained.call_args.kwargs
 
     def test_init_with_normalization(self):
         model = MockModel()
