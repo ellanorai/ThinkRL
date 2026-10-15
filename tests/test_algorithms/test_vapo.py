@@ -18,7 +18,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from tests.test_algorithms.harness import TupleActorLike
+from tests.test_algorithms.harness import TupleActorLike, ValueModelDroppingLastToken
 
 # Explicitly import VAPO components
 from thinkrl.algorithms.vapo import (
@@ -351,3 +351,27 @@ def test_entropy_bonus_does_not_crash_on_an_actor_shaped_policy():
     loss_dict = algo.compute_loss(batch)
 
     assert torch.isfinite(loss_dict["loss"])
+
+
+def test_old_values_narrower_than_log_probs_gets_padded_not_left_stale():
+    """Regression for #208: a real Critic returns [B, T-1], one column short of
+    get_log_probs's [B, T]. Left unpadded, dense_rewards/old_values stayed
+    T-1-wide while attention_mask stayed T-wide, and compute_adaptive_gae's
+    `deltas * mask` crashed on the mismatch (260 vs 261 in the field report)."""
+    policy = SimplePolicySeparate()
+    value_model = ValueModelDroppingLastToken(vocab=20, hidden=16)
+    algo = VAPOAlgorithm(
+        policy_model=policy,
+        value_model=value_model,
+        config=VAPOConfig(learning_rate=1e-5, value_lr=2e-5, epsilon_low=0.2, epsilon_high=0.28),
+    )
+
+    batch_size, seq_len = 4, 10
+    batch = {
+        "input_ids": torch.randint(0, 20, (batch_size, seq_len)),
+        "attention_mask": torch.ones(batch_size, seq_len, dtype=torch.long),
+        "rewards": torch.randn(batch_size),
+    }
+
+    metrics = algo.train_on_rollout(batch)
+    assert len(metrics) > 0
