@@ -10,6 +10,7 @@ Author: Archit Sood @ EllanorAI
 
 from __future__ import annotations
 
+import importlib.util
 import logging
 from typing import Any
 
@@ -34,6 +35,11 @@ try:
     _PEFT_AVAILABLE = True
 except ImportError:
     _PEFT_AVAILABLE = False
+
+
+def _flash_attention_available() -> bool:
+    """Return True when flash-attn is importable."""
+    return importlib.util.find_spec("flash_attn") is not None
 
 
 class Critic(nn.Module):
@@ -96,7 +102,13 @@ class Critic(nn.Module):
         if isinstance(pretrained_model, str):
             config_kwargs = {}
             if use_flash_attention:
-                config_kwargs["attn_implementation"] = "flash_attention_2"
+                if _flash_attention_available():
+                    config_kwargs["attn_implementation"] = "flash_attention_2"
+                else:
+                    logger.warning(
+                        "use_flash_attention=True but flash-attn is not installed. "
+                        "Falling back to the default attention implementation."
+                    )
 
             config = AutoConfig.from_pretrained(
                 pretrained_model,
@@ -142,6 +154,13 @@ class Critic(nn.Module):
 
         # Value head: projects hidden states to scalar values
         self.value_head = nn.Linear(self.hidden_size, 1, bias=False)
+        model_dtype = getattr(self.model, "dtype", None)
+        if not isinstance(model_dtype, torch.dtype):
+            first_param = next(self.model.parameters(), None)
+            if first_param is not None:
+                model_dtype = first_param.dtype
+        if isinstance(model_dtype, torch.dtype) and torch.empty((), dtype=model_dtype).is_floating_point():
+            self.value_head = self.value_head.to(model_dtype)
 
         # Initialize value head
         nn.init.normal_(self.value_head.weight, std=0.02)

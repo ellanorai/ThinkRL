@@ -38,6 +38,18 @@ class MockModel(nn.Module):
         pass
 
 
+class Bf16MockModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.config = MockConfig()
+        self.dummy_param = nn.Parameter(torch.ones(1, dtype=torch.bfloat16))
+
+    def forward(self, input_ids, attention_mask=None, return_dict=True):
+        batch_size, seq_len = input_ids.shape
+        hidden_states = torch.randn(batch_size, seq_len, 100, dtype=torch.bfloat16)
+        return MockModelOutput(hidden_states)
+
+
 class ModelConfig:
     def __init__(self, name_or_path):
         self.name_or_path = name_or_path
@@ -69,6 +81,16 @@ class TestRewardModel:
         _ = RewardModel("meta-llama/Llama-2-7b-hf")
         message = mock_transformers.from_pretrained.call_args[0][0]
         assert message == "meta-llama/Llama-2-7b-hf"
+
+    def test_init_with_string_flash_attention_unavailable(self):
+        with patch("thinkrl.models.reward_model.AutoConfig") as mock_auto_config:
+            with patch("thinkrl.models.reward_model.AutoModel") as mock_auto_model:
+                with patch("thinkrl.models.reward_model._flash_attention_available", return_value=False):
+                    mock_auto_model.from_pretrained.return_value = MockModel()
+                    mock_auto_config.from_pretrained.return_value = MockConfig()
+
+                    _ = RewardModel("meta-llama/Llama-2-7b-hf")
+                    assert "attn_implementation" not in mock_auto_config.from_pretrained.call_args.kwargs
 
     def test_init_with_normalization(self):
         model = MockModel()
@@ -107,6 +129,15 @@ class TestRewardModel:
         # Test return_output
         rewards, output = rm(input_ids, return_output=True)
         assert output is not None
+
+    def test_forward_with_bfloat16_model(self):
+        model = Bf16MockModel()
+        rm = RewardModel(model)
+        assert rm.reward_head.weight.dtype == torch.bfloat16
+
+        input_ids = torch.randint(0, 100, (2, 10))
+        rewards = rm(input_ids)
+        assert rewards.shape == (2,)
 
     def test_forward_with_normalization(self):
         model = MockModel()

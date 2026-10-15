@@ -38,6 +38,18 @@ class MockModel(nn.Module):
         pass
 
 
+class Bf16MockModel(nn.Module):
+    def __init__(self):
+        super().__init__()
+        self.config = MockConfig()
+        self.dummy_param = nn.Parameter(torch.ones(1, dtype=torch.bfloat16))
+
+    def forward(self, input_ids, attention_mask=None, return_dict=True):
+        batch_size, seq_len = input_ids.shape
+        hidden_states = torch.randn(batch_size, seq_len, 100, dtype=torch.bfloat16)
+        return MockModelOutput(hidden_states)
+
+
 @pytest.fixture
 def mock_transformers():
     with patch("thinkrl.models.critic.AutoConfig") as MockAutoConfig:
@@ -59,6 +71,16 @@ class TestCritic:
         _ = Critic("meta-llama/Llama-2-7b-hf")
         message = mock_transformers.from_pretrained.call_args[0][0]
         assert message == "meta-llama/Llama-2-7b-hf"
+
+    def test_init_with_string_flash_attention_unavailable(self):
+        with patch("thinkrl.models.critic.AutoConfig") as mock_auto_config:
+            with patch("thinkrl.models.critic.AutoModel") as mock_auto_model:
+                with patch("thinkrl.models.critic._flash_attention_available", return_value=False):
+                    mock_auto_model.from_pretrained.return_value = MockModel()
+                    mock_auto_config.from_pretrained.return_value = MockConfig()
+
+                    _ = Critic("meta-llama/Llama-2-7b-hf")
+                    assert "attn_implementation" not in mock_auto_config.from_pretrained.call_args.kwargs
 
     def test_init_with_lora(self):
         with patch("thinkrl.models.critic._PEFT_AVAILABLE", True):
@@ -91,6 +113,15 @@ class TestCritic:
         # Test return_output
         values, output = critic(input_ids, return_output=True)
         assert output is not None
+
+    def test_forward_with_bfloat16_model(self):
+        model = Bf16MockModel()
+        critic = Critic(model)
+        assert critic.value_head.weight.dtype == torch.bfloat16
+
+        input_ids = torch.randint(0, 100, (2, 10))
+        values = critic(input_ids)
+        assert values.shape == (2, 9)
 
     def test_forward_action_mask(self):
         model = MockModel()
