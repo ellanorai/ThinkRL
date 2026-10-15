@@ -18,6 +18,8 @@ import pytest
 import torch
 import torch.nn as nn
 
+from tests.test_algorithms.harness import TupleActorLike
+
 # Explicitly import create_ppo to avoid NameError
 from thinkrl.algorithms.ppo import (
     PPOAlgorithm,
@@ -328,3 +330,27 @@ def test_sparse_rewards_handling(unified_model, ppo_config):
     # This should run without error and internally map scalars to dense rewards
     metrics = algo.train_on_rollout(batch)
     assert len(metrics) > 0
+
+
+def test_entropy_bonus_does_not_crash_on_an_actor_shaped_policy():
+    """entropy_coeff defaults to 0.01 (nonzero), and get_model(model_type="actor")
+    -- what every real CLI run uses -- returns a tuple, not the dict every
+    SimplePolicy* fixture above returns."""
+    policy = TupleActorLike(vocab=20, hidden=16)
+    value_model = SimpleValueModel()
+    algo = PPOAlgorithm(policy_model=policy, value_model=value_model, config=PPOConfig(learning_rate=1e-4))
+
+    batch_size, seq_len = 4, 10
+    batch = {
+        "input_ids": torch.randint(0, 20, (batch_size, seq_len)),
+        "attention_mask": torch.ones(batch_size, seq_len, dtype=torch.long),
+        "labels": torch.randint(0, 20, (batch_size, seq_len)),
+        "old_log_probs": torch.randn(batch_size, seq_len),
+        "old_values": torch.randn(batch_size, seq_len),
+        "advantages": torch.randn(batch_size, seq_len),
+        "returns": torch.randn(batch_size, seq_len),
+    }
+
+    loss_dict = algo.compute_loss(batch)
+
+    assert torch.isfinite(loss_dict["loss"])

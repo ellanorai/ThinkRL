@@ -4,6 +4,8 @@ import pytest
 import torch
 import torch.nn as nn
 
+from tests.test_algorithms.harness import TupleActorLike
+
 # Assuming the DAPO implementation is in thinkrl.algorithms.dapo
 from thinkrl.algorithms.dapo import DAPOAlgorithm, DAPOConfig, DynamicSamplingBuffer
 
@@ -244,6 +246,26 @@ def test_compute_loss_structure(dapo_algo):
     # Ensure gradients are computed for policy model
     for param in dapo_algo.policy_model.parameters():
         assert param.grad is not None
+
+
+def test_entropy_bonus_does_not_crash_on_an_actor_shaped_policy():
+    """entropy_coeff defaults to 0.0 here, but get_model(model_type="actor") -- what
+    every real CLI run uses -- returns a tuple, not the dict SimplePolicy returns
+    above, so this must be exercised with a nonzero coefficient to catch the bug."""
+    model = TupleActorLike()
+    algo = DAPOAlgorithm(model, config=DAPOConfig(group_size=4, min_batch_size=8, entropy_coeff=0.01))
+    batch_size, seq_len, vocab_size = 4, 5, 10
+    batch = {
+        "input_ids": torch.randint(0, vocab_size, (batch_size, seq_len)),
+        "attention_mask": torch.ones((batch_size, seq_len)),
+        "labels": torch.randint(0, vocab_size, (batch_size, seq_len)),
+        "rewards": torch.randn(batch_size),
+        "old_log_probs": torch.randn(batch_size, seq_len),
+    }
+
+    loss_dict = algo.compute_loss(batch)
+
+    assert torch.isfinite(loss_dict["loss"])
 
 
 def test_train_on_rollout_loop(dapo_algo):

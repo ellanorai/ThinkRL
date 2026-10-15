@@ -18,6 +18,8 @@ import pytest
 import torch
 import torch.nn as nn
 
+from tests.test_algorithms.harness import TupleActorLike
+
 # Explicitly import VAPO components
 from thinkrl.algorithms.vapo import (
     VAPOAlgorithm,
@@ -320,3 +322,32 @@ def test_token_level_loss_aggregation(unified_model, vapo_config):
         with patch.object(algo, "forward_value", return_value=torch.zeros(batch_size, seq_len)):
             loss_dict = algo.compute_loss(batch)
             assert torch.isclose(loss_dict["policy_loss"], torch.tensor(-1.0))
+
+
+def test_entropy_bonus_does_not_crash_on_an_actor_shaped_policy():
+    """entropy_coeff defaults to 0.01 (nonzero), and get_model(model_type="actor")
+    -- what every real CLI run uses -- returns exactly this tuple shape, unlike the
+    dict every SimplePolicy* fixture above returns."""
+    policy = TupleActorLike(vocab=20, hidden=16)
+    value_model = SimpleValueModel()
+    algo = VAPOAlgorithm(
+        policy_model=policy,
+        value_model=value_model,
+        config=VAPOConfig(learning_rate=1e-5, value_lr=2e-5, epsilon_low=0.2, epsilon_high=0.28),
+    )
+
+    batch_size, seq_len = 4, 10
+    batch = {
+        "input_ids": torch.randint(0, 20, (batch_size, seq_len)),
+        "attention_mask": torch.ones(batch_size, seq_len, dtype=torch.long),
+        "labels": torch.randint(0, 20, (batch_size, seq_len)),
+        "old_log_probs": torch.randn(batch_size, seq_len) * 0.1,
+        "old_values": torch.randn(batch_size, seq_len),
+        "advantages": torch.randn(batch_size, seq_len),
+        "returns": torch.randn(batch_size, seq_len),
+        "raw_rewards": torch.randn(batch_size),
+    }
+
+    loss_dict = algo.compute_loss(batch)
+
+    assert torch.isfinite(loss_dict["loss"])

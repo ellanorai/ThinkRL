@@ -235,10 +235,26 @@ class REINFORCEAlgorithm(BaseRLHFAlgorithm):
             action_mask=token_mask,
         )
 
-        # Entropy bonus (encourages exploration)
+        # Entropy bonus (encourages exploration), skipped entirely when the
+        # coefficient is 0 -- EntropyLoss computes softmax unconditionally
+        # regardless of coef, so this also avoids a crash on Actor's default
+        # output, which has no full logits.
         self.entropy_loss_fn.coef = self.config.entropy_coeff
-        logits = outputs["logits"] if isinstance(outputs, dict) else outputs
-        entropy_loss = self.entropy_loss_fn(logits, action_mask=token_mask)
+        if self.config.entropy_coeff != 0:
+            if isinstance(outputs, tuple) and not isinstance(outputs, dict):
+                # Actor's default forward returns only pre-computed log-probs (to
+                # avoid materializing [B, S, V] when nothing needs it); EntropyLoss
+                # needs the per-token distribution, not just the sampled token's
+                # log-prob, so ask for the full output explicitly.
+                _, full_output = self.policy_model(
+                    input_ids=input_ids, attention_mask=attention_mask, return_output=True
+                )
+                logits = full_output.logits
+            else:
+                logits = outputs["logits"] if isinstance(outputs, dict) else outputs
+            entropy_loss = self.entropy_loss_fn(logits, action_mask=token_mask)
+        else:
+            entropy_loss = torch.zeros((), device=device)
         # Note: EntropyLoss returns negative entropy (scalar loss), but we might want raw entropy for metric
         # Recalculating metric entropy or extracting it if EntropyLoss supports it
         # EntropyLoss returns -coeff * entropy.
