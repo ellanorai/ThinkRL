@@ -443,6 +443,27 @@ if TYPER_AVAILABLE:
     def sft(
         model: Annotated[str, Option("--model", "-m", help="Model name or path")],
         dataset: Annotated[str, Option("--dataset", "-d", help="Dataset name or path")],
+        prompt_column: Annotated[str, Option("--prompt-column", "-pc", help="Column name for prompts")] = "prompt",
+        response_column: Annotated[
+            str, Option("--response-column", help="Column name for responses (the SFT target)")
+        ] = "response",
+        source: Annotated[
+            str, Option("--source", "-s", help="Dataset source: 'hf' (HuggingFace), 'local', 'json', 'csv'")
+        ] = "hf",
+        dataset_split: Annotated[str, Option("--dataset-split", help="Dataset split to load")] = "train",
+        dataset_config: Annotated[
+            str | None, Option("--dataset-config", help="Dataset config name")
+        ] = None,
+        max_samples: Annotated[
+            int | None, Option("--max-samples", help="Maximum number of samples to load from dataset")
+        ] = None,
+        chat_template: Annotated[
+            bool,
+            Option(
+                "--chat-template/--no-chat-template",
+                help="Render prompt/response with the tokenizer's chat template (instruct models)",
+            ),
+        ] = True,
         output_dir: Annotated[str, Option("--output-dir", "-o", help="Output directory")] = "./sft_output",
         max_seq_length: Annotated[int, Option("--max-seq-length", help="Maximum sequence length")] = 2048,
         learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 2e-5,
@@ -456,7 +477,19 @@ if TYPER_AVAILABLE:
         lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
         bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
         packing: Annotated[bool, Option("--packing/--no-packing", help="Use sequence packing")] = False,
+        deepspeed: Annotated[str | None, Option("--deepspeed", help="Path to DeepSpeed configuration file")] = None,
+        resume: Annotated[
+            str | None, Option("--resume", help="Resume from a checkpoint directory written by a previous run")
+        ] = None,
+        trust_remote_code: Annotated[
+            bool,
+            Option(
+                "--trust-remote-code/--no-trust-remote-code",
+                help="Allow executing custom model code downloaded from the Hub",
+            ),
+        ] = False,
         push_to_hub: Annotated[str | None, Option("--push-to-hub", help="Push to HuggingFace Hub repo")] = None,
+        dry_run: Annotated[bool, Option("--dry-run", help="Initialize and validate, but do not train")] = False,
     ):
         """
         Supervised Fine-Tuning (SFT) - Similar to `trl sft`.
@@ -464,14 +497,14 @@ if TYPER_AVAILABLE:
         Train a model on instruction-response pairs.
 
         Example:
-            thinkrl sft --model meta-llama/Llama-3.1-8B --dataset tatsu-lab/alpaca
+            thinkrl sft --model meta-llama/Llama-3.1-8B --dataset tatsu-lab/alpaca --response-column output
             thinkrl sft -m meta-llama/Llama-3.2-1B -d imdb --epochs 1 --lora-r 8
         """
         typer.echo("=" * 60)
         typer.echo("ThinkRL Supervised Fine-Tuning (SFT)")
         typer.echo("=" * 60)
         typer.echo(f"Model: {model}")
-        typer.echo(f"Dataset: {dataset}")
+        typer.echo(f"Dataset: {dataset} (source={source}, split={dataset_split})")
         typer.echo(f"Output: {output_dir}")
         typer.echo(f"Max seq length: {max_seq_length}")
         typer.echo(f"Learning rate: {learning_rate}")
@@ -481,9 +514,96 @@ if TYPER_AVAILABLE:
         typer.echo(f"LoRA rank: {lora_r if lora_r else 'Disabled'}")
         typer.echo(f"BF16: {bf16}")
         typer.echo(f"Packing: {packing}")
+        typer.echo(f"Resume: {resume if resume else 'no'}")
         typer.echo()
 
-        _not_implemented("sft", 65)
+        import torch
+        from transformers import AutoTokenizer
+
+        from thinkrl.data.datasets import RLHFDataset
+        from thinkrl.models.loader import get_model
+        from thinkrl.training.sft_trainer import SFTConfig, SFTTrainer
+
+        tokenizer = AutoTokenizer.from_pretrained(model, trust_remote_code=trust_remote_code)
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
+        typer.echo(f"Loading dataset: {dataset}")
+        train_dataset = RLHFDataset(
+            dataset_name_or_path=dataset,
+            tokenizer=tokenizer,
+            prompt_column=prompt_column,
+            response_column=response_column,
+            source=source,
+            split=dataset_split,
+            dataset_config=dataset_config,
+            max_length=max_seq_length,
+            max_samples=max_samples,
+            apply_chat_template=chat_template,
+        )
+
+        def sft_collator(batch: list[dict]) -> dict[str, torch.Tensor]:
+            """Right-pad input_ids/attention_mask, then mask every prompt token out of
+            labels using the prompt_length RLHFDataset records in SFT mode (#193):
+            without it, loss would also train on reproducing the prompt."""
+            pad_id = tokenizer.pad_token_id
+            input_ids = torch.nn.utils.rnn.pad_sequence(
+                [x["input_ids"] for x in batch], batch_first=True, padding_value=pad_id
+            )
+            attention_mask = torch.nn.utils.rnn.pad_sequence(
+                [x["attention_mask"] for x in batch], batch_first=True, padding_value=0
+            )
+            labels = input_ids.clone()
+            for i, x in enumerate(batch):
+                labels[i, : x.get("prompt_length", 0)] = -100
+            labels = labels.masked_fill(attention_mask == 0, -100)
+            return {"input_ids": input_ids, "attention_mask": attention_mask, "labels": labels}
+
+        from thinkrl.utils.distributed_util import get_local_rank
+
+        typer.echo("Loading model...")
+        model_inst = get_model(
+            model,
+            model_type="actor",
+            bf16=bf16,
+            lora_rank=lora_r if lora_r else 0,
+            trust_remote_code=trust_remote_code,
+            device_map={"": get_local_rank()} if torch.cuda.is_available() else None,
+        )
+
+        trainer = SFTTrainer(
+            model=model_inst,
+            args=SFTConfig(
+                learning_rate=learning_rate,
+                num_train_epochs=num_train_epochs,
+                per_device_train_batch_size=per_device_train_batch_size,
+                gradient_accumulation_steps=gradient_accumulation_steps,
+                max_seq_length=max_seq_length,
+                bf16=bf16,
+                packing=packing,
+                output_dir=output_dir,
+                deepspeed=deepspeed,
+            ),
+            train_dataset=train_dataset,
+            tokenizer=tokenizer,
+            data_collator=sft_collator,
+            packing=packing,
+            max_seq_length=max_seq_length,
+        )
+
+        if dry_run:
+            typer.echo("Dry run: exiting before training.")
+            raise typer.Exit(0)
+
+        typer.echo("Starting training loop...")
+        trainer.train(resume_from_checkpoint=resume)
+        typer.echo("Training complete.")
+
+        if push_to_hub:
+            typer.echo(f"Pushing to hub: {push_to_hub}")
+            model_inst.save_pretrained(output_dir)
+            tokenizer.push_to_hub(push_to_hub)
+            model_inst.push_to_hub(push_to_hub)
 
     @app.command()
     def dpo(
