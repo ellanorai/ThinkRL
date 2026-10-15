@@ -8,6 +8,10 @@ and trainers for SFT, reward modeling, etc.
 Author: EllanorAI
 """
 
+from .dpo_trainer import (
+    DPOTrainer,
+    DPOTrainerConfig,
+)
 from .kl_controller import (
     AdaptiveKLController,
     FixedKLController,
@@ -63,6 +67,9 @@ from .sft_trainer import (
 
 
 __all__ = [
+    # DPO Trainer
+    "DPOTrainer",
+    "DPOTrainerConfig",
     # Reward Model Trainer
     "RMConfig",
     "RMTrainer",
