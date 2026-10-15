@@ -162,11 +162,11 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
             # Note: We use the *current* state of the PRM for reward calculation
             # But we detach to ensure we don't backprop through the reward signal into PRM here
             prm_outputs = self.prm_model(input_ids=input_ids, attention_mask=attention_mask)
-            prm_log_probs = self.get_log_probs(prm_outputs.logits, input_ids)
+            prm_log_probs = self.get_log_probs(prm_outputs, input_ids)
 
             # Get Ref log probs
             ref_outputs = self.ref_model(input_ids=input_ids, attention_mask=attention_mask)
-            ref_log_probs = self.get_log_probs(ref_outputs.logits, input_ids)
+            ref_log_probs = self.get_log_probs(ref_outputs, input_ids)
 
         # Calculate Reward (Eq. 3)
         # r_phi = beta * log( pi_phi / pi_ref )
@@ -185,12 +185,12 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
         # Forward pass on PRM
         self.prm_model.train()
         prm_outputs = self.prm_model(input_ids=input_ids, attention_mask=attention_mask)
-        prm_log_probs = self.get_log_probs(prm_outputs.logits, input_ids)  # [B, L]
+        prm_log_probs = self.get_log_probs(prm_outputs, input_ids)  # [B, L]
 
         # Forward pass on Ref (Frozen)
         with torch.no_grad():
             ref_outputs = self.ref_model(input_ids=input_ids, attention_mask=attention_mask)
-            ref_log_probs = self.get_log_probs(ref_outputs.logits, input_ids)  # [B, L]
+            ref_log_probs = self.get_log_probs(ref_outputs, input_ids)  # [B, L]
 
         # Completion Mask (ignore prompt)
         # Assuming labels have -100 for prompt, or we construct mask dynamically
@@ -334,7 +334,7 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
         # We need old_log_probs for PPO ratio
         with torch.no_grad():
             outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
-            old_log_probs = self.get_log_probs(outputs.logits, input_ids)
+            old_log_probs = self.get_log_probs(outputs, input_ids)
 
         policy_metrics_list = []
 
@@ -344,7 +344,7 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
 
             # Forward Policy
             outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
-            log_probs = self.get_log_probs(outputs.logits, input_ids)
+            log_probs = self.get_log_probs(outputs, input_ids)
 
             # PPO Loss
             loss, pol_metrics = self.policy_loss_fn(
@@ -382,11 +382,11 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
 
         self.prm_model.train()
         prm_outputs = self.prm_model(input_ids=input_ids, attention_mask=attention_mask)
-        prm_log_probs = self.get_log_probs(prm_outputs.logits, input_ids)
+        prm_log_probs = self.get_log_probs(prm_outputs, input_ids)
 
         with torch.no_grad():
             ref_outputs = self.ref_model(input_ids=input_ids, attention_mask=attention_mask)
-            ref_log_probs = self.get_log_probs(ref_outputs.logits, input_ids)
+            ref_log_probs = self.get_log_probs(ref_outputs, input_ids)
 
         if "labels" in batch:
             action_mask = (batch["labels"] != -100).float()
@@ -403,7 +403,7 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
         # Policy loss
         with torch.no_grad():
             outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
-            old_log_probs = self.get_log_probs(outputs.logits, input_ids)
+            old_log_probs = self.get_log_probs(outputs, input_ids)
 
         implicit_rewards = self.compute_implicit_rewards(input_ids, attention_mask)
         implicit_rewards = implicit_rewards * action_mask
@@ -416,7 +416,7 @@ class PRIMEAlgorithm(BaseRLHFAlgorithm):
         )
 
         outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
-        log_probs = self.get_log_probs(outputs.logits, input_ids)
+        log_probs = self.get_log_probs(outputs, input_ids)
 
         policy_loss, _ = self.policy_loss_fn(
             log_probs=log_probs, old_log_probs=old_log_probs, advantages=advantages, action_mask=action_mask
