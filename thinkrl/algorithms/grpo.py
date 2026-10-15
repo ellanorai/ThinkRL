@@ -317,12 +317,16 @@ def create_grpo(
     policy_model: nn.Module,
     ref_model: nn.Module | None = None,
     optimizer: Optimizer | None = None,
+    config: GRPOConfig | None = None,
     **kwargs,
 ) -> GRPOAlgorithm:
     """
     Factory function to create a GRPOAlgorithm instance.
+
+    config: Pre-built GRPOConfig. If given, kwargs are ignored.
     """
-    config = GRPOConfig(**kwargs)
+    if config is None:
+        config = GRPOConfig(**kwargs)
     return GRPOAlgorithm(
         policy_model=policy_model,
         ref_model=ref_model,

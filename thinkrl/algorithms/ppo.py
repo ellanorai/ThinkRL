@@ -405,6 +405,7 @@ def create_ppo(
     learning_rate: float = 3e-4,
     n_epochs: int = 4,
     batch_size: int = 64,
+    config: PPOConfig | None = None,
     **kwargs,
 ) -> PPOAlgorithm:
     """
@@ -418,12 +419,15 @@ def create_ppo(
         learning_rate: Learning rate
         n_epochs: Number of PPO epochs per rollout
         batch_size: Mini-batch size
-        **kwargs: Additional args for PPOConfig
+        config: Pre-built PPOConfig. If given, learning_rate/n_epochs/batch_size/kwargs
+            are ignored (caller already decided those).
+        **kwargs: Additional args for PPOConfig, used only when config is None
 
     Returns:
         Configured PPOAlgorithm
     """
-    config = PPOConfig(learning_rate=learning_rate, n_epochs=n_epochs, batch_size=batch_size, **kwargs)
+    if config is None:
+        config = PPOConfig(learning_rate=learning_rate, n_epochs=n_epochs, batch_size=batch_size, **kwargs)
 
     # If optimizer is None, BaseRLHFAlgorithm handles policy optimizer creation.
     # We pass it through.

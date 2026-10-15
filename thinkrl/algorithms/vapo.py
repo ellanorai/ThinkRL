@@ -462,6 +462,7 @@ def create_vapo(
     learning_rate: float = 1e-6,
     n_epochs: int = 2,
     batch_size: int = 64,
+    config: VAPOConfig | None = None,
     **kwargs,
 ) -> VAPOAlgorithm:
     """
@@ -476,12 +477,15 @@ def create_vapo(
         learning_rate: Learning rate
         n_epochs: Number of optimization epochs per rollout
         batch_size: Mini-batch size
-        **kwargs: Additional args for VAPOConfig
+        config: Pre-built VAPOConfig. If given, learning_rate/n_epochs/batch_size/
+            kwargs are ignored.
+        **kwargs: Additional args for VAPOConfig, used only when config is None
 
     Returns:
         Configured VAPOAlgorithm
     """
-    config = VAPOConfig(learning_rate=learning_rate, n_epochs=n_epochs, batch_size=batch_size, **kwargs)
+    if config is None:
+        config = VAPOConfig(learning_rate=learning_rate, n_epochs=n_epochs, batch_size=batch_size, **kwargs)
 
     return VAPOAlgorithm(
         policy_model=policy_model,

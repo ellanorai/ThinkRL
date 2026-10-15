@@ -146,12 +146,16 @@ class STaRAlgorithm(BaseRLHFAlgorithm):
 def create_star(
     policy_model: nn.Module,
     optimizer: Optimizer | None = None,
+    config: STaRConfig | None = None,
     **kwargs,
 ) -> STaRAlgorithm:
     """
     Factory function to create a STaRAlgorithm instance.
+
+    config: Pre-built STaRConfig. If given, kwargs are ignored.
     """
-    config = STaRConfig(**kwargs)
+    if config is None:
+        config = STaRConfig(**kwargs)
     return STaRAlgorithm(
         policy_model=policy_model,
         optimizer=optimizer,

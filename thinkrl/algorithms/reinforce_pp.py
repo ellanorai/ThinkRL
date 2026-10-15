@@ -477,17 +477,22 @@ def create_reinforce_pp(
     batch_size: int = 64,
     mode: str = "baseline",
     group_size: int = 4,
+    config: REINFORCEPPConfig | None = None,
     **kwargs,
 ) -> REINFORCEPPAlgorithm:
     """
     Factory function to create REINFORCE++ algorithm.
+
+    config: Pre-built REINFORCEPPConfig. If given, the kwargs-splitting below is
+        skipped; kwargs still forward to REINFORCEPPAlgorithm as extra algo kwargs.
     """
     # Extract config args
     config_args = {k: v for k, v in kwargs.items() if hasattr(REINFORCEPPConfig, k)}
 
-    config = REINFORCEPPConfig(
-        learning_rate=learning_rate, batch_size=batch_size, mode=mode, group_size=group_size, **config_args
-    )
+    if config is None:
+        config = REINFORCEPPConfig(
+            learning_rate=learning_rate, batch_size=batch_size, mode=mode, group_size=group_size, **config_args
+        )
 
     # Remaining args
     algo_kwargs = {k: v for k, v in kwargs.items() if k not in config_args}
@@ -497,7 +502,6 @@ def create_reinforce_pp(
         ref_model=ref_model,
         optimizer=optimizer,
         config=config,
-        learning_rate=learning_rate,  # Base algo LR
         **algo_kwargs,
     )
 

@@ -658,23 +658,30 @@ class DAPOAlgorithm(BaseRLHFAlgorithm):
 # Convenience function for creating configured DAPO
 def create_dapo(
     policy_model: nn.Module,
+    ref_model: nn.Module | None = None,
     optimizer: Optimizer | None = None,
     learning_rate: float = 1e-6,
     epsilon_low: float = 0.2,
     epsilon_high: float = 0.28,
     group_size: int = 16,
     n_epochs: int = 1,
+    config: DAPOConfig | None = None,
     **kwargs,
 ) -> DAPOAlgorithm:
-    """Factory function for DAPO with common defaults."""
-    config = DAPOConfig(
-        learning_rate=learning_rate,
-        epsilon_low=epsilon_low,
-        epsilon_high=epsilon_high,
-        group_size=group_size,
-        n_epochs=n_epochs,
-        **kwargs,
-    )
+    """Factory function for DAPO with common defaults.
+
+    config: Pre-built DAPOConfig. If given, learning_rate/epsilon_low/
+        epsilon_high/group_size/n_epochs/kwargs are ignored.
+    """
+    if config is None:
+        config = DAPOConfig(
+            learning_rate=learning_rate,
+            epsilon_low=epsilon_low,
+            epsilon_high=epsilon_high,
+            group_size=group_size,
+            n_epochs=n_epochs,
+            **kwargs,
+        )
 
     if optimizer is None:
         optimizer = torch.optim.AdamW(
@@ -686,6 +693,7 @@ def create_dapo(
 
     return DAPOAlgorithm(
         policy_model=policy_model,
+        ref_model=ref_model,
         optimizer=optimizer,
         config=config,
     )

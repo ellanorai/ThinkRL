@@ -318,6 +318,7 @@ def create_ipo(
     learning_rate: float = 1e-6,
     beta: float = 0.1,
     tau: float = 0.05,
+    config: IPOConfig | None = None,
     **kwargs,
 ) -> IPOAlgorithm:
     """
@@ -330,12 +331,15 @@ def create_ipo(
         learning_rate: Learning rate
         beta: Reward scaling parameter
         tau: IPO regularization parameter
+        config: Pre-built IPOConfig. If given, the kwargs-splitting below is skipped;
+            kwargs still forward to IPOAlgorithm as extra algo kwargs.
         **kwargs: Additional args for IPOConfig or IPOAlgorithm
     """
     # Extract config-specific args from kwargs if present
     config_args = {k: v for k, v in kwargs.items() if hasattr(IPOConfig, k)}
 
-    config = IPOConfig(learning_rate=learning_rate, beta=beta, tau=tau, **config_args)
+    if config is None:
+        config = IPOConfig(learning_rate=learning_rate, beta=beta, tau=tau, **config_args)
 
     # Pass remaining kwargs to Algorithm init
     algo_kwargs = {k: v for k, v in kwargs.items() if k not in config_args}

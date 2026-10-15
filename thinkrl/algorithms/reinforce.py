@@ -318,6 +318,7 @@ def create_reinforce(
     learning_rate: float = 1e-5,
     baseline_type: str = "moving_average",
     entropy_coeff: float = 0.01,
+    config: REINFORCEConfig | None = None,
     **kwargs,
 ) -> REINFORCEAlgorithm:
     """
@@ -330,17 +331,20 @@ def create_reinforce(
         learning_rate: Learning rate
         baseline_type: Type of baseline ("none", "moving_average", "batch_mean")
         entropy_coeff: Entropy bonus coefficient
-        **kwargs: Additional config parameters
+        config: Pre-built REINFORCEConfig. If given, learning_rate/baseline_type/
+            entropy_coeff/kwargs are ignored.
+        **kwargs: Additional config parameters, used only when config is None
 
     Returns:
         Configured REINFORCEAlgorithm
     """
-    config = REINFORCEConfig(
-        learning_rate=learning_rate,
-        baseline_type=baseline_type,
-        entropy_coeff=entropy_coeff,
-        **kwargs,
-    )
+    if config is None:
+        config = REINFORCEConfig(
+            learning_rate=learning_rate,
+            baseline_type=baseline_type,
+            entropy_coeff=entropy_coeff,
+            **kwargs,
+        )
 
     if optimizer is None:
         optimizer = torch.optim.AdamW(policy_model.parameters(), lr=learning_rate)
