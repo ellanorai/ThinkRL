@@ -1,13 +1,16 @@
+import json
+import logging
+import os
+import tempfile
+
 import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
 from thinkrl.algorithms.kto import KTOConfig
-from thinkrl.training.kto_trainer import KTOTrainer
 from thinkrl.data.datasets import RLHFDataset
-import tempfile
-import json
-import os
-import logging
+from thinkrl.training.kto_trainer import KTOTrainer
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)

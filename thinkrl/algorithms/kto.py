@@ -23,7 +23,7 @@ Author: EllanorAI
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import TYPE_CHECKING
 
 import torch
 import torch.nn as nn
@@ -32,6 +32,10 @@ from torch.optim import Optimizer
 from thinkrl.algorithms.base import BaseRLHFAlgorithm
 from thinkrl.models.loss import KTOLoss
 from thinkrl.utils.logging import get_logger
+
+
+if TYPE_CHECKING:
+    from thinkrl.models.loss import EntropyLoss
 
 
 logger = get_logger(__name__)
@@ -101,8 +105,11 @@ class KTOAlgorithm(BaseRLHFAlgorithm):
             use_vllm=config.use_vllm,
             **kwargs,
         )
+        # Guaranteed by the check above; BaseRLHFAlgorithm's ref_model is Optional
+        # because other algorithms allow a missing reference model, KTO does not.
+        assert self.ref_model is not None
 
-        self.config: KTOConfig = config
+        self.config: KTOConfig = config  # type: ignore[assignment]
 
         # Initialize Loss Function
         self.loss_fn = KTOLoss(
@@ -111,6 +118,7 @@ class KTOAlgorithm(BaseRLHFAlgorithm):
             undesirable_weight=config.lambda_u,
         )
 
+        self.entropy_fn: EntropyLoss | None
         if config.entropy_coef > 0:
             from thinkrl.models.loss import EntropyLoss
 
@@ -140,6 +148,7 @@ class KTOAlgorithm(BaseRLHFAlgorithm):
         log_probs = self.get_log_probs(outputs, labels)
 
         # 2. Compute reference model log probabilities
+        assert self.ref_model is not None  # enforced in __init__
         with torch.inference_mode():
             self.ref_model.eval()
             ref_outputs = self.ref_model(input_ids=input_ids, attention_mask=attention_mask)

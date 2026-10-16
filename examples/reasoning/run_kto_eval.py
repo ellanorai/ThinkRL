@@ -1,9 +1,12 @@
+import logging
+
 import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
 from thinkrl.algorithms.kto import KTOConfig
-from thinkrl.training.kto_trainer import KTOTrainer
 from thinkrl.data.datasets import RLHFDataset
-import logging
+from thinkrl.training.kto_trainer import KTOTrainer
+
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -57,9 +60,9 @@ def main():
         {"prompt": "In a galaxy far far", "answer": ""}
     ]
     
-    import tempfile
     import json
     import os
+    import tempfile
     
     with tempfile.NamedTemporaryFile(mode="w", delete=False, suffix=".jsonl") as f:
         for d in dummy_data:

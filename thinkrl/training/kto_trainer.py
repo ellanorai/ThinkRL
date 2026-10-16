@@ -1,16 +1,34 @@
 from collections.abc import Callable
-from typing import Any, Union
+from typing import Any, Union, cast
 
 import torch
 import torch.nn as nn
-from transformers import GenerationConfig, PreTrainedTokenizer
+from transformers import GenerationConfig, PreTrainedTokenizerBase
 
 from thinkrl.algorithms.kto import KTOAlgorithm, KTOConfig
 from thinkrl.data.datasets import RLHFDataset
 from thinkrl.data.loaders import RLHFDataLoader
 from thinkrl.integration.vllm_client import VLLMClient
+from thinkrl.models.actor import Actor
 from thinkrl.utils.logging import get_logger
 from thinkrl.utils.metrics import MetricsTracker
+
+
+class _NoOpProgressBar:
+    """Stand-in for tqdm's progress bar when tqdm isn't installed.
+
+    The previous fallback (`def tqdm(x, **kwargs): return x`) required a positional
+    `x` that the call site (`tqdm(total=steps, desc=...)`) never passed, so a machine
+    without tqdm installed crashed with a TypeError before training started."""
+
+    def update(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def set_postfix(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
 
 
 logger = get_logger(__name__)
@@ -32,7 +50,7 @@ class KTOTrainer:
         self,
         model: nn.Module,
         ref_model: nn.Module,
-        tokenizer: PreTrainedTokenizer,
+        tokenizer: PreTrainedTokenizerBase,
         dataset: RLHFDataset,
         reward_fn: Callable[[list[str], list[str]], torch.Tensor],
         config: KTOConfig | None = None,
@@ -62,7 +80,7 @@ class KTOTrainer:
         self.tokenizer = tokenizer
         self.dataset = dataset
         self.reward_fn = reward_fn
-        self.device = device or ("cuda" if torch.cuda.is_available() else "cpu")
+        self.device = torch.device(device or ("cuda" if torch.cuda.is_available() else "cpu"))
         self.use_vllm = use_vllm
         self.vllm_client = None
         self.reward_threshold = reward_threshold
@@ -105,8 +123,8 @@ class KTOTrainer:
             from tqdm import tqdm
         except ImportError:
 
-            def tqdm(x, **kwargs):
-                return x
+            def tqdm(*args: Any, **kwargs: Any) -> _NoOpProgressBar:
+                return _NoOpProgressBar()
 
         import sys
 
@@ -142,6 +160,7 @@ class KTOTrainer:
                     break
 
                 if self.use_vllm:
+                    assert self.vllm_client is not None
                     self.vllm_client.update_model_weights(self.algorithm.policy_model)
 
                 # 1. Generate Rollouts
@@ -187,7 +206,7 @@ class KTOTrainer:
 
                 # 3. Train Step
                 metrics = self.algorithm.train_on_rollout(rollout_data)
-                step_metrics = metrics[-1] if metrics else {}
+                step_metrics: dict[str, float | torch.Tensor] = dict(metrics[-1]) if metrics else {}
 
                 # Track metrics
                 metrics_tracker.update_dict(step_metrics)
@@ -221,7 +240,7 @@ class KTOTrainer:
 
         progress_bar.close()
 
-    def make_experience(self, batch_prompts: dict[str, Any]) -> dict[str, torch.Tensor]:
+    def make_experience(self, batch_prompts: dict[str, Any]) -> dict[str, Any]:
         """
         Generate rollouts.
         """
@@ -245,6 +264,7 @@ class KTOTrainer:
                 "top_p": getattr(self.generation_config, "top_p", 1.0),
             }
 
+            assert self.vllm_client is not None
             output = self.vllm_client.generate(prompts_text, params, return_logprobs=False)
 
             completions_text = output["text"]
@@ -287,7 +307,7 @@ class KTOTrainer:
         else:
             with torch.no_grad():
                 self.algorithm.policy_model.eval()
-                outputs = self.algorithm.policy_model.generate(
+                outputs = cast(Actor, self.algorithm.policy_model).generate(
                     input_ids=input_ids,
                     attention_mask=attention_mask,
                     max_new_tokens=self.generation_config.max_new_tokens,

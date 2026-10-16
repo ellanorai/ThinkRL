@@ -2,7 +2,7 @@ import importlib.util
 import os
 from pathlib import Path
 import sys
-from typing import Annotated
+from typing import Annotated, cast
 
 import torch
 from transformers import AutoTokenizer
@@ -140,6 +140,8 @@ def kto_cmd(
 
         try:
             spec = importlib.util.spec_from_file_location("reward_module", module_path)
+            if spec is None or spec.loader is None:
+                raise ImportError(f"could not load a module spec from {module_path}")
             reward_module = importlib.util.module_from_spec(spec)
             sys.modules["reward_module"] = reward_module
             spec.loader.exec_module(reward_module)
@@ -188,8 +190,10 @@ def kto_cmd(
 
     # Save model
     if output_dir and local_rank == 0:
+        from thinkrl.models.actor import Actor
+
         os.makedirs(output_dir, exist_ok=True)
-        policy_model.save_pretrained(output_dir)
+        cast(Actor, policy_model).save_pretrained(str(output_dir))
         tokenizer.save_pretrained(output_dir)
         typer.echo(f"Model saved to {output_dir}")
 
