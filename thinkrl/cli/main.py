@@ -746,52 +746,12 @@ if TYPER_AVAILABLE:
         trainer.save_model()
         typer.echo("Training complete.")
 
-    @app.command()
-    def ppo(
-        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
-        reward_model: Annotated[str, Option("--reward-model", "-r", help="Reward model name or path")],
-        dataset: Annotated[str, Option("--dataset", "-d", help="Prompt dataset name or path")],
-        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./ppo_output"),
-        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
-        kl_coeff: Annotated[float, Option("--kl-coeff", help="KL penalty coefficient")] = 0.1,
-        clip_range: Annotated[float, Option("--clip-range", "--epsilon", help="PPO clip range")] = 0.2,
-        num_train_epochs: Annotated[
-            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
-        ] = 1,
-        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
-        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
-        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
-    ):
-        """
-        Proximal Policy Optimization (PPO).
-
-        Train a model with PPO using a reward model.
-
-        Example:
-            thinkrl ppo --model meta-llama/Llama-3.1-8B --reward-model OpenAssistant/reward-model-deberta-v3-large-v2 --dataset Anthropic/hh-rlhf
-        """
-        typer.echo("=" * 60)
-        typer.echo("ThinkRL Proximal Policy Optimization (PPO)")
-        typer.echo("=" * 60)
-        typer.echo(f"Model: {model}")
-        typer.echo(f"Reward Model: {reward_model}")
-        typer.echo(f"Dataset: {dataset}")
-        typer.echo(f"Output: {output_dir}")
-        typer.echo(f"Learning rate: {learning_rate}")
-        typer.echo(f"KL coefficient: {kl_coeff}")
-        typer.echo(f"Clip range: {clip_range}")
-        typer.echo(f"Epochs: {num_train_epochs}")
-        typer.echo(f"Batch size: {per_device_train_batch_size}")
-        typer.echo(f"LoRA rank: {lora_r if lora_r else 'Disabled'}")
-        typer.echo(f"BF16: {bf16}")
-        typer.echo()
-
-        _not_implemented("ppo", 65)
-
     from thinkrl.cli.grpo import grpo as grpo_cmd
+    from thinkrl.cli.ppo import ppo as ppo_cmd
     from thinkrl.cli.star import star as star_cmd
 
     app.command(name="grpo")(grpo_cmd)
+    app.command(name="ppo")(ppo_cmd)
     app.command(name="star")(star_cmd)
 
     @app.command()
