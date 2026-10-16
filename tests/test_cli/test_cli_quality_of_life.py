@@ -15,8 +15,8 @@ from thinkrl.cli.main import _is_stub, app  # noqa: E402
 
 runner = CliRunner()
 
-STUBS = {"kto", "orpo", "rloo"}
-STUB_COMMANDS = ["orpo", "kto"]
+STUBS = {"orpo", "rloo"}
+STUB_COMMANDS = ["orpo"]
 
 
 @pytest.mark.parametrize("flag", ["--version", "-V"])
@@ -85,5 +85,5 @@ def test_the_failure_message_points_somewhere_useful():
 def test_implemented_commands_are_still_listed():
     result = runner.invoke(app, ["--help"])
 
-    for command in ("grpo", "ppo", "star", "info"):
+    for command in ("grpo", "ppo", "star", "kto", "info"):
         assert command in result.stdout

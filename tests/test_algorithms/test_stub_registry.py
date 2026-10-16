@@ -1,8 +1,11 @@
-"""KTO, ORPO and RLOO are registered and exported as though they were available (#76).
+"""ORPO and RLOO are registered and exported as though they were available (#76).
 
-All three carry `TODO: Implement algorithm` and raise from `__init__` itself, and their
+Both carry `TODO: Implement algorithm` and raise from `__init__` itself, and their
 create_* factories exist only to raise. Anyone reading `ALGORITHMS` or the package
-namespace sees sixteen algorithms, three of which cannot be constructed.
+namespace sees sixteen algorithms, two of which cannot be constructed.
+
+KTO moved off this list once `feat/kto-clean` (#86) landed with a real, non-stub
+`KTOAlgorithm.__init__`.
 """
 
 import pytest
@@ -10,7 +13,7 @@ import pytest
 from thinkrl.algorithms import ALGORITHMS, get_algorithm, is_stub, list_algorithms
 
 
-STUBS = {"kto", "orpo", "rloo"}
+STUBS = {"orpo", "rloo"}
 
 
 def test_the_three_stubs_are_identified():

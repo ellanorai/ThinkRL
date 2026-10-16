@@ -749,10 +749,12 @@ if TYPER_AVAILABLE:
     from thinkrl.cli.grpo import grpo as grpo_cmd
     from thinkrl.cli.ppo import ppo as ppo_cmd
     from thinkrl.cli.star import star as star_cmd
+    from thinkrl.cli.kto import kto_cmd
 
     app.command(name="grpo")(grpo_cmd)
     app.command(name="ppo")(ppo_cmd)
     app.command(name="star")(star_cmd)
+    app.command(name="kto")(kto_cmd)
 
     @app.command()
     def reward(
@@ -898,44 +900,6 @@ if TYPER_AVAILABLE:
         typer.echo()
 
         _not_implemented("orpo", 76)
-
-    @app.command()
-    def kto(
-        model: Annotated[str, Option("--model", "-m", help="Model name or path")],
-        dataset: Annotated[str, Option("--dataset", "-d", help="Dataset with binary feedback")],
-        output_dir: Annotated[Path, Option("--output-dir", "-o", help="Output directory")] = Path("./kto_output"),
-        beta: Annotated[float, Option("--beta", help="KTO beta parameter")] = 0.1,
-        learning_rate: Annotated[float, Option("--learning-rate", "--lr", help="Learning rate")] = 1e-6,
-        num_train_epochs: Annotated[
-            int, Option("--num-train-epochs", "--epochs", help="Number of training epochs")
-        ] = 1,
-        per_device_train_batch_size: Annotated[int, Option("--batch-size", "-b", help="Per-device batch size")] = 4,
-        lora_r: Annotated[int | None, Option("--lora-r", help="LoRA rank (enables LoRA if set)")] = None,
-        bf16: Annotated[bool, Option("--bf16/--no-bf16", help="Use bfloat16 precision")] = True,
-    ):
-        """
-        Kahneman-Tversky Optimization (KTO).
-
-        Works with binary feedback (desirable/undesirable) using prospect theory.
-
-        Example:
-            thinkrl kto --model meta-llama/Llama-3.1-8B --dataset trl-lib/kto-mix
-        """
-        typer.echo("=" * 60)
-        typer.echo("ThinkRL Kahneman-Tversky Optimization (KTO)")
-        typer.echo("=" * 60)
-        typer.echo(f"Model: {model}")
-        typer.echo(f"Dataset: {dataset}")
-        typer.echo(f"Output: {output_dir}")
-        typer.echo(f"Beta: {beta}")
-        typer.echo(f"Learning rate: {learning_rate}")
-        typer.echo(f"Epochs: {num_train_epochs}")
-        typer.echo(f"Batch size: {per_device_train_batch_size}")
-        typer.echo(f"LoRA rank: {lora_r if lora_r else 'Disabled'}")
-        typer.echo(f"BF16: {bf16}")
-        typer.echo()
-
-        _not_implemented("kto", 76)
 
     @app.command()
     def reinforce_pp(
