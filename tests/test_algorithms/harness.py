@@ -63,6 +63,24 @@ class TupleActorLike(nn.Module):
         return (gathered_log_probs,)
 
 
+class ValueModelDroppingLastToken(nn.Module):
+    """Mimics ``Critic.forward``'s real return shape: ``[B, T-1]``, one value per
+    token except the last (no action follows it, so OpenRLHF-style critics never
+    score it). ``SimpleValueModel``-style fixtures return ``[B, T]`` instead, which
+    hid #208: PPO/VAPO's old-values alignment only trimmed a too-wide tensor, never
+    padded a too-narrow one, so a real Critic's output stayed one column short and
+    crashed downstream on the now-stale, full-width ``attention_mask``.
+    """
+
+    def __init__(self, vocab: int = VOCAB, hidden: int = 8):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab, hidden)
+        self.value_head = nn.Linear(hidden, 1)
+
+    def forward(self, input_ids, attention_mask=None, **kwargs):
+        return self.value_head(self.embedding(input_ids)).squeeze(-1)[:, :-1]
+
+
 def make_batch(batch_size: int = 4, seq: int = SEQ, seed: int = 0) -> dict[str, torch.Tensor]:
     """A batch shaped like a rollout: a two-token prompt then generated tokens.
 

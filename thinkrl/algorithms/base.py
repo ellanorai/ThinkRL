@@ -326,6 +326,24 @@ class BaseRLHFAlgorithm(ABC):
         padding = torch.zeros(token_log_probs.size(0), 1, device=token_log_probs.device, dtype=token_log_probs.dtype)
         return torch.cat([padding, token_log_probs], dim=1)
 
+    def align_values_to_log_probs(self, values: torch.Tensor, log_probs: torch.Tensor) -> torch.Tensor:
+        """
+        Pad or trim a value tensor to the sequence length `get_log_probs` returns.
+
+        `Critic.forward` drops the last token (`hidden_states[:, :-1, :]`, no action
+        follows the final token so no value is defined for it), returning `[B, T-1]`
+        while `get_log_probs` always returns `[B, T]`. A value tensor narrower than
+        `log_probs` is that convention, not an error, so it is zero-padded at the end
+        to match, consistent with "no value past the sequence" rather than truncated,
+        which previously left the mismatch in place and crashed downstream on the
+        now-stale `attention_mask` width (#208). A wider tensor (e.g. a unified model
+        that returns one value per token already) is still trimmed.
+        """
+        target_len = log_probs.shape[-1]
+        if values.shape[-1] < target_len:
+            return torch.nn.functional.pad(values, (0, target_len - values.shape[-1]))
+        return values[:, :target_len]
+
     def generate_rollouts(
         self,
         prompts: list[str],

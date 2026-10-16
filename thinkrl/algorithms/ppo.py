@@ -203,11 +203,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
             # Ensure proper shapes for GAE
             # Values: [B, T] or [B, T-1] depending on implementation.
             # We align with log_probs shape [B, T]
-            if old_values.shape[-1] != old_log_probs.shape[-1]:
-                # If value head returns 1 value per token, straightforward.
-                # If it mimics causal LM, check alignment.
-                # Here we assume [B, T] alignment.
-                old_values = old_values[:, : old_log_probs.shape[-1]]
+            old_values = self.align_values_to_log_probs(old_values, old_log_probs)
 
         # 3. Compute Advantages (GAE)
         # If rewards are sequence-level [B], we assume they apply to the last token or are distributed
@@ -297,7 +293,7 @@ class PPOAlgorithm(BaseRLHFAlgorithm):
         # 1. Forward Pass
         outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
         new_log_probs = self.get_log_probs(outputs, labels)
-        new_values = self.forward_value(input_ids, attention_mask, outputs)
+        new_values = self.align_values_to_log_probs(self.forward_value(input_ids, attention_mask, outputs), new_log_probs)
 
         # 2. Policy Loss (Clipped Surrogate)
         # log_probs shape: [B, T]

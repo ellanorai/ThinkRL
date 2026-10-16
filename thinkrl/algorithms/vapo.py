@@ -244,8 +244,7 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
             old_values = self.forward_value(input_ids, attention_mask, outputs=outputs)
 
             # Align shapes
-            if old_values.shape[-1] != old_log_probs.shape[-1]:
-                old_values = old_values[:, : old_log_probs.shape[-1]]
+            old_values = self.align_values_to_log_probs(old_values, old_log_probs)
 
         # Construct dense rewards if sparse
         dense_rewards = torch.zeros_like(old_values)
@@ -364,7 +363,7 @@ class VAPOAlgorithm(BaseRLHFAlgorithm):
         # 1. Forward Pass
         outputs = self.policy_model(input_ids=input_ids, attention_mask=attention_mask)
         new_log_probs = self.get_log_probs(outputs, labels)
-        new_values = self.forward_value(input_ids, attention_mask, outputs)
+        new_values = self.align_values_to_log_probs(self.forward_value(input_ids, attention_mask, outputs), new_log_probs)
 
         # 2. Token Masking
         token_mask = labels != -100
