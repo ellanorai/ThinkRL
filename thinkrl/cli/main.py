@@ -9,6 +9,7 @@ Commands:
     sft       - Supervised Fine-Tuning (like trl sft)
     dpo       - Direct Preference Optimization
     ppo       - Proximal Policy Optimization
+    dapo      - Decoupled Clip and Dynamic Sampling Policy Optimization
     grpo      - Group Relative Policy Optimization
     reward    - Train reward model
     generate  - Generate rollouts
@@ -746,13 +747,15 @@ if TYPER_AVAILABLE:
         trainer.save_model()
         typer.echo("Training complete.")
 
+    from thinkrl.cli.dapo import dapo as dapo_cmd
     from thinkrl.cli.grpo import grpo as grpo_cmd
+    from thinkrl.cli.kto import kto_cmd
     from thinkrl.cli.ppo import ppo as ppo_cmd
     from thinkrl.cli.star import star as star_cmd
-    from thinkrl.cli.kto import kto_cmd
 
     app.command(name="grpo")(grpo_cmd)
     app.command(name="ppo")(ppo_cmd)
+    app.command(name="dapo")(dapo_cmd)
     app.command(name="star")(star_cmd)
     app.command(name="kto")(kto_cmd)
 
