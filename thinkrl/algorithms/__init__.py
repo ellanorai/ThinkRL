@@ -7,6 +7,7 @@ RLHF algorithms for training language models with human feedback.
 Available algorithms:
 - PPO: Proximal Policy Optimization (with value function)
 - GRPO: Group Relative Policy Optimization (critic-free)
+- GSPO: Group Sequence Policy Optimization (sequence-level ratio)
 - DPO: Direct Preference Optimization (preference-based)
 - DAPO: Decoupled clip and dynamic sampling Policy Optimization
 - VAPO: Value-model-based Augmented PPO (for reasoning)
@@ -32,6 +33,7 @@ from thinkrl.algorithms.dapo import DAPOAlgorithm, DAPOConfig, create_dapo
 from thinkrl.algorithms.dpo import DPOAlgorithm, DPOConfig, create_dpo
 from thinkrl.algorithms.dr_grpo import DrGRPOAlgorithm, DrGRPOConfig, create_dr_grpo
 from thinkrl.algorithms.grpo import GRPOAlgorithm, GRPOConfig, create_grpo
+from thinkrl.algorithms.gspo import GSPOAlgorithm, GSPOConfig, create_gspo
 from thinkrl.algorithms.ipo import IPOAlgorithm, IPOConfig, create_ipo
 from thinkrl.algorithms.kto import KTOAlgorithm, KTOConfig, create_kto
 from thinkrl.algorithms.orpo import ORPOAlgorithm, ORPOConfig, create_orpo
@@ -52,6 +54,7 @@ ALGORITHMS = {
     "papo": PAPOAlgorithm,
     "ppo": PPOAlgorithm,
     "grpo": GRPOAlgorithm,
+    "gspo": GSPOAlgorithm,
     "dpo": DPOAlgorithm,
     "copo": COPOAlgorithm,
     "dapo": DAPOAlgorithm,
@@ -74,6 +77,7 @@ CONFIGS = {
     "papo": PAPOConfig,
     "ppo": PPOConfig,
     "grpo": GRPOConfig,
+    "gspo": GSPOConfig,
     "dpo": DPOConfig,
     "copo": COPOConfig,
     "dapo": DAPOConfig,
@@ -161,6 +165,10 @@ __all__ = [
     "GRPOAlgorithm",
     "GRPOConfig",
     "create_grpo",
+    # GSPO
+    "GSPOAlgorithm",
+    "GSPOConfig",
+    "create_gspo",
     # DPO
     "DPOAlgorithm",
     "DPOConfig",
