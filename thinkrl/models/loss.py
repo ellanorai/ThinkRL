@@ -1465,3 +1465,72 @@ class RLOOLoss(nn.Module):
             "advantages_mean": advantages.mean(),
         }
         return policy_loss, metrics
+
+
+class GSPOLoss(nn.Module):
+    """
+    Group Sequence Policy Optimization (GSPO) loss.
+    J = E[ 1/G sum_i min(s_i * A_i, clip(s_i, 1-eps_low, 1+eps_high) * A_i) ]
+
+    GRPO's ratio is per-token: w_t = pi_theta(y_t) / pi_theta_old(y_t), clipped and
+    averaged over every token. GSPO instead defines one ratio per *sequence*,
+    length-normalized so responses of different lengths stay comparable:
+
+        s_i = (pi_theta(y_i|x) / pi_theta_old(y_i|x)) ** (1/|y_i|)
+            = exp( (1/|y_i|) * sum_t [log pi_theta(y_i,t) - log pi_theta_old(y_i,t)] )
+
+    Clipping and the surrogate are therefore computed once per sequence, and the
+    objective averages over the group (sequences), not over tokens -- every
+    response in the group counts equally regardless of its length. See
+    https://arxiv.org/abs/2507.18071.
+    """
+
+    def __init__(
+        self,
+        epsilon_low: float = 3e-4,
+        epsilon_high: float = 4e-4,
+    ):
+        super().__init__()
+        self.epsilon_low = epsilon_low
+        self.epsilon_high = epsilon_high
+
+    def forward(
+        self,
+        log_probs: torch.Tensor,
+        old_log_probs: torch.Tensor,
+        advantages: torch.Tensor,
+        action_mask: torch.Tensor,
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        """
+        Args:
+            log_probs: Per-token log probs under pi_theta [B, S]
+            old_log_probs: Per-token log probs under pi_theta_old [B, S]
+            advantages: One group-relative advantage per sequence [B]
+            action_mask: Completion-token mask [B, S]
+
+        Returns:
+            (loss, metrics), loss a scalar averaged over the batch of sequences.
+        """
+        mask = action_mask.float()
+        seq_lengths = mask.sum(dim=1).clamp(min=1.0)
+
+        # Length-normalized sequence log-ratio, then exponentiate for s_i.
+        log_ratio = ((log_probs - old_log_probs) * mask).sum(dim=1) / seq_lengths
+        sequence_ratio = torch.exp(log_ratio)
+
+        surr1 = sequence_ratio * advantages
+        surr2 = torch.clamp(sequence_ratio, 1.0 - self.epsilon_low, 1.0 + self.epsilon_high) * advantages
+        surrogate = torch.min(surr1, surr2)
+
+        loss = -surrogate.mean()
+
+        with torch.no_grad():
+            is_clipped = (sequence_ratio < 1.0 - self.epsilon_low) | (sequence_ratio > 1.0 + self.epsilon_high)
+            clip_frac = is_clipped.float().mean()
+
+        metrics = {
+            "gspo_loss": loss.detach(),
+            "clip_frac": clip_frac,
+            "sequence_ratio_mean": sequence_ratio.detach().mean(),
+        }
+        return loss, metrics
