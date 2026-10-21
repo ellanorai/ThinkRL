@@ -11,6 +11,7 @@ Commands:
     ppo       - Proximal Policy Optimization
     dapo      - Decoupled Clip and Dynamic Sampling Policy Optimization
     vapo      - Value-model-based Augmented PPO
+    prime     - Process Reinforcement through Implicit Rewards
     grpo      - Group Relative Policy Optimization
     reward    - Train reward model
     generate  - Generate rollouts
@@ -752,6 +753,7 @@ if TYPER_AVAILABLE:
     from thinkrl.cli.grpo import grpo as grpo_cmd
     from thinkrl.cli.kto import kto_cmd
     from thinkrl.cli.ppo import ppo as ppo_cmd
+    from thinkrl.cli.prime import prime as prime_cmd
     from thinkrl.cli.star import star as star_cmd
     from thinkrl.cli.vapo import vapo as vapo_cmd
 
@@ -759,6 +761,7 @@ if TYPER_AVAILABLE:
     app.command(name="ppo")(ppo_cmd)
     app.command(name="dapo")(dapo_cmd)
     app.command(name="vapo")(vapo_cmd)
+    app.command(name="prime")(prime_cmd)
     app.command(name="star")(star_cmd)
     app.command(name="kto")(kto_cmd)
 

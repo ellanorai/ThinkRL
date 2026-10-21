@@ -85,5 +85,5 @@ def test_the_failure_message_points_somewhere_useful():
 def test_implemented_commands_are_still_listed():
     result = runner.invoke(app, ["--help"])
 
-    for command in ("grpo", "ppo", "dapo", "vapo", "star", "kto", "info"):
+    for command in ("grpo", "ppo", "dapo", "vapo", "prime", "star", "kto", "info"):
         assert command in result.stdout
