@@ -613,6 +613,7 @@ if TYPER_AVAILABLE:
     from thinkrl.cli.dpo import dpo as dpo_cmd
     from thinkrl.cli.dr_grpo import dr_grpo as dr_grpo_cmd
     from thinkrl.cli.grpo import grpo as grpo_cmd
+    from thinkrl.cli.ipo import ipo as ipo_cmd
     from thinkrl.cli.kto import kto_cmd
     from thinkrl.cli.ppo import ppo as ppo_cmd
     from thinkrl.cli.prime import prime as prime_cmd
@@ -626,6 +627,7 @@ if TYPER_AVAILABLE:
     app.command(name="prime")(prime_cmd)
     app.command(name="dpo")(dpo_cmd)
     app.command(name="dr-grpo")(dr_grpo_cmd)
+    app.command(name="ipo")(ipo_cmd)
     app.command(name="star")(star_cmd)
     app.command(name="kto")(kto_cmd)
 
