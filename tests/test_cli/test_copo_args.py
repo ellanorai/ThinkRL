@@ -6,6 +6,7 @@ Mirrors test_ipo_args.py, plus the validations specific to COPO's online loop:
 it needs a reward model, at least two generations to form a pair, and a
 non-zero temperature for the exploration bonus to mean anything."""
 
+import re
 from unittest.mock import patch
 
 import pytest
@@ -15,6 +16,20 @@ from thinkrl.cli.main import app
 
 
 runner = CliRunner()
+
+_ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def plain(output: str) -> str:
+    """Strip the colour codes rich writes around click's own error messages.
+
+    Locally rich sees no colour terminal and emits plain text; on CI it emits
+    `\x1b[1;36m-\x1b[0m\x1b[1;36m-reward\x1b[0m\x1b[1;36m-model\x1b[0m`, so a
+    flag name is not a substring of the raw output. Only click/rich-generated
+    text needs this; the command's own typer.echo lines are never styled.
+    """
+    return _ANSI.sub("", output)
+
 
 BASE = [
     "copo",
@@ -82,8 +97,9 @@ def test_reward_model_is_mandatory(mock_trainer, mock_get_model, mock_dataset, m
     there is no chosen/rejected column to fall back on."""
     result = runner.invoke(app, ["copo", "--model", "gpt2", "--dataset", "fake_dataset"])
 
-    assert result.exit_code != 0
-    assert "--reward-model" in result.output
+    assert result.exit_code == 2
+    assert "Missing option" in plain(result.output)
+    assert "--reward-model" in plain(result.output)
     mock_trainer.assert_not_called()
 
 
