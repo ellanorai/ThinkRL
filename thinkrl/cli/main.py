@@ -753,6 +753,7 @@ if TYPER_AVAILABLE:
     from thinkrl.cli.dapo import dapo as dapo_cmd
     from thinkrl.cli.dr_grpo import dr_grpo as dr_grpo_cmd
     from thinkrl.cli.grpo import grpo as grpo_cmd
+    from thinkrl.cli.gspo import gspo as gspo_cmd
     from thinkrl.cli.kto import kto_cmd
     from thinkrl.cli.ppo import ppo as ppo_cmd
     from thinkrl.cli.prime import prime as prime_cmd
@@ -760,6 +761,7 @@ if TYPER_AVAILABLE:
     from thinkrl.cli.vapo import vapo as vapo_cmd
 
     app.command(name="grpo")(grpo_cmd)
+    app.command(name="gspo")(gspo_cmd)
     app.command(name="ppo")(ppo_cmd)
     app.command(name="dapo")(dapo_cmd)
     app.command(name="vapo")(vapo_cmd)
