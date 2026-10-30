@@ -609,6 +609,7 @@ if TYPER_AVAILABLE:
             tokenizer.push_to_hub(push_to_hub)
             model_inst.push_to_hub(push_to_hub)
 
+    from thinkrl.cli.copo import copo as copo_cmd
     from thinkrl.cli.dapo import dapo as dapo_cmd
     from thinkrl.cli.dpo import dpo as dpo_cmd
     from thinkrl.cli.dr_grpo import dr_grpo as dr_grpo_cmd
@@ -626,6 +627,7 @@ if TYPER_AVAILABLE:
     app.command(name="vapo")(vapo_cmd)
     app.command(name="prime")(prime_cmd)
     app.command(name="dpo")(dpo_cmd)
+    app.command(name="copo")(copo_cmd)
     app.command(name="dr-grpo")(dr_grpo_cmd)
     app.command(name="ipo")(ipo_cmd)
     app.command(name="star")(star_cmd)
